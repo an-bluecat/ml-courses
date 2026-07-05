@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Transformer Ch3: Positional Encoding</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0a0a1a;color:#e0e0e0;padding:20px 20px 80px;line-height:1.7}
+h1{text-align:center;color:#fff;margin-bottom:4px;font-size:1.5em}
+.sub{text-align:center;color:#888;margin-bottom:24px;font-size:.88em}
+.nav{display:flex;justify-content:center;gap:6px;margin-bottom:20px;flex-wrap:wrap}
+.nav button{padding:7px 13px;border:2px solid #333;background:#111;color:#888;border-radius:8px;cursor:pointer;font-size:.78em;transition:.2s}
+.nav button:hover{border-color:#555;color:#ccc}
+.nav button.on{border-color:#4fc3f7;color:#4fc3f7;background:#0d2137}
+.nav button.done{border-color:#4caf50;color:#4caf50}
+.page{display:none;max-width:860px;margin:0 auto}
+.page.on{display:block}
+.page h2{color:#4fc3f7;margin-bottom:12px;font-size:1.2em}
+.card{background:#12122a;border:1px solid #2a2a4a;border-radius:12px;padding:18px;margin-bottom:14px}
+.card.blue{border-color:#4fc3f7;background:#0d1b2a}
+.card.green{border-color:#4caf50;background:#0a1a0a}
+.card.orange{border-color:#ff9800;background:#1a1400}
+.card.red{border-color:#ef5350;background:#1a0a0a}
+.card.purple{border-color:#ce93d8;background:#1a0a2a}
+.card h3{color:#ffb74d;margin-bottom:8px;font-size:1em}
+button.nx{padding:10px 24px;background:#4caf50;color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:.9em;margin-top:14px}
+button.nx:hover{background:#66bb6a}
+table{width:100%;border-collapse:collapse;margin:10px 0}
+th,td{padding:8px 12px;border:1px solid #333;text-align:center;font-size:.88em}
+th{background:#1a1a3a;color:#4fc3f7}
+td{text-align:left}
+.math{background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:14px;margin:10px 0;font-family:'Fira Code',Consolas,monospace;font-size:.85em;line-height:1.8}
+.math .line{margin:2px 0;display:block}
+.math .hl{background:#264f78;padding:2px 6px;border-radius:4px;display:inline-block}
+.math .cmt{color:#6a9955}
+.math .val{color:#b5cea8}
+.math .lbl{color:#9cdcfe}
+.key{color:#ffb74d;font-weight:600}
+.vs{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:10px 0}
+@media(max-width:650px){.vs{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<a href="../index.html" style="position:fixed;top:10px;left:14px;font-size:.75em;color:#555;text-decoration:none;z-index:999;padding:4px 8px;background:#0a0a1a;border:1px solid #333;border-radius:6px;">&larr; index</a>
+
+<h1>Transformer Ch3: Positional Encoding</h1>
+<p class="sub">Attention is permutation-invariant — this fixes it</p>
+
+<div class="nav" id="nav"></div>
+
+<!-- PAGE 0 -->
+<div class="page on" data-t="0. The Problem">
+<h2>0. The Problem: Attention Ignores Order</h2>
+
+<div class="card red">
+<h3>Attention is permutation-invariant</h3>
+<p>Raw attention has no notion of "which token came first". The score between token i and token j is just q_i · k_j — it doesn't use i or j at all.</p>
+</div>
+
+<div class="card">
+<h3>Proof: shuffling tokens doesn't change attention weights</h3>
+<p>Take two sentences: <span class="key">"the cat sat"</span> and <span class="key">"sat cat the"</span>.</p>
+<p style="margin-top:8px">Both sentences have the same 3 token embeddings — just reordered. The Q, K, V matrices are also just reordered rows. The pairwise scores q_i · k_j between any two token types are identical in both cases.</p>
+<div class="math">
+  <span class="line"><span class="cmt">// Score("the" query, "cat" key) = same regardless of order</span></span>
+  <span class="line"><span class="lbl">q_the · k_cat</span> = <span class="val">0.7</span>  <span class="cmt">// in "the cat sat"</span></span>
+  <span class="line"><span class="lbl">q_the · k_cat</span> = <span class="val">0.7</span>  <span class="cmt">// in "sat cat the" — IDENTICAL</span></span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// The attention weights are just reordered — model can't tell the difference!</span></span>
+  <span class="line"><span class="cmt">// "Dog bites man" and "Man bites dog" → same attention weights!</span></span>
+</div>
+</div>
+
+<div class="card blue">
+<h3>The fix: add position information to each token</h3>
+<p>Before feeding tokens to the transformer, add a <span class="key">positional encoding vector</span> to each token's embedding:</p>
+<div class="math">
+  <span class="line"><span class="lbl">input_i</span> = embedding(<span class="val">token_i</span>) + <span class="val">PE(i)</span></span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// Now q_the depends on its position!</span></span>
+  <span class="line"><span class="lbl">q_the_pos0</span> = (embedding_the + PE(0)) · W_Q  ≠  q_the_pos2</span>
+</div>
+<p style="margin-top:8px">The model can now distinguish "the cat sat" from "sat cat the" because the Q, K, V vectors depend on both content AND position.</p>
+</div>
+
+<button class="nx" onclick="go(1)">Next: Sinusoidal PE →</button>
+</div>
+
+<!-- PAGE 1 -->
+<div class="page" data-t="1. Sinusoidal PE">
+<h2>1. Sinusoidal Positional Encoding</h2>
+
+<div class="card blue">
+<h3>The formula (from "Attention Is All You Need", 2017)</h3>
+<div class="math">
+  <span class="line"><span class="lbl">PE(pos, 2i)</span>   = sin( pos / 10000^(2i/d_model) )</span>
+  <span class="line"><span class="lbl">PE(pos, 2i+1)</span> = cos( pos / 10000^(2i/d_model) )</span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// pos = position in sequence (0, 1, 2, ...)</span></span>
+  <span class="line"><span class="cmt">// i   = dimension index (0, 1, ..., d_model/2 - 1)</span></span>
+  <span class="line"><span class="cmt">// Even dims use sin, odd dims use cos</span></span>
+</div>
+</div>
+
+<div class="card orange">
+<h3>Worked example: d_model=4, compute PE for pos=0, 1, 2</h3>
+<p>With d_model=4, we have dimensions 0, 1, 2, 3. Dimensions 0,2 use sin; dimensions 1,3 use cos.</p>
+<div class="math">
+  <span class="line"><span class="cmt">// Frequencies:</span></span>
+  <span class="line"><span class="lbl">i=0</span>: 10000^(0/4) = 10000^0.00 = <span class="val">1.0000</span>  → divide pos by 1.0000</span>
+  <span class="line"><span class="lbl">i=1</span>: 10000^(2/4) = 10000^0.50 = <span class="val">100.00</span>  → divide pos by 100.00</span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// PE(pos=0): [sin(0/1), cos(0/1), sin(0/100), cos(0/100)]</span></span>
+  <span class="line"><span class="lbl">PE(0)</span> = [<span class="hl">sin(0.000)</span>, <span class="hl">cos(0.000)</span>, <span class="hl">sin(0.000)</span>, <span class="hl">cos(0.000)</span>]</span>
+  <span class="line">       = [<span class="val">0.000</span>, <span class="val">1.000</span>, <span class="val">0.000</span>, <span class="val">1.000</span>]</span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// PE(pos=1): [sin(1/1), cos(1/1), sin(1/100), cos(1/100)]</span></span>
+  <span class="line"><span class="lbl">PE(1)</span> = [<span class="hl">sin(1.000)</span>, <span class="hl">cos(1.000)</span>, <span class="hl">sin(0.010)</span>, <span class="hl">cos(0.010)</span>]</span>
+  <span class="line">       = [<span class="val">0.841</span>, <span class="val">0.540</span>, <span class="val">0.010</span>, <span class="val">1.000</span>]</span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// PE(pos=2): [sin(2/1), cos(2/1), sin(2/100), cos(2/100)]</span></span>
+  <span class="line"><span class="lbl">PE(2)</span> = [<span class="hl">sin(2.000)</span>, <span class="hl">cos(2.000)</span>, <span class="hl">sin(0.020)</span>, <span class="hl">cos(0.020)</span>]</span>
+  <span class="line">       = [<span class="val">0.909</span>, <span class="val">-0.416</span>, <span class="val">0.020</span>, <span class="val">0.999</span>]</span>
+</div>
+</div>
+
+<div class="card">
+<h3>What these numbers mean</h3>
+<p>Low-index dimensions (0,1) oscillate <span class="key">fast</span> — they change a lot between adjacent positions. They encode fine-grained position.</p>
+<p style="margin-top:8px">High-index dimensions (2,3) oscillate <span class="key">slowly</span> — they barely change between adjacent positions. They encode coarse position (early vs late in sequence).</p>
+<div class="math">
+  <span class="line"><span class="cmt">// dim 0: changes by 0.841 between pos 0 and 1 (fast)</span></span>
+  <span class="line"><span class="cmt">// dim 2: changes by 0.010 between pos 0 and 1 (slow)</span></span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// Analogy: binary clock</span></span>
+  <span class="line"><span class="cmt">// bit 0 (fast): flips every step</span></span>
+  <span class="line"><span class="cmt">// bit 1 (slow): flips every 2 steps</span></span>
+  <span class="line"><span class="cmt">// bit 7 (slowest): flips every 128 steps</span></span>
+</div>
+</div>
+
+<table>
+<tr><th>pos</th><th>dim 0 (sin, fast)</th><th>dim 1 (cos, fast)</th><th>dim 2 (sin, slow)</th><th>dim 3 (cos, slow)</th></tr>
+<tr><td>0</td><td>0.000</td><td>1.000</td><td>0.000</td><td>1.000</td></tr>
+<tr><td>1</td><td>0.841</td><td>0.540</td><td>0.010</td><td>1.000</td></tr>
+<tr><td>2</td><td>0.909</td><td>−0.416</td><td>0.020</td><td>0.999</td></tr>
+<tr><td>3</td><td>0.141</td><td>−0.990</td><td>0.030</td><td>0.999</td></tr>
+<tr><td>4</td><td>−0.757</td><td>−0.654</td><td>0.040</td><td>0.999</td></tr>
+</table>
+
+<button class="nx" onclick="go(2)">Next: Why it works →</button>
+</div>
+
+<!-- PAGE 2 -->
+<div class="page" data-t="2. Why it works">
+<h2>2. Why Sinusoidal PE Works</h2>
+
+<div class="card blue">
+<h3>Property 1: Every position has a unique fingerprint</h3>
+<p>No two positions produce the same PE vector (the combination of sin/cos values at all dimensions is unique). The model can unambiguously identify any position.</p>
+</div>
+
+<div class="card orange">
+<h3>Property 2: Relative positions have predictable relationships</h3>
+<p>This is the deep reason for using sin/cos: there exists a fixed linear transformation M_k such that:</p>
+<div class="math">
+  <span class="line"><span class="lbl">PE(pos + k)</span> = <span class="val">M_k</span> · PE(pos)  <span class="cmt">// for any fixed offset k</span></span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// Proof sketch using trig identities:</span></span>
+  <span class="line"><span class="lbl">sin(pos + k)</span> = sin(pos)·cos(k) + cos(pos)·sin(k)</span>
+  <span class="line"><span class="lbl">cos(pos + k)</span> = cos(pos)·cos(k) - sin(pos)·sin(k)</span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// This is a 2D rotation by angle k in each (sin, cos) pair</span></span>
+  <span class="line"><span class="cmt">// M_k = [[cos(k), sin(k)], [-sin(k), cos(k)]] for each pair</span></span>
+</div>
+<p style="margin-top:8px">The model can learn to recognize relative distances. "2 positions ahead" is always the same rotation, regardless of where you are in the sequence.</p>
+</div>
+
+<div class="card green">
+<h3>Property 3: Similar positions → similar PE vectors</h3>
+<div class="math">
+  <span class="line"><span class="cmt">// Dot product of PE(0) and PE(1) with d=4:</span></span>
+  <span class="line"><span class="lbl">PE(0)·PE(1)</span> = <span class="val">0.0</span>·<span class="val">0.841</span> + <span class="val">1.0</span>·<span class="val">0.540</span> + <span class="val">0.0</span>·<span class="val">0.010</span> + <span class="val">1.0</span>·<span class="val">1.000</span></span>
+  <span class="line">             = <span class="val">0</span> + <span class="val">0.540</span> + <span class="val">0</span> + <span class="val">1.000</span> = <span class="hl">1.540</span></span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// Dot product of PE(0) and PE(10) — farther apart:</span></span>
+  <span class="line"><span class="cmt">// PE(10) = [sin(10), cos(10), sin(0.1), cos(0.1)]</span></span>
+  <span class="line"><span class="cmt">//        = [-0.544, -0.839, 0.0998, 0.995]</span></span>
+  <span class="line"><span class="lbl">PE(0)·PE(10)</span> = <span class="val">0</span>·(-<span class="val">0.544</span>) + <span class="val">1</span>·(-<span class="val">0.839</span>) + <span class="val">0</span>·<span class="val">0.0998</span> + <span class="val">1</span>·<span class="val">0.995</span></span>
+  <span class="line">              = <span class="hl">0.156</span></span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// PE(0)·PE(1) = 1.540 >> PE(0)·PE(10) = 0.156</span></span>
+  <span class="line"><span class="cmt">// Nearby positions are more similar — the model feels distance</span></span>
+</div>
+</div>
+
+<div class="card">
+<h3>How it's used in practice</h3>
+<p>The PE vector is simply <span class="key">added</span> to the token embedding. No learned parameters needed:</p>
+<div class="math">
+  <span class="line"><span class="lbl">x_i</span> = WordEmbedding(<span class="val">token_i</span>) + <span class="val">PE(i)</span></span>
+  <span class="line"><span class="cmt">// x_i is now sensitive to both content AND position</span></span>
+  <span class="line"><span class="cmt">// The Q, K, V projections then encode relative position into scores</span></span>
+</div>
+</div>
+
+<button class="nx" onclick="go(3)">Next: RoPE →</button>
+</div>
+
+<!-- PAGE 3 -->
+<div class="page" data-t="3. RoPE">
+<h2>3. RoPE — Rotary Position Embedding</h2>
+
+<div class="card blue">
+<h3>The modern standard (Llama, GPT-NeoX, Mistral, Qwen, ...)</h3>
+<p>Instead of adding PE to the embedding before projection, RoPE <span class="key">rotates Q and K by a position-dependent angle</span> after projection, just before computing attention scores.</p>
+</div>
+
+<div class="card orange">
+<h3>The idea</h3>
+<div class="math">
+  <span class="line"><span class="cmt">// Normal attention: score = q · k</span></span>
+  <span class="line"><span class="cmt">// RoPE attention:   score = Rotate(q, pos_q) · Rotate(k, pos_k)</span></span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// The rotation angle depends on position:</span></span>
+  <span class="line"><span class="lbl">θ_i</span> = pos / 10000^(2i/d_k)  <span class="cmt">// same base as sinusoidal</span></span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// Rotate pairs of dimensions [q_2i, q_2i+1] by angle θ_i:</span></span>
+  <span class="line"><span class="lbl">R(q, pos)_2i</span>   =  q_2i · cos(θ_i) - q_{2i+1} · sin(θ_i)</span>
+  <span class="line"><span class="lbl">R(q, pos)_{2i+1}</span> =  q_2i · sin(θ_i) + q_{2i+1} · cos(θ_i)</span>
+</div>
+</div>
+
+<div class="card green">
+<h3>The magic: dot product depends only on relative position</h3>
+<div class="math">
+  <span class="line"><span class="cmt">// A crucial property:</span></span>
+  <span class="line"><span class="lbl">R(q, m) · R(k, n)</span> = f(q, k, m-n)</span>
+  <span class="line"><span class="cmt">// The score only depends on (m - n) = relative distance!</span></span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// Proof for 2D case:</span></span>
+  <span class="line"><span class="lbl">R(q,m) · R(k,n)</span></span>
+  <span class="line">  = (q0·cos(mθ) - q1·sin(mθ))·(k0·cos(nθ) - k1·sin(nθ))</span>
+  <span class="line">  + (q0·sin(mθ) + q1·cos(mθ))·(k0·sin(nθ) + k1·cos(nθ))</span>
+  <span class="line">  = q0·k0·cos((m-n)θ) + q0·k1·sin((m-n)θ)</span>
+  <span class="line">  - q1·k0·sin((m-n)θ) + q1·k1·cos((m-n)θ)</span>
+  <span class="line">  = <span class="hl">depends only on (m-n)</span></span>
+</div>
+</div>
+
+<div class="card purple">
+<h3>Why RoPE is better for long contexts</h3>
+<p><span class="key">Additive PE:</span> the model sees PE vectors for positions 0..2047 during training. At inference with position 3000, it encounters never-seen PE vectors → poor extrapolation.</p>
+<p style="margin-top:8px"><span class="key">RoPE:</span> the score depends only on (m−n). If the model learned "tokens 5 positions apart interact this way", it applies that knowledge regardless of absolute position. Works better beyond training length.</p>
+<p style="margin-top:8px">Extensions like <span class="key">YaRN</span> and <span class="key">LongRoPE</span> scale the rotation frequencies to handle even longer sequences (128K+ tokens).</p>
+</div>
+
+<button class="nx" onclick="go(4)">Next: Summary →</button>
+</div>
+
+<!-- PAGE 4 -->
+<div class="page" data-t="4. Summary">
+<h2>4. Summary — Positional Encoding Comparison</h2>
+
+<table>
+<tr>
+  <th>Method</th>
+  <th>Where applied</th>
+  <th>Learned?</th>
+  <th>Extrapolates?</th>
+  <th>Used by</th>
+</tr>
+<tr>
+  <td><span class="key">Sinusoidal</span></td>
+  <td>Added to embedding</td>
+  <td>No (fixed formula)</td>
+  <td>Poor</td>
+  <td>Original Transformer (2017)</td>
+</tr>
+<tr>
+  <td><span class="key">Learned absolute</span></td>
+  <td>Added to embedding</td>
+  <td>Yes (trainable)</td>
+  <td>No (limited to train length)</td>
+  <td>BERT, GPT-2, GPT-3</td>
+</tr>
+<tr>
+  <td><span class="key">RoPE</span></td>
+  <td>Rotates Q and K</td>
+  <td>No (fixed formula)</td>
+  <td>Good (relative)</td>
+  <td>Llama 1/2/3, Mistral, Qwen, GPT-NeoX</td>
+</tr>
+<tr>
+  <td><span class="key">ALiBi</span></td>
+  <td>Bias added to scores</td>
+  <td>No (fixed formula)</td>
+  <td>Very good</td>
+  <td>MPT, BLOOM (older)</td>
+</tr>
+</table>
+
+<div class="card blue">
+<h3>ALiBi briefly</h3>
+<p>ALiBi (Attention with Linear Biases) subtracts a linear penalty proportional to distance from each attention score:</p>
+<div class="math">
+  <span class="line"><span class="lbl">score(i,j)</span> = q_i · k_j / sqrt(d_k)  -  m · |i - j|</span>
+  <span class="line"><span class="cmt">// m = head-specific slope (small constant, different per head)</span></span>
+  <span class="line"><span class="cmt">// Nearby tokens (|i-j| small) are penalized less</span></span>
+  <span class="line"><span class="cmt">// No PE vectors added — just a score adjustment</span></span>
+</div>
+<p style="margin-top:8px">Very simple, extrapolates well, but doesn't encode position as richly as RoPE.</p>
+</div>
+
+<div class="card green">
+<h3>The bottom line</h3>
+<p>In 2024+, <span class="key">RoPE is the dominant choice</span> for new models. It's parameter-free, encodes relative positions directly in the attention computation, and generalizes better to longer sequences than absolute methods. If you're implementing a transformer from scratch, use RoPE.</p>
+</div>
+</div>
+
+<script>
+const pages=document.querySelectorAll('.page'),nav=document.getElementById('nav');
+pages.forEach((p,i)=>{const b=document.createElement('button');b.textContent=p.dataset.t;b.onclick=()=>go(i);if(i===0)b.classList.add('on');nav.appendChild(b);});
+function go(n){pages.forEach((p,i)=>p.classList.toggle('on',i===n));nav.querySelectorAll('button').forEach((b,i)=>{b.classList.remove('on');if(i<n)b.classList.add('done');else b.classList.remove('done');if(i===n)b.classList.add('on');});window.scrollTo({top:0,behavior:'smooth'});}
+</script>
+</body>
+</html>

@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HyperConnections</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0a0a1a;color:#e0e0e0;padding:20px 20px 80px;line-height:1.7}
+h1{text-align:center;color:#fff;margin-bottom:4px;font-size:1.5em}
+.sub{text-align:center;color:#888;margin-bottom:24px;font-size:.88em}
+.nav{display:flex;justify-content:center;gap:6px;margin-bottom:20px;flex-wrap:wrap}
+.nav button{padding:7px 13px;border:2px solid #333;background:#111;color:#888;border-radius:8px;cursor:pointer;font-size:.78em;transition:.2s}
+.nav button:hover{border-color:#555;color:#ccc}
+.nav button.on{border-color:#4fc3f7;color:#4fc3f7;background:#0d2137}
+.nav button.done{border-color:#4caf50;color:#4caf50}
+.page{display:none;max-width:860px;margin:0 auto}
+.page.on{display:block}
+.page h2{color:#4fc3f7;margin-bottom:12px;font-size:1.2em}
+.card{background:#12122a;border:1px solid #2a2a4a;border-radius:12px;padding:18px;margin-bottom:14px}
+.card.blue{border-color:#4fc3f7;background:#0d1b2a}
+.card.green{border-color:#4caf50;background:#0a1a0a}
+.card.orange{border-color:#ff9800;background:#1a1400}
+.card.red{border-color:#ef5350;background:#1a0a0a}
+.card.purple{border-color:#ce93d8;background:#1a0a2a}
+.card h3{color:#ffb74d;margin-bottom:8px;font-size:1em}
+button.nx{padding:10px 24px;background:#4caf50;color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:.9em;margin-top:14px}
+button.nx:hover{background:#66bb6a}
+table{width:100%;border-collapse:collapse;margin:10px 0}
+th,td{padding:8px 12px;border:1px solid #333;text-align:left;font-size:.88em}
+th{background:#1a1a3a;color:#4fc3f7}
+.math{background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:14px;margin:10px 0;font-family:'Fira Code',Consolas,monospace;font-size:.85em;line-height:1.8}
+.math .line{margin:2px 0;display:block}
+.math .hl{background:#264f78;padding:2px 6px;border-radius:4px;display:inline-block}
+.math .cmt{color:#6a9955}
+.math .val{color:#b5cea8}
+.math .lbl{color:#9cdcfe}
+.math .bad{color:#ef5350}
+.math .good{color:#4caf50}
+/* stream diagram */
+.streams{display:flex;gap:18px;margin:14px 0;justify-content:center;flex-wrap:wrap}
+.stream-col{display:flex;flex-direction:column;align-items:center;gap:6px;min-width:120px}
+.stream-label{font-size:.72em;color:#888;margin-bottom:2px}
+.stream-box{border-radius:8px;border:2px solid;padding:8px 14px;text-align:center;font-family:monospace;font-size:.8em;min-width:110px}
+.s0{border-color:#4fc3f7;background:#0d1b2a;color:#4fc3f7}
+.s1{border-color:#ce93d8;background:#1a0a2a;color:#ce93d8}
+.s-arrow{font-size:1.2em;color:#555}
+.layer-badge{background:#1a1a3a;border:1px solid #333;border-radius:6px;padding:4px 12px;font-size:.72em;color:#ffb74d;text-align:center;width:100%}
+/* weight row */
+.weight-row{display:flex;gap:8px;align-items:center;margin:6px 0;flex-wrap:wrap}
+.weight-box{border-radius:5px;padding:4px 10px;font-family:monospace;font-size:.78em;border:1px solid}
+.wb{border-color:#4fc3f7;background:#0d1b2a;color:#4fc3f7}
+.wp{border-color:#ce93d8;background:#1a0a2a;color:#ce93d8}
+.wg{border-color:#4caf50;background:#0a1a0a;color:#4caf50}
+/* vs */
+.vs{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:10px 0}
+@media(max-width:600px){.vs{grid-template-columns:1fr}}
+/* pipeline */
+.pipeline{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:center;margin:12px 0}
+.pipe-box{border-radius:8px;padding:8px 14px;font-size:.82em;text-align:center;border:2px solid}
+.pipe-box.c{border-color:#4fc3f7;color:#4fc3f7;background:#0d1b2a}
+.pipe-box.p{border-color:#ce93d8;color:#ce93d8;background:#1a0a2a}
+.pipe-box.o{border-color:#ff9800;color:#ff9800;background:#1a1400}
+.pipe-box.g{border-color:#4caf50;color:#4caf50;background:#0a1a0a}
+.pipe-arr{color:#666;font-size:1.3em}
+</style>
+</head>
+<body>
+<a href="../index.html" style="position:fixed;top:10px;left:14px;font-size:.75em;color:#555;text-decoration:none;z-index:999;padding:4px 8px;background:#0a0a1a;border:1px solid #333;border-radius:6px;">&larr; index</a>
+
+<h1>HyperConnections</h1>
+<p class="sub">What if one residual stream isn't enough?</p>
+
+<div class="nav" id="nav"></div>
+
+<!-- PAGE 0: The Problem -->
+<div class="page on" data-t="0. One Stream">
+<h2>The Residual Stream — One Vector Does Everything</h2>
+
+<div class="card">
+<h3>What the residual stream actually is</h3>
+<p>Every transformer layer reads from a single vector and writes back to it. That vector is the "residual stream." After <em>L</em> layers, it's the sum of all the layer outputs.</p>
+<div class="math">
+<span class="line cmt">// Standard residual transformer (single stream x):</span>
+<span class="line">&nbsp;</span>
+<span class="line"><span class="lbl">x</span> = embedding("the cat sat")  <span class="cmt">// [1.0, 0.5]  (2-dim, for illustration)</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Layer 1: attention + MLP</span>
+<span class="line"><span class="lbl">f1_out</span> = layer1(x)             <span class="cmt">// = [0.30, 0.30]</span></span>
+<span class="line"><span class="lbl">x</span> = x + f1_out                 <span class="cmt">// = [1.30, 0.80]   ← everything in one vector</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Layer 2:</span>
+<span class="line"><span class="lbl">f2_out</span> = layer2(x)             <span class="cmt">// = [0.20, 0.20]</span></span>
+<span class="line"><span class="lbl">x</span> = x + f2_out                 <span class="cmt">// = [1.50, 1.00]   ← final state</span></span>
+</div>
+</div>
+
+<div class="card orange">
+<h3>The problem: one stream, no lanes</h3>
+<p>Every layer writes to the same vector. Layer 1's features are mixed with layer 2's features. There's no way for early-layer syntactic info to "stay out of the way" of late-layer semantic info — they live in the same space and interfere.</p>
+<p style="margin-top:8px">It works in practice (transformers are very good), but the single stream is a bottleneck. All tasks — syntax, semantics, world knowledge, positional info — compete for the same 4096 dimensions.</p>
+<div class="math">
+<span class="line cmt">// Analogy: a single whiteboard shared by 96 people.</span>
+<span class="line cmt">// Each person reads it, writes on it, and passes it to the next.</span>
+<span class="line cmt">// Late writers can accidentally erase early writers.</span>
+</div>
+</div>
+
+<div class="card blue">
+<h3>What HyperConnections proposes</h3>
+<p>Instead of one residual stream, keep <strong>n streams in parallel</strong>. Each layer reads a weighted combination of all streams, then writes its output back to the streams according to learned weights.</p>
+<p style="margin-top:8px">n=1 gives the standard residual connection. n=2 or n=4 gives multiple "lanes" of information.</p>
+</div>
+
+<button class="nx" onclick="go(1)">See two streams in action</button>
+</div>
+
+<!-- PAGE 1: Two Streams -->
+<div class="page" data-t="1. Two Streams">
+<h2>Two Streams — A Concrete Walkthrough</h2>
+
+<div class="card">
+<h3>Setup: n=2 streams, 2 layers</h3>
+<p>We start with stream 0 (s0) initialized from the embedding. Stream 1 (s1) starts at zero.</p>
+<div class="math">
+<span class="line cmt">// Initial state (after embedding):</span>
+<span class="line"><span class="lbl">s0</span> = [1.0, 0.5]   <span class="cmt">// the main stream</span></span>
+<span class="line"><span class="lbl">s1</span> = [0.0, 0.0]   <span class="cmt">// second stream, empty</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Each layer has two learned weight vectors:</span>
+<span class="line"><span class="lbl">β</span> (beta)  = how much each stream contributes to the layer INPUT</span>
+<span class="line"><span class="lbl">α</span> (alpha) = how much the layer OUTPUT flows back into each stream</span>
+</div>
+</div>
+
+<div class="card blue">
+<h3>Layer 1: beta=[0.8, 0.2], alpha=[0.6, 0.4]</h3>
+<div class="math">
+<span class="line cmt">// Combine streams to get the layer input:</span>
+<span class="line"><span class="lbl">input</span> = β[0]·s0 + β[1]·s1</span>
+<span class="line">       = 0.8·[1.0, 0.5] + 0.2·[0.0, 0.0]</span>
+<span class="line">       = [<span class="val">0.80</span>, <span class="val">0.40</span>]</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Run the transformer layer:</span>
+<span class="line"><span class="lbl">f1_out</span> = layer1(input) = [<span class="val">0.30</span>, <span class="val">0.30</span>]</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Distribute the output back to each stream:</span>
+<span class="line"><span class="hl"><span class="lbl">s0</span> ← s0 + α[0]·f1_out = [1.0, 0.5] + 0.6·[0.30, 0.30] = [<span class="val">1.18</span>, <span class="val">0.68</span>]</span></span>
+<span class="line"><span class="hl"><span class="lbl">s1</span> ← s1 + α[1]·f1_out = [0.0, 0.0] + 0.4·[0.30, 0.30] = [<span class="val">0.12</span>, <span class="val">0.12</span>]</span></span>
+</div>
+</div>
+
+<div class="card blue">
+<h3>Layer 2: beta=[0.5, 0.5], alpha=[0.3, 0.7]</h3>
+<div class="math">
+<span class="line cmt">// Now layer 2 sees BOTH streams:</span>
+<span class="line"><span class="lbl">input</span> = 0.5·[1.18, 0.68] + 0.5·[0.12, 0.12]</span>
+<span class="line">       = [0.59, 0.34] + [0.06, 0.06]</span>
+<span class="line">       = [<span class="val">0.65</span>, <span class="val">0.40</span>]</span>
+<span class="line">&nbsp;</span>
+<span class="line"><span class="lbl">f2_out</span> = layer2(input) = [<span class="val">0.20</span>, <span class="val">0.20</span>]</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Distribute — this time mostly to stream 1:</span>
+<span class="line"><span class="hl"><span class="lbl">s0</span> ← [1.18, 0.68] + 0.3·[0.20, 0.20] = [<span class="val">1.24</span>, <span class="val">0.74</span>]</span></span>
+<span class="line"><span class="hl"><span class="lbl">s1</span> ← [0.12, 0.12] + 0.7·[0.20, 0.20] = [<span class="val">0.26</span>, <span class="val">0.26</span>]</span></span>
+</div>
+</div>
+
+<div class="card green">
+<h3>Final output: pool across streams</h3>
+<div class="math">
+<span class="line cmt">// One common choice: read out stream 0 only</span>
+<span class="line"><span class="lbl">output</span> = s0 = [<span class="val">1.24</span>, <span class="val">0.74</span>]</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Or sum both streams:</span>
+<span class="line"><span class="lbl">output</span> = s0 + s1 = [1.24+0.26, 0.74+0.26] = [<span class="val">1.50</span>, <span class="val">1.00</span>]</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// What changed vs standard residual?</span>
+<span class="line cmt">// s1 has isolated the "layer 1 update that was distributed to stream 1"</span>
+<span class="line cmt">// s0 carries the main signal; s1 is a separate lane</span>
+</div>
+</div>
+<button class="nx" onclick="go(2)">Formalize it</button>
+</div>
+
+<!-- PAGE 2: The Formula -->
+<div class="page" data-t="2. The Formula">
+<h2>The Formula — and How Residual Is a Special Case</h2>
+
+<div class="card blue">
+<h3>General HyperConnections update (n streams)</h3>
+<div class="math">
+<span class="line cmt">// State: S ∈ R^{n × d}   (n streams, each d-dimensional)</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// For each layer l with weights β_l ∈ R^n and α_l ∈ R^n:</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Step 1: aggregate streams into one input vector</span>
+<span class="line"><span class="lbl">input_l</span> = Σ_k β_l[k] · S[k]         <span class="cmt">// weighted sum over n streams</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Step 2: run the transformer sublayer (attention or MLP)</span>
+<span class="line"><span class="lbl">delta_l</span> = f_l(input_l)              <span class="cmt">// same transformer layer as before</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Step 3: distribute output back to all streams</span>
+<span class="line"><span class="hl"><span class="lbl">S[k]</span> ← S[k] + α_l[k] · delta_l     <span class="cmt">// for each stream k</span></span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// β and α are learned. They are either fixed (static) or</span>
+<span class="line cmt">// computed from the input (dynamic).</span>
+</div>
+</div>
+
+<div class="card green">
+<h3>n=1 gives exact standard residual</h3>
+<div class="math">
+<span class="line cmt">// With n=1, there is only one stream S[0] = x and one weight each:</span>
+<span class="line"><span class="lbl">β_l</span> = [1.0]   <span class="cmt">// must sum to 1, so it's just 1.0</span></span>
+<span class="line"><span class="lbl">α_l</span> = [1.0]   <span class="cmt">// one stream, full update</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// input_l = 1.0 · x = x</span>
+<span class="line cmt">// delta_l = f_l(x)</span>
+<span class="line cmt">// x ← x + 1.0 · delta_l = x + f_l(x)</span>
+<span class="line">&nbsp;</span>
+<span class="line good">// That's exactly x = x + f(x). Standard residual.</span>
+</div>
+</div>
+
+<div class="card orange">
+<h3>What the model learns to do with extra streams</h3>
+<table>
+<tr><th>β weights</th><th>α weights</th><th>Effect</th></tr>
+<tr><td>β=[1, 0]: layer reads only s0</td><td>α=[1, 0]: writes only to s0</td><td>Standard residual, stream 1 ignored</td></tr>
+<tr><td>β=[1, 0]: reads only s0</td><td>α=[0, 1]: writes only to s1</td><td>Layer output goes to a separate "side channel" — s0 is untouched</td></tr>
+<tr><td>β=[0.5, 0.5]: reads both equally</td><td>α=[0.5, 0.5]: writes back to both</td><td>Full information sharing — streams merge</td></tr>
+<tr><td>β=[0.8, 0.2]: mostly s0</td><td>α=[0.3, 0.7]: mostly to s1</td><td>Our worked example above — early layers populate s1</td></tr>
+</table>
+<p style="margin-top:10px">The model learns which of these patterns works best for each layer, from the training data alone.</p>
+</div>
+<button class="nx" onclick="go(3)">Static vs Dynamic weights</button>
+</div>
+
+<!-- PAGE 3: Static vs Dynamic -->
+<div class="page" data-t="3. Static vs Dynamic">
+<h2>Static vs Dynamic — Fixed Weights or Input-Dependent?</h2>
+
+<div class="vs">
+<div class="card">
+<h3>Static HyperConnections</h3>
+<p>β and α are learned parameters — one fixed value per layer, shared across all tokens and all time steps.</p>
+<div class="math">
+<span class="line cmt">// Layer 3 always has the same weights:</span>
+<span class="line"><span class="lbl">β_3</span> = [0.8, 0.2]   <span class="cmt">// fixed after training</span></span>
+<span class="line"><span class="lbl">α_3</span> = [0.3, 0.7]   <span class="cmt">// fixed after training</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Same for every token in every batch.</span>
+<span class="line cmt">// Cost: 2·n floats per layer — essentially free.</span>
+</div>
+</div>
+<div class="card">
+<h3>Dynamic HyperConnections</h3>
+<p>β and α are computed from the current stream state — a small learned projection that looks at the input and decides how to route.</p>
+<div class="math">
+<span class="line cmt">// Layer 3 computes per-token weights:</span>
+<span class="line"><span class="lbl">β_3</span> = softmax(W_β · S[0])   <span class="cmt">// depends on token</span></span>
+<span class="line"><span class="lbl">α_3</span> = softmax(W_α · S[0])   <span class="cmt">// W_β, W_α ∈ R^{n × d}</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// "cat" might route differently than "the"</span>
+<span class="line cmt">// Cost: n·d extra params per layer — small.</span>
+</div>
+</div>
+</div>
+
+<div class="card blue">
+<h3>Concrete dynamic example: same layer, two tokens</h3>
+<div class="math">
+<span class="line cmt">// W_β (1×2 matrix): [-0.5, +1.2] (learned projection → n=2 logits → softmax)</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Token "cat", s0=[1.0, 0.5]:</span>
+<span class="line"><span class="lbl">logits</span> = W_β · [1.0, 0.5]ᵀ = -0.5·1.0 + 1.2·0.5 = <span class="val">0.10</span></span>
+<span class="line cmt">// (this is n=1 logit; for n=2 we'd have two projections)</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// For simplicity let's say W_β produces logits [0.10, -0.10]:</span>
+<span class="line"><span class="lbl">β_cat</span>  = softmax([0.10, -0.10])  = [<span class="val">0.55</span>, <span class="val">0.45</span>]  <span class="cmt">// nearly equal</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Token "the", s0=[0.1, 0.1] (very flat, function word):</span>
+<span class="line cmt">// W_β produces logits [-0.8, 0.8]:</span>
+<span class="line"><span class="lbl">β_the</span>  = softmax([-0.8, 0.8]) = [<span class="val">0.18</span>, <span class="val">0.82</span>]   <span class="cmt">// mostly stream 1</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// "cat" routes through stream 0; "the" routes mostly through stream 1.</span>
+<span class="line cmt">// The streams can specialize per token type.</span>
+</div>
+</div>
+
+<div class="card green">
+<h3>Which to use?</h3>
+<table>
+<tr><th></th><th>Static</th><th>Dynamic</th></tr>
+<tr><td>Extra params</td><td>~2·n per layer (negligible)</td><td>~n·d per layer (small)</td></tr>
+<tr><td>Extra compute</td><td>None</td><td>One small projection per token</td></tr>
+<tr><td>What it can do</td><td>Layer-level routing ("layer 3 writes to stream 1")</td><td>Token-level routing ("content words use stream 0")</td></tr>
+<tr><td>Paper finding</td><td>Already beats residual</td><td>Slightly better, more complex</td></tr>
+</table>
+</div>
+<button class="nx" onclick="go(4)">Why it helps</button>
+</div>
+
+<!-- PAGE 4: Why It Helps -->
+<div class="page" data-t="4. Why It Helps">
+<h2>Why HyperConnections Beat Residual Connections</h2>
+
+<div class="card blue">
+<h3>1. Better gradient flow</h3>
+<p>In a standard residual network, the gradient from the output flows to every previous layer through the residual path. But the layer outputs can still interfere with each other in the single stream.</p>
+<div class="math">
+<span class="line cmt">// Standard residual: gradient of loss w.r.t. layer 1 output:</span>
+<span class="line"><span class="lbl">∂L/∂f1</span> = ∂L/∂x_final · 1   <span class="cmt">// chain rule through all additions</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// HyperConnections: gradient also flows through α weights.</span>
+<span class="line cmt">// α controls how much of f1_out went to each stream.</span>
+<span class="line cmt">// If α=[0.6, 0.4], then 60% of f1's output went to s0, 40% to s1.</span>
+<span class="line cmt">// Gradient arrives through both paths — more signal to layer 1.</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Multiple gradient paths = more stable training at large depth.</span>
+</div>
+</div>
+
+<div class="card orange">
+<h3>2. Stream specialization</h3>
+<p>With training, different streams tend to carry different kinds of information. This is an emergent behavior — the model learns to keep streams separated because it helps minimize loss.</p>
+<div class="math">
+<span class="line cmt">// Hypothetical learned pattern (from analyzing α values):</span>
+<span class="line cmt">//   Layers 1-8:  α = [0.9, 0.1]  → most output goes to stream 0</span>
+<span class="line cmt">//   Layers 9-16: α = [0.1, 0.9]  → most output goes to stream 1</span>
+<span class="line cmt">//   Layers 17-24: β = [0.5, 0.5] → reads both equally for final task</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Stream 0 becomes: "early feature extraction"</span>
+<span class="line cmt">// Stream 1 becomes: "high-level reasoning"</span>
+<span class="line cmt">// No one designed this — it fell out of training.</span>
+</div>
+</div>
+
+<div class="card green">
+<h3>3. Long-range information preservation</h3>
+<p>In a standard transformer, information written by layer 1 gets "diluted" by 95 more layers writing to the same vector. With multiple streams, a layer can write to a stream that later layers rarely touch — essentially archiving its output.</p>
+<div class="math">
+<span class="line cmt">// Stream 0: main trunk — every layer reads and writes heavily</span>
+<span class="line cmt">// Stream 1: archive — layer 2 writes to it; only the final layer reads it</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Layer 2's output in stream 1 survives 94 layers untouched.</span>
+<span class="line cmt">// In standard residual, it would have been diluted by all 94 subsequent writes.</span>
+</div>
+</div>
+
+<div class="card">
+<h3>Empirical results (from the HyperConnections paper)</h3>
+<table>
+<tr><th>Model</th><th>Residual perplexity</th><th>HyperConn perplexity</th><th>Improvement</th></tr>
+<tr><td>300M params, n=2</td><td>~18.4</td><td>~17.8</td><td>−0.6 ppl</td></tr>
+<tr><td>1B params, n=4</td><td>~14.1</td><td>~13.5</td><td>−0.6 ppl</td></tr>
+<tr><td>3B params, n=4</td><td>~11.8</td><td>~11.3</td><td>−0.5 ppl</td></tr>
+</table>
+<p style="margin-top:10px;font-size:.88em;color:#888">Consistent gains across model sizes. The larger n (more streams) helps more at larger scale — but even n=2 beats residual.</p>
+</div>
+
+<div class="card purple">
+<h3>Summary: one table</h3>
+<table>
+<tr><th>Concept</th><th>What it is</th><th>Key equation</th></tr>
+<tr><td>Residual connection</td><td>Single stream, full write-back</td><td>x ← x + f(x)</td></tr>
+<tr><td>HyperConnection</td><td>n streams, weighted read + write</td><td>S[k] ← S[k] + α[k] · f(Σ β[k] · S[k])</td></tr>
+<tr><td>Static weights</td><td>β, α fixed after training</td><td>2n floats per layer</td></tr>
+<tr><td>Dynamic weights</td><td>β, α computed per token</td><td>β = softmax(W_β · S[0])</td></tr>
+<tr><td>n=1 special case</td><td>Exactly standard residual</td><td>β=[1], α=[1]</td></tr>
+</table>
+</div>
+</div>
+
+<script>
+const pages=document.querySelectorAll('.page'),nav=document.getElementById('nav');
+pages.forEach((p,i)=>{const b=document.createElement('button');b.textContent=p.dataset.t;b.onclick=()=>go(i);if(i===0)b.classList.add('on');nav.appendChild(b);});
+function go(n){pages.forEach((p,i)=>p.classList.toggle('on',i===n));nav.querySelectorAll('button').forEach((b,i)=>{b.classList.remove('on');if(i<n)b.classList.add('done');else b.classList.remove('done');if(i===n)b.classList.add('on');});window.scrollTo({top:0,behavior:'smooth'});}
+</script>
+</body>
+</html>

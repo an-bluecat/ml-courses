@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Systems Ch4: MoE and Speculative Decoding</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0a0a1a;color:#e0e0e0;padding:20px 20px 80px;line-height:1.7}
+h1{text-align:center;color:#fff;margin-bottom:4px;font-size:1.5em}
+.sub{text-align:center;color:#888;margin-bottom:24px;font-size:.88em}
+.nav{display:flex;justify-content:center;gap:6px;margin-bottom:20px;flex-wrap:wrap}
+.nav button{padding:7px 13px;border:2px solid #333;background:#111;color:#888;border-radius:8px;cursor:pointer;font-size:.78em;transition:.2s}
+.nav button:hover{border-color:#555;color:#ccc}
+.nav button.on{border-color:#4fc3f7;color:#4fc3f7;background:#0d2137}
+.nav button.done{border-color:#4caf50;color:#4caf50}
+.page{display:none;max-width:860px;margin:0 auto}
+.page.on{display:block}
+.page h2{color:#4fc3f7;margin-bottom:12px;font-size:1.2em}
+.card{background:#12122a;border:1px solid #2a2a4a;border-radius:12px;padding:18px;margin-bottom:14px}
+.card.blue{border-color:#4fc3f7;background:#0d1b2a}
+.card.green{border-color:#4caf50;background:#0a1a0a}
+.card.orange{border-color:#ff9800;background:#1a1400}
+.card.red{border-color:#ef5350;background:#1a0a0a}
+.card.purple{border-color:#ce93d8;background:#1a0a2a}
+.card h3{color:#ffb74d;margin-bottom:8px;font-size:1em}
+button.nx{padding:10px 24px;background:#4caf50;color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:.9em;margin-top:14px}
+button.nx:hover{background:#66bb6a}
+table{width:100%;border-collapse:collapse;margin:10px 0}
+th,td{padding:8px 12px;border:1px solid #333;text-align:center;font-size:.88em}
+th{background:#1a1a3a;color:#4fc3f7}
+td{text-align:left}
+.math{background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:14px;margin:10px 0;font-family:'Fira Code',Consolas,monospace;font-size:.85em;line-height:1.8}
+.math .line{margin:2px 0;display:block}
+.math .hl{background:#264f78;padding:2px 6px;border-radius:4px;display:inline-block}
+.math .cmt{color:#6a9955}
+.math .val{color:#b5cea8}
+.math .lbl{color:#9cdcfe}
+.key{color:#ffb74d;font-weight:600}
+.vs{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:10px 0}
+@media(max-width:650px){.vs{grid-template-columns:1fr}}
+.pipeline{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:center;margin:14px 0}
+.pipe-box{border-radius:8px;padding:8px 12px;font-size:.8em;text-align:center;border:2px solid}
+.pipe-box.p{border-color:#ce93d8;color:#ce93d8;background:#2a0a3a}
+.pipe-box.c{border-color:#4fc3f7;color:#4fc3f7;background:#1a3a5c}
+.pipe-box.a{border-color:#ffb74d;color:#ffb74d;background:#3a2a0a}
+.pipe-box.g{border-color:#4caf50;color:#4caf50;background:#0a3a0a}
+.pipe-box.r{border-color:#ef5350;color:#ef5350;background:#2a0a0a}
+.pipe-arr{color:#666;font-size:1.2em}
+.chip{display:inline-block;padding:2px 8px;border-radius:4px;font-size:.72em;font-weight:600;margin:2px}
+.chip.exp{background:rgba(206,147,216,.15);color:#ce93d8;border:1px solid rgba(206,147,216,.4)}
+.chip.active{background:rgba(76,175,80,.15);color:#4caf50;border:1px solid rgba(76,175,80,.4)}
+.chip.idle{background:rgba(100,100,100,.15);color:#666;border:1px solid rgba(100,100,100,.4)}
+.chip.draft{background:rgba(79,195,247,.15);color:#4fc3f7;border:1px solid rgba(79,195,247,.4)}
+.chip.large{background:rgba(255,152,0,.15);color:#ff9800;border:1px solid rgba(255,152,0,.4)}
+.step-head{font-size:.82em;font-weight:700;color:#4fc3f7;margin:16px 0 8px;padding-top:12px;border-top:1px solid #2a2a4a}
+.step-head:first-child{border-top:none;padding-top:0;margin-top:0}
+.expert-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:12px 0}
+.expert-box{border-radius:6px;border:2px solid;padding:8px;text-align:center;font-size:.75em}
+.expert-box.on{border-color:#4caf50;background:#0a2a0a;color:#4caf50}
+.expert-box.off{border-color:#333;background:#12122a;color:#444}
+.token-row{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:8px 0}
+.token{padding:4px 10px;border-radius:6px;font-size:.82em;font-weight:600;border:2px solid}
+.token.accept{border-color:#4caf50;background:#0a2a0a;color:#4caf50}
+.token.reject{border-color:#ef5350;background:#2a0a0a;color:#ef5350}
+.token.draft{border-color:#4fc3f7;background:#0d1b2a;color:#4fc3f7}
+.token.pending{border-color:#666;background:#12122a;color:#888}
+</style>
+</head>
+<body>
+<a href="../index.html" style="position:fixed;top:10px;left:14px;font-size:.75em;color:#555;text-decoration:none;z-index:999;padding:4px 8px;background:#0a0a1a;border:1px solid #333;border-radius:6px;">&larr; index</a>
+
+<h1>Systems Ch4: MoE and Speculative Decoding</h1>
+<p class="sub">Scale parameters without scaling compute — then generate faster</p>
+
+<div class="nav" id="nav"></div>
+
+<!-- PAGE 0 -->
+<div class="page on" data-t="0. MoE — The Idea">
+<h2>Mixture of Experts — More Parameters, Same FLOPs</h2>
+
+<div class="card blue">
+<h3>Dense model: every token uses everything</h3>
+<div class="math">
+<span class="line cmt">// Processing one token through a 70B dense model</span>
+<span class="line"><span class="lbl">Params used</span>  = 70B  (all of them)</span>
+<span class="line"><span class="lbl">FLOPs</span>         ≈ 2 × 70B = <span class="val">140 GFLOPs</span> per token</span>
+<span class="line"><span class="lbl">Memory</span>         = 140 GB (FP16)  ← need 2× A100</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// To double the model capacity (more knowledge), you must:</span>
+<span class="line cmt">// → Double the parameters → 280B → double the FLOPs → 2× slower</span>
+</div>
+</div>
+
+<div class="card">
+<h3>MoE: divide the FFN layer into N expert networks</h3>
+<p>In a transformer, the FFN is the biggest layer (~2/3 of params). Instead of one giant FFN, use N smaller FFNs (experts). Each token is routed to only K of them.</p>
+<div class="expert-grid">
+  <div class="expert-box on">Expert 1<br>Active</div>
+  <div class="expert-box off">Expert 2<br>Idle</div>
+  <div class="expert-box on">Expert 3<br>Active</div>
+  <div class="expert-box off">Expert 4<br>Idle</div>
+  <div class="expert-box off">Expert 5<br>Idle</div>
+  <div class="expert-box off">Expert 6<br>Idle</div>
+  <div class="expert-box off">Expert 7<br>Idle</div>
+  <div class="expert-box off">Expert 8<br>Idle</div>
+</div>
+<p style="font-size:.85em;color:#888">Token routed to Expert 1 and Expert 3 only. Experts 2, 4–8 do nothing for this token.</p>
+</div>
+
+<div class="card green">
+<h3>Grok-1: concrete MoE numbers</h3>
+<div class="math">
+<span class="line cmt">// Grok-1 architecture (xAI, 2024)</span>
+<span class="line"><span class="lbl">Total parameters</span>: 314B</span>
+<span class="line"><span class="lbl">Number of experts</span>: 8  (per FFN layer)</span>
+<span class="line"><span class="lbl">Top-K routing</span>: K=2  (each token uses 2 of 8 experts)</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Active parameters per token</span>
+<span class="line"><span class="lbl">Non-FFN params</span> (attention, embeddings): ~50B  ← always active</span>
+<span class="line"><span class="lbl">FFN params total</span>: 264B  (8 experts × 33B each)</span>
+<span class="line"><span class="lbl">FFN params active</span>: 2/8 × 264B = <span class="val">66B</span></span>
+<span class="line"><span class="lbl">Total active</span>: 50 + 66 ≈ <span class="val">~86B per token</span></span>
+<span class="line">&nbsp;</span>
+<span class="line"><span class="hl">314B parameter knowledge, ~86B FLOP cost</span></span>
+</div>
+</div>
+
+<div class="card orange">
+<h3>Mixtral 8×7B — numbers you need to know</h3>
+<div class="math">
+<span class="line cmt">// Mixtral 8×7B (Mistral AI, 2023)</span>
+<span class="line"><span class="lbl">Total params</span>   = 8 × 7B FFN + shared = <span class="val">46.7B</span></span>
+<span class="line"><span class="lbl">Active params</span>  = 2/8 of FFN + shared = <span class="val">12.9B</span></span>
+<span class="line"><span class="lbl">Memory (FP16)</span>  = 46.7B × 2 = 93 GB   ← needs 2× A100</span>
+<span class="line"><span class="lbl">FLOPs per token</span>≈ 2 × 12.9B = 25.8 GFLOP</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Benchmark comparison</span>
+<span class="line"><span class="lbl">Llama-2-70B FLOPs</span> = 2 × 70B = 140 GFLOP per token</span>
+<span class="line"><span class="lbl">Mixtral 8×7B FLOPs</span>= 25.8 GFLOP  ← <span class="val">5.4× fewer FLOPs</span></span>
+<span class="line"><span class="lbl">Quality</span>: Mixtral 8×7B beats Llama-2-70B on most NLP benchmarks</span>
+</div>
+</div>
+
+<button class="nx" onclick="go(1)">The router — step by step →</button>
+</div>
+
+<!-- PAGE 1 -->
+<div class="page" data-t="1. The Router">
+<h2>The Router — How Tokens Pick Experts</h2>
+
+<div class="card blue">
+<h3>Router architecture — tiny but critical</h3>
+<div class="math">
+<span class="line cmt">// Router: a single linear layer, no activation</span>
+<span class="line"><span class="lbl">W_router</span> shape: (num_experts × d_model) = (8 × 4096)</span>
+<span class="line"><span class="lbl">Params</span>: 8 × 4096 = <span class="val">32,768</span>  ← ~0.001% of total model</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Compute routing scores</span>
+<span class="line"><span class="lbl">logits</span> = W_router × x       <span class="cmt">// (8,) vector of raw scores</span></span>
+<span class="line"><span class="lbl">scores</span> = softmax(logits)    <span class="cmt">// (8,) normalized probabilities</span></span>
+<span class="line"><span class="lbl">top2</span>   = argtop2(scores)    <span class="cmt">// pick 2 highest-scoring experts</span></span>
+</div>
+</div>
+
+<div class="card">
+<h3>Concrete routing example — step by step</h3>
+<div class="math">
+<span class="line cmt">// Input token embedding x (4096-dim, shown truncated)</span>
+<span class="line"><span class="lbl">x</span> = [0.3, -0.1, 0.5, 0.2, ...] (4096 values)</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Router computes 8 logits, then softmax</span>
+<span class="line"><span class="lbl">logits</span> = [-0.2, -2.1, 0.4, -1.4, -0.6, -2.3, -1.5, -2.5]</span>
+<span class="line"><span class="lbl">scores</span> = softmax(logits)</span>
+<span class="line">       = [<span class="val">0.250</span>, 0.038, <span class="val">0.455</span>, 0.074, 0.170, 0.031, 0.067, 0.025]</span>
+<span class="line cmt">// (all 8 sum to 1.0)</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Top-2: Expert 3 (0.455) and Expert 1 (0.250)</span>
+<span class="line"><span class="lbl">chosen</span> = [Expert_3, Expert_1]</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Normalize the top-2 weights</span>
+<span class="line"><span class="lbl">sum_top2</span> = 0.455 + 0.250 = 0.705</span>
+<span class="line"><span class="lbl">w_3</span> = 0.455 / 0.705 = <span class="val">0.645</span></span>
+<span class="line"><span class="lbl">w_1</span> = 0.250 / 0.705 = <span class="val">0.355</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Final output: weighted sum of the two expert outputs</span>
+<span class="line"><span class="lbl">h</span> = 0.645 × Expert_3(x) + 0.355 × Expert_1(x)</span>
+</div>
+</div>
+
+<div class="card red">
+<h3>The load balancing problem</h3>
+<div class="math">
+<span class="line cmt">// Without a balancing constraint, all tokens go to the same 1-2 experts</span>
+<span class="line cmt">// One expert gets 80% of tokens, others idle = wastes capacity</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Load balancing loss (auxiliary loss)</span>
+<span class="line"><span class="lbl">f_i</span> = fraction of tokens routed to expert i</span>
+<span class="line"><span class="lbl">P_i</span> = mean router probability assigned to expert i</span>
+<span class="line"><span class="lbl">L_balance</span> = α × num_experts × Σᵢ (f_i × P_i)</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Ideal: f_i = 1/8 = 0.125 for all i (uniform distribution)</span>
+<span class="line cmt">// If expert 1 gets 80%: L_balance is large → pushed to distribute</span>
+<span class="line"><span class="lbl">α</span> = 0.01 (small — don't let balancing hurt model quality too much)</span>
+</div>
+</div>
+
+<div class="card purple">
+<h3>Expert capacity — preventing overflow</h3>
+<div class="math">
+<span class="line cmt">// During training, batching experts efficiently requires a fixed capacity</span>
+<span class="line"><span class="lbl">capacity_factor</span> = 1.25  (typical)</span>
+<span class="line"><span class="lbl">capacity</span> = ceil(tokens_per_batch / num_experts × capacity_factor)</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Example: 512 tokens, 8 experts</span>
+<span class="line"><span class="lbl">capacity</span> = ceil(512 / 8 × 1.25) = ceil(80) = 80 tokens per expert</span>
+<span class="line cmt">// If > 80 tokens route to one expert, excess tokens are DROPPED</span>
+<span class="line cmt">// (their expert contribution = 0, only residual connection survives)</span>
+<span class="line cmt">// Overflow rate is logged — good training keeps it < 5%</span>
+</div>
+</div>
+
+<button class="nx" onclick="go(2)">Why MoE scales better →</button>
+</div>
+
+<!-- PAGE 2 -->
+<div class="page" data-t="2. Why MoE Scales">
+<h2>Why MoE Scales Better Than Dense Models</h2>
+
+<div class="card blue">
+<h3>The scaling tradeoff: capacity vs compute</h3>
+<table>
+<tr><th>To double model capacity</th><th>Dense Model</th><th>MoE Model</th></tr>
+<tr><td>What you add</td><td>Double all layers</td><td>Double number of experts</td></tr>
+<tr><td>Parameter count</td><td>2× (from 70B to 140B)</td><td>2× (from 8 to 16 experts)</td></tr>
+<tr><td>Active params per token</td><td>2× (140B active)</td><td>Same (12.9B active)</td></tr>
+<tr><td>FLOPs per token</td><td>2× (slower)</td><td>Same (no change!)</td></tr>
+<tr><td>Inference latency</td><td>2× worse</td><td>Unchanged</td></tr>
+<tr><td>Memory needed</td><td>2× (280 GB)</td><td>2× (but distributed OK)</td></tr>
+</table>
+<p style="margin-top:8px;font-size:.85em;color:#888">MoE lets you grow model capacity without paying a compute cost per token. The tradeoff is that all experts must fit in GPU memory (even the idle ones).</p>
+</div>
+
+<div class="card">
+<h3>Real scaling evidence — Mixtral 8×7B vs Llama-2</h3>
+<div class="math">
+<span class="line cmt">// MMLU benchmark (higher is better)</span>
+<span class="line"><span class="lbl">Llama-2-13B</span>   : 54.8%  (13B active FLOPs)</span>
+<span class="line"><span class="lbl">Llama-2-70B</span>   : 68.9%  (70B active FLOPs)</span>
+<span class="line"><span class="lbl">Mixtral 8×7B</span>  : 70.6%  (12.9B active FLOPs!)</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Cost to serve (active FLOPs comparison)</span>
+<span class="line"><span class="lbl">Llama-2-70B</span>   : 140 GFLOPs/token</span>
+<span class="line"><span class="lbl">Mixtral 8×7B</span>  :  26 GFLOPs/token</span>
+<span class="line"><span class="hl">5.4× fewer FLOPs, slightly better quality</span></span>
+</div>
+</div>
+
+<div class="card orange">
+<h3>GPT-4 is (reportedly) MoE</h3>
+<div class="math">
+<span class="line cmt">// GPT-4 architecture (rumored, not confirmed)</span>
+<span class="line"><span class="lbl">Total params</span>    ≈ 1.8T</span>
+<span class="line"><span class="lbl">Number of experts</span>: 16</span>
+<span class="line"><span class="lbl">Active params</span>   ≈ 220B per token</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// If true: GPT-4 quality at ~220B dense FLOP cost</span>
+<span class="line cmt">// A 1.8T dense model would be 8× more expensive to serve</span>
+<span class="line cmt">// MoE is why frontier models can be deployed economically</span>
+</div>
+</div>
+
+<div class="card green">
+<h3>What experts actually specialize in</h3>
+<p>Studies (Mixtral paper, Switch Transformer) found that experts develop soft specializations by domain, syntax, and position — even without explicit supervision:</p>
+<ul style="margin-left:18px;margin-top:6px">
+  <li>Some experts activate more on code vs. natural language</li>
+  <li>Some specialize on first tokens of sentences (structural)</li>
+  <li>Some activate on specific domains (math, biomedical, French)</li>
+  <li>But no expert is 100% dedicated — each handles many inputs</li>
+</ul>
+</div>
+
+<button class="nx" onclick="go(3)">Speculative decoding — the idea →</button>
+</div>
+
+<!-- PAGE 3 -->
+<div class="page" data-t="3. Speculative Decoding">
+<h2>Speculative Decoding — The Core Idea</h2>
+
+<div class="card blue">
+<h3>Why autoregressive generation is slow</h3>
+<div class="math">
+<span class="line cmt">// Generating "The cat sat on the mat" with a 7B model</span>
+<span class="line"><span class="lbl">Each token</span>: 1 full forward pass through 7B model</span>
+<span class="line"><span class="lbl">7B model forward pass</span>: load 14GB weights → ~14ms on A100</span>
+<span class="line"><span class="lbl">100 tokens</span>: 100 × 14ms = <span class="val">1.4 seconds</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Why can't we batch tokens? Autoregressive constraint:</span>
+<span class="line cmt">// Token 3 depends on token 2, which depends on token 1.</span>
+<span class="line cmt">// You CANNOT generate token 3 without first knowing token 2.</span>
+<span class="line cmt">// → Forced sequential execution</span>
+</div>
+</div>
+
+<div class="card">
+<h3>The key observation</h3>
+<p>Most tokens in typical generation are <span class="key">easy and predictable</span>:</p>
+<div class="math">
+<span class="line cmt">// In "Once upon a time there was a ___"</span>
+<span class="line cmt">// A small 68M model predicts "little" or "young" with 90%+ confidence</span>
+<span class="line cmt">// A 7B model would predict the same token</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Hard tokens (low-confidence small model):</span>
+<span class="line cmt">// "The capital of Brunei is ___"  → small model likely wrong</span>
+<span class="line cmt">// "The integral of x² is ___"    → small model likely wrong</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Typical acceptance rate: 70-85% of draft tokens accepted</span>
+</div>
+</div>
+
+<div class="card green">
+<h3>The speculative decoding algorithm</h3>
+<div class="pipeline">
+  <div class="pipe-box c"><span class="chip draft">Draft</span><br>68M model<br>gen K tokens fast</div>
+  <span class="pipe-arr">→</span>
+  <div class="pipe-box a"><span class="chip large">Target</span><br>7B model<br>verify all K in 1 pass</div>
+  <span class="pipe-arr">→</span>
+  <div class="pipe-box g">Accept prefix<br>+ sample 1 new<br>token</div>
+</div>
+<div class="math">
+<span class="line cmt">// Algorithm (Leviathan et al., 2022)</span>
+<span class="line">1. Draft model generates K=5 tokens: [t₁, t₂, t₃, t₄, t₅]</span>
+<span class="line">   Cost: K × draft_forward = 5 × ~1ms = 5ms</span>
+<span class="line">&nbsp;</span>
+<span class="line">2. Target model verifies in ONE batched forward pass</span>
+<span class="line">   Input: [prompt, t₁, t₂, t₃, t₄]  (parallel, not sequential)</span>
+<span class="line">   Output: probability distributions at each position</span>
+<span class="line">   Cost: 1 × target_forward = 1 × ~14ms = 14ms</span>
+<span class="line">&nbsp;</span>
+<span class="line">3. Accept tokens using rejection sampling:</span>
+<span class="line">   If p_target(tᵢ) / p_draft(tᵢ) ≥ uniform(0,1): accept tᵢ</span>
+<span class="line">   Else: reject tᵢ and ALL subsequent tokens</span>
+<span class="line">&nbsp;</span>
+<span class="line">4. After last accepted token: sample 1 token from target model</span>
+</div>
+</div>
+
+<div class="card orange">
+<h3>Why rejection sampling preserves target distribution</h3>
+<div class="math">
+<span class="line cmt">// Key property: speculative decoding is EXACT — not an approximation</span>
+<span class="line cmt">// The output distribution is identical to the target model</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Acceptance criterion: min(1, p_target(x) / p_draft(x))</span>
+<span class="line cmt">// If target agrees (p_target >> p_draft): always accept</span>
+<span class="line cmt">// If target disagrees (p_target << p_draft): reject with high prob</span>
+<span class="line cmt">// On rejection: sample from adjusted distribution to stay on-distribution</span>
+<span class="line"><span class="lbl">p_adjusted</span>(x) = max(0, p_target(x) - p_draft(x)) / Z</span>
+<span class="line cmt">// This ensures the final sequence follows p_target exactly</span>
+</div>
+</div>
+
+<button class="nx" onclick="go(4)">Speedup numbers step by step →</button>
+</div>
+
+<!-- PAGE 4 -->
+<div class="page" data-t="4. Spec Decoding Numbers">
+<h2>Speculative Decoding — Step by Step with Numbers</h2>
+
+<div class="card blue">
+<h3>Hardware and timing assumptions</h3>
+<div class="math">
+<span class="line cmt">// A100 80GB, generating text</span>
+<span class="line"><span class="lbl">Draft model</span>    : 68M params (e.g., GPT-2 small)</span>
+<span class="line"><span class="lbl">Target model</span>   : 7B params (e.g., Llama-2-7B)</span>
+<span class="line">&nbsp;</span>
+<span class="line"><span class="lbl">Draft forward pass</span>  : 68M × 2 bytes / 2 TB/s = <span class="val">~0.07ms</span></span>
+<span class="line"><span class="lbl">Target forward pass</span> : 14GB / 2 TB/s = <span class="val">~7ms</span>  (bandwidth bound)</span>
+<span class="line"><span class="cmt">// Real measured: draft ~0.2ms, target ~14ms (compute + bandwidth)</span></span>
+<span class="line"><span class="lbl">Speculation width</span>   : K = 4 draft tokens</span>
+</div>
+</div>
+
+<div class="card">
+<h3>One speculative decoding step — the numbers</h3>
+<div class="math">
+<span class="line cmt">// Context: "The cat sat on"</span>
+<span class="line">&nbsp;</span>
+<span class="line"><span class="lbl">STEP 1</span> — Draft 4 tokens (fast)</span>
+<span class="line">   Draft generates: ["the", "mat", ".", "Then"]</span>
+<span class="line">   Time: 4 × 0.2ms = <span class="val">0.8ms</span></span>
+<span class="line">&nbsp;</span>
+<span class="line"><span class="lbl">STEP 2</span> — Target verifies 4 tokens in 1 parallel pass</span>
+<span class="line">   Input to target: ["The cat sat on", "the", "mat", "."]</span>
+<span class="line">   All 4 positions computed simultaneously (not sequential!)</span>
+<span class="line">   Time: 1 × 14ms = <span class="val">14ms</span></span>
+<span class="line">&nbsp;</span>
+<span class="line"><span class="lbl">STEP 3</span> — Acceptance check</span>
+<span class="line">   "the"  : p_target=0.72, p_draft=0.68 → ratio 1.06 > 1 → <span class="val">ACCEPT</span></span>
+<span class="line">   "mat"  : p_target=0.45, p_draft=0.51 → ratio 0.88 → u~Uniform(0,1)</span>
+<span class="line">            u=0.61 < 0.88 → <span class="val">ACCEPT</span></span>
+<span class="line">   "."    : p_target=0.38, p_draft=0.12 → ratio 3.17 > 1 → <span class="val">ACCEPT</span></span>
+<span class="line">   "Then" : p_target=0.02, p_draft=0.35 → ratio 0.057 → u=0.42 > 0.057 → <span class="val">REJECT</span></span>
+<span class="line">&nbsp;</span>
+<span class="line"><span class="lbl">Accepted</span>: 3 tokens in 14.8ms total</span>
+</div>
+<div class="token-row">
+  <span class="token accept">the ✓</span>
+  <span class="token accept">mat ✓</span>
+  <span class="token accept">. ✓</span>
+  <span class="token reject">Then ✗</span>
+  <span style="color:#888;font-size:.8em">→ sample new token from target</span>
+</div>
+</div>
+
+<div class="card green">
+<h3>Throughput comparison</h3>
+<div class="math">
+<span class="line cmt">// Naive autoregressive (target model only)</span>
+<span class="line"><span class="lbl">Per token</span>   : 1 target pass = 14ms</span>
+<span class="line"><span class="lbl">Throughput</span>  : 1 token / 14ms = <span class="val">0.071 tokens/ms</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Speculative decoding (3 tokens accepted in one cycle)</span>
+<span class="line"><span class="lbl">Per cycle</span>   : 4 × 0.2ms draft + 14ms target = 14.8ms</span>
+<span class="line"><span class="lbl">Tokens/cycle</span>: 3 accepted + 1 sampled new = 3 (net)</span>
+<span class="line"><span class="lbl">Throughput</span>  : 3 tokens / 14.8ms = <span class="val">0.203 tokens/ms</span></span>
+<span class="line"><span class="hl">Speedup: 0.203 / 0.071 = 2.85×</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Acceptance rate α = 0.75, K=4</span>
+<span class="line cmt">// Expected tokens accepted = K × α / (1-α^K) ≈ 2.95</span>
+<span class="line cmt">// Theoretical max speedup ≈ min(K+1, 1/(1-α)) = min(5, 4.0) = 4.0×</span>
+</div>
+</div>
+
+<div class="card orange">
+<h3>Real-world performance</h3>
+<table>
+<tr><th>System</th><th>Models</th><th>Acceptance Rate</th><th>Speedup</th></tr>
+<tr><td>Llama.cpp</td><td>Llama-2-13B + 68M draft</td><td>70–75%</td><td>1.8–2.2×</td></tr>
+<tr><td>TGI (HuggingFace)</td><td>Llama-2-70B + 7B draft</td><td>75–80%</td><td>2.5–3.0×</td></tr>
+<tr><td>vLLM</td><td>Codestral 22B + small draft</td><td>80–85%</td><td>2.8–3.5×</td></tr>
+<tr><td>Gemini (Google)</td><td>Large + small Gemini</td><td>82%</td><td>~3×</td></tr>
+</table>
+<p style="margin-top:8px;font-size:.85em;color:#888">Speedup depends heavily on acceptance rate. For creative tasks (high temperature, diverse outputs), acceptance drops. For deterministic tasks (code, math), it's highest.</p>
+</div>
+
+<div class="card purple">
+<h3>Self-speculative decoding — no separate draft model</h3>
+<div class="math">
+<span class="line cmt">// Medusa / Hydra variants: add draft "heads" to the target model</span>
+<span class="line cmt">// Each head predicts tokens k steps ahead</span>
+<span class="line"><span class="lbl">Head_1</span>: predicts token at position t+1 (same as normal head)</span>
+<span class="line"><span class="lbl">Head_2</span>: predicts token at position t+2 (speculative)</span>
+<span class="line"><span class="lbl">Head_3</span>: predicts token at position t+3 (speculative)</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Advantage: no separate model to load, no communication overhead</span>
+<span class="line cmt">// Disadvantage: lower acceptance rate than dedicated draft model</span>
+<span class="line cmt">// Medusa speedup: 2.0–2.3× (vs 2.5–3× for two-model speculative)</span>
+</div>
+</div>
+</div>
+
+<script>
+const pages=document.querySelectorAll('.page'),nav=document.getElementById('nav');
+pages.forEach((p,i)=>{const b=document.createElement('button');b.textContent=p.dataset.t;b.onclick=()=>go(i);if(i===0)b.classList.add('on');nav.appendChild(b);});
+function go(n){pages.forEach((p,i)=>p.classList.toggle('on',i===n));nav.querySelectorAll('button').forEach((b,i)=>{b.classList.remove('on');if(i<n)b.classList.add('done');else b.classList.remove('done');if(i===n)b.classList.add('on');});window.scrollTo({top:0,behavior:'smooth'});}
+</script>
+</body>
+</html>

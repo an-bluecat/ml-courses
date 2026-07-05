@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PyTorch — Python first</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0a0a1a;color:#e0e0e0;padding:20px 20px 80px;line-height:1.7}
+h1{text-align:center;color:#fff;margin-bottom:4px;font-size:1.5em}
+.sub{text-align:center;color:#888;margin-bottom:24px;font-size:.88em}
+.nav{display:flex;justify-content:center;gap:6px;margin-bottom:20px;flex-wrap:wrap}
+.nav button{padding:7px 13px;border:2px solid #333;background:#111;color:#888;border-radius:8px;cursor:pointer;font-size:.78em;transition:.2s}
+.nav button:hover{border-color:#555;color:#ccc}
+.nav button.on{border-color:#4fc3f7;color:#4fc3f7;background:#0d2137}
+.nav button.done{border-color:#4caf50;color:#4caf50}
+.page{display:none;max-width:880px;margin:0 auto}
+.page.on{display:block}
+.page h2{color:#4fc3f7;margin-bottom:12px;font-size:1.2em}
+.card{background:#12122a;border:1px solid #2a2a4a;border-radius:12px;padding:18px;margin-bottom:14px}
+.card.blue{border-color:#4fc3f7;background:#0d1b2a}
+.card.green{border-color:#4caf50;background:#0a1a0a}
+.card.orange{border-color:#ff9800;background:#1a1400}
+.card.red{border-color:#ef5350;background:#1a0a0a}
+.card.purple{border-color:#ce93d8;background:#1a0a2a}
+.card h3{color:#ffb74d;margin-bottom:8px;font-size:1em}
+button.nx{padding:10px 24px;background:#4caf50;color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:.9em;margin-top:14px}
+button.nx:hover{background:#66bb6a}
+a.nx{display:inline-block;padding:10px 24px;background:#4caf50;color:#000;border-radius:8px;font-weight:700;font-size:.9em;margin-top:14px;text-decoration:none}
+table{width:100%;border-collapse:collapse;margin:10px 0}
+th,td{padding:8px 12px;border:1px solid #333;text-align:left;font-size:.86em}
+th{background:#1a1a3a;color:#4fc3f7}
+.math{background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:14px;margin:10px 0;font-family:'Fira Code',Consolas,monospace;font-size:.84em;line-height:1.8;overflow-x:auto}
+.math .line{margin:2px 0;display:block;white-space:pre}
+.math .cmt{color:#6a9955}
+.math .val{color:#b5cea8}
+.math .lbl{color:#9cdcfe}
+.math .kw{color:#c586c0}
+.math .fn{color:#dcdcaa}
+.math.out{border-left:3px solid #4caf50;background:#0d1a12}
+.outlabel{display:block;font-size:.72em;color:#4caf50;letter-spacing:.08em;text-transform:uppercase;margin-bottom:6px}
+.key{color:#ffb74d;font-weight:600}
+.inline{font-family:'Fira Code',Consolas,monospace;background:#1a1a2e;border:1px solid #333;border-radius:4px;padding:1px 6px;font-size:.86em;color:#9cdcfe}
+.faded{color:#888;font-size:.86em}
+ul{margin-left:20px;margin-top:6px}
+li{margin:4px 0}
+details{margin-top:12px}
+details summary{cursor:pointer;color:#888;font-size:.85em;padding:8px 12px;background:#12122a;border:1px solid #333;border-radius:8px}
+details summary:hover{color:#ccc;border-color:#555}
+details[open] summary{color:#4fc3f7;border-color:#4fc3f7}
+.fw{display:inline-block;font-weight:700;padding:1px 8px;border-radius:4px;font-size:.82em;border:1px solid}
+.fw.np{color:#4fc3f7;border-color:rgba(79,195,247,.4);background:rgba(79,195,247,.08)}
+.fw.tf{color:#ff9800;border-color:rgba(255,152,0,.4);background:rgba(255,152,0,.08)}
+.fw.pt{color:#ef5350;border-color:rgba(239,83,80,.4);background:rgba(239,83,80,.08)}
+.fw.jx{color:#ce93d8;border-color:rgba(206,147,216,.4);background:rgba(206,147,216,.08)}
+</style>
+</head>
+<body>
+<a href="../index.html" style="position:fixed;top:10px;left:14px;font-size:.75em;color:#555;text-decoration:none;z-index:999;padding:4px 8px;background:#0a0a1a;border:1px solid #333;border-radius:6px;">&larr; index</a>
+
+<h1><span class="fw pt" style="font-size:.7em;vertical-align:middle">Part 1</span> PyTorch — Python first</h1>
+<p class="sub">The counter-revolution: what if the model is just… code that runs? How "researchers first" beat "production first," and what it cost.</p>
+
+<div class="nav" id="nav"></div>
+
+<!-- PAGE 0 -->
+<div class="page on" data-t="0. History">
+<h2>Torch's Lua exile, Chainer's insight, and a 2016 internship</h2>
+
+<div class="card">
+<h3>Torch7 — great tensors, wrong language</h3>
+<p>Torch7 (Collobert, Kavukcuoglu, Farabet; workshop paper 2011) was a mature tensor library — fast C/CUDA kernels — scripted from <span class="key">Lua</span>. Facebook AI Research, DeepMind and Twitter all used it. Lua was chosen for speed and embeddability, but it meant living outside the Python ecosystem: no NumPy, no matplotlib, no pandas, a tiny hiring pool. By 2015-16 even its heaviest users wanted out of the language.</p>
+</div>
+
+<div class="card blue">
+<h3>The idea worth stealing: define-by-run</h3>
+<p><span class="key">Chainer</span> (Preferred Networks, Japan, June 2015) demonstrated the alternative to TF's define-<em>then</em>-run: <span class="key">the network's structure is whatever the forward pass does, discovered as it executes</span>. Run an <span class="inline">if</span>? That branch is the model today. Loop a variable number of steps? Fine — the tape just gets longer. Meanwhile <span class="key">HIPS autograd</span> (Harvard, ~2014) showed you could differentiate <em>plain NumPy code</em> by overloading operators and recording. PyTorch's own NeurIPS 2019 paper credits both by name. Nothing in PyTorch's core mechanism was unprecedented — the achievement was engineering it to production quality on GPUs.</p>
+</div>
+
+<div class="card red">
+<h3>January 2017: PyTorch 0.1</h3>
+<p>Adam Paszke (an intern from Warsaw, recruited by Soumith Chintala), Sam Gross and Gregory Chanan built PyTorch at FAIR by putting a Python-first, define-by-run API on top of Torch7's battle-tested C backends. Released January 2017. The NeurIPS 2019 paper states the four design principles verbatim:</p>
+<ul>
+<li><span class="key">Be Pythonic</span> — integrate with the ecosystem, keep surprises minimal.</li>
+<li><span class="key">Put researchers first</span> — make writing models, not deploying them, frictionless.</li>
+<li><span class="key">Provide pragmatic performance</span> — "Trading 10% of speed for a significantly simpler to use model is acceptable; 100% is not."</li>
+<li><span class="key">Worse is better</span> — a simple, slightly incomplete implementation you can understand and maintain beats a complete one you can't.</li>
+</ul>
+<p class="faded">Note what's <em>not</em> on the list: deployment, distribution, mobile. Compare the TF whitepaper goals — the two lists are almost perfectly disjoint. That's why both frameworks existed.</p>
+</div>
+
+<div class="card">
+<h3>The adoption flip</h3>
+<p>Researchers moved fast: printable tensors, working pdb, Python control flow, NumPy interop. By 2019 the PyTorch paper could already point to 296 ICLR submissions mentioning it, and new-paper share kept climbing — by the early 2020s roughly three-quarters of new deep-learning paper implementations were PyTorch. TF2's eager pivot (Chapter 2) was the direct response, arriving about 30 months after PyTorch shipped.</p>
+</div>
+<button class="nx" onclick="go(1)">Next: the tape, seen up close</button>
+</div>
+
+<!-- PAGE 1 -->
+<div class="page" data-t="1. Define-by-run">
+<h2>Eager, but remembering: the graph is built by running</h2>
+
+<div class="card">
+<h3>Same canonical example — watch the graph grow out of execution</h3>
+<div class="math">
+<span class="line">w = torch.<span class="fn">tensor</span>(<span class="val">2.0</span>, requires_grad=<span class="kw">True</span>)</span>
+<span class="line">x = torch.<span class="fn">tensor</span>(<span class="val">3.0</span>)</span>
+<span class="line">pred = w * x          <span class="cmt"># REALLY computes 6.0, now</span></span>
+<span class="line">diff = pred - <span class="val">10.0</span>    <span class="cmt"># really -4.0</span></span>
+<span class="line">loss = diff ** <span class="val">2</span>      <span class="cmt"># really 16.0</span></span>
+</div>
+<div class="math out"><span class="outlabel">output — real run: the trail it left behind</span>
+<span class="line">loss        : tensor(16., grad_fn=&lt;PowBackward0&gt;)</span>
+<span class="line">loss.grad_fn: &lt;PowBackward0 object at 0x11d55bdf0&gt;</span>
+<span class="line">  next: ((&lt;SubBackward0 …&gt;, 0),)</span>
+<span class="line">    next: ((&lt;MulBackward0 …&gt;, 0), (None, 0))</span>
+<span class="line">      next: ((&lt;AccumulateGrad …&gt;, 0), (None, 0))</span>
+<span class="line">w.grad: tensor(-24.)</span>
+</div>
+<p>Unlike TF1, <span class="inline">pred</span> is a real 6.0 you can print. But each operation also attached a <span class="inline">grad_fn</span> node pointing at its inputs' nodes: Pow → Sub → Mul → <span class="key">AccumulateGrad</span> (w's mailbox). The chain of <span class="inline">next_functions</span> IS the graph — built as a side effect of running, thrown away and rebuilt every forward pass. <span class="inline">backward()</span> walks it and deposits −24 into <span class="inline">w.grad</span>. <span class="faded">(The full mailbox story — why <span class="inline">.grad</span> accumulates, what <span class="inline">optimizer.step()</span> reads — is your <a href="../pytorch_autograd/autograd.html" style="color:#4fc3f7">PyTorch Mechanics course</a>; here we care about the design position.)</span></p>
+</div>
+
+<div class="card green">
+<h3>The payoff TF1 couldn't offer: Python means what it says</h3>
+<div class="math">
+<span class="line"><span class="kw">def</span> <span class="fn">step</span>(w, x):</span>
+<span class="line">    y = w * x</span>
+<span class="line">    <span class="kw">if</span> y.<span class="fn">item</span>() &gt; <span class="val">5</span>:      <span class="cmt"># a real if, on a real value</span></span>
+<span class="line">        <span class="kw">return</span> y - <span class="val">10.0</span></span>
+<span class="line">    <span class="kw">return</span> y + <span class="val">10.0</span></span>
+</div>
+<div class="math out"><span class="outlabel">output — real run</span>
+<span class="line">step(2,3) -> tensor(-4.)</span>
+<span class="line">step(1,3) -> tensor(13.)</span>
+</div>
+<p>Two calls took <em>different branches</em>, and autograd is fine — each call recorded the tape of whatever actually ran. No <span class="inline">tf.cond</span>, no rewriter. The model is not a data structure you build; <span class="key">the model is the code path taken</span>. This single property is most of why research moved.</p>
+</div>
+
+<div class="card blue">
+<h3>Design position, stated plainly</h3>
+<p>PyTorch's tape answers "where does gradient machinery live?" with: <span class="key">on the tensors, recorded during execution, gradients delivered to parameter-owned mailboxes</span>. State lives in objects (<span class="inline">nn.Module</span>), optimizers mutate it in place. Everything is imperative and stateful — maximally familiar, maximally debuggable, and (Chapter 4 will argue) maximally hostile to program transformation.</p>
+</div>
+<button class="nx" onclick="go(2)">Next: what eager cost, and paying it</button>
+</div>
+
+<!-- PAGE 2 -->
+<div class="page" data-t="2. The costs">
+<h2>Three bills came due: overhead, opacity to optimizers, deployment</h2>
+
+<div class="card">
+<h3>Bill #1 — every op pays Python + dispatch tax</h3>
+<p>Eager means each operation is a separate library call: Python → the <span class="key">dispatcher</span> (which picks an implementation by device, dtype, and whether autograd is recording) → a kernel. You can see the machinery — the thing behind <span class="inline">*</span> is a dispatched op you can call directly:</p>
+<div class="math out"><span class="outlabel">output — real run</span>
+<span class="line">the op behind * : torch.ops.aten.mul.Tensor(2.0, 3.0) -> tensor(6.)</span>
+<span class="line">mps (Apple GPU) available: True</span>
+</div>
+<p>The dispatcher (two-level dynamic dispatch, in C++; Ed Yang's "PyTorch internals" blog is the canonical tour) is why one <span class="inline">mul</span> works across CPU/CUDA/MPS with and without autograd. The cost: per-op overhead that dominates for small tensors, and — like NumPy — <span class="key">no fusion</span>: every op is its own pass over memory.</p>
+<details><summary>Why eager PyTorch is still fast on GPUs anyway</summary>
+<p style="padding:8px 4px">CUDA calls are <span class="key">asynchronous</span>: Python queues kernels and races ahead while the GPU chews through the queue. As long as Python stays ahead of the GPU, interpreter overhead hides completely. This trick is why "Python is slow" didn't kill eager training — and why profiling naïvely with <span class="inline">time.time()</span> around GPU ops lies to you (the op hasn't run yet; you timed the enqueue).</p></details>
+</div>
+
+<div class="card red">
+<h3>Bill #2 — deployment: the TorchScript detour (a cautionary tale)</h3>
+<p>Production wants the TF story: a self-contained artifact, no Python. PyTorch 1.0 (Dec 2018, after merging Caffe2) tried <span class="key">TorchScript</span>: a compiler for a Python <em>subset</em>, so you could <span class="inline">torch.jit.script</span> your model into a portable graph. It failed socially, not technically: the subset was never quite your code — one exotic line and you're refactoring your model to please a second, undocumented-feeling language that looks like Python but isn't. Maintenance dragged for years; TorchScript was <span class="key">formally deprecated in PyTorch 2.10 (Jan 2026)</span>, replaced by <span class="inline">torch.export</span> + ExecuTorch (page 5).</p>
+<p class="faded">The lesson that shaped PyTorch 2.0: users will not rewrite working Python for your compiler. If you want a graph, take it from their program without asking.</p>
+</div>
+<button class="nx" onclick="go(3)">Next: torch.compile — stealing the graph</button>
+</div>
+
+<!-- PAGE 3 -->
+<div class="page" data-t="3. torch.compile">
+<h2>PyTorch 2.0 (2023): capture graphs from bytecode, guard, fall back</h2>
+
+<div class="card">
+<h3>The trick: hook the interpreter itself</h3>
+<p>CPython lets you intercept function execution just before a frame runs (PEP 523). <span class="key">TorchDynamo</span> sits there and reads the function's <em>bytecode</em> — the thing Python actually executes:</p>
+<div class="math out"><span class="outlabel">output — real run: dis.dis of "return x * 2 + 1"</span>
+<span class="line"> 24           2 LOAD_FAST                0 (x)</span>
+<span class="line">              4 LOAD_CONST               1 (2)</span>
+<span class="line">              6 BINARY_OP                5 (*)</span>
+<span class="line">             10 LOAD_CONST               2 (1)</span>
+<span class="line">             12 BINARY_OP                0 (+)</span>
+<span class="line">             16 RETURN_VALUE</span>
+</div>
+<p>Dynamo simulates this bytecode, turning tensor ops into a graph (an FX graph) and compiling it (TorchInductor → <span class="key">Triton</span> GPU kernels / C++ on CPU). Alongside, it installs <span class="key">guards</span> — "x is float32, shape (4,), this global hasn't changed" — and re-captures if a guard ever fails. Three capture strategies, three chapters: TF rewrites your <em>source</em> (AutoGraph), JAX runs your code with <em>tracer objects</em>, PyTorch reads your <em>bytecode</em>.</p>
+</div>
+
+<div class="card orange">
+<h3>Graph breaks: the escape valve that made it adoptable</h3>
+<div class="math">
+<span class="line"><span class="kw">def</span> <span class="fn">branchy</span>(x):</span>
+<span class="line">    y = x * <span class="val">2</span></span>
+<span class="line">    <span class="kw">if</span> y.<span class="fn">sum</span>() &gt; <span class="val">0</span>:      <span class="cmt"># depends on runtime DATA</span></span>
+<span class="line">        <span class="kw">return</span> y - <span class="val">1</span></span>
+<span class="line">    <span class="kw">return</span> y + <span class="val">1</span></span>
+<span class="line">torch._dynamo.<span class="fn">explain</span>(branchy)(torch.<span class="fn">randn</span>(<span class="val">4</span>))</span>
+</div>
+<div class="math out"><span class="outlabel">output — real run</span>
+<span class="line">graph_count       : 2</span>
+<span class="line">graph_break_count : 1</span>
+<span class="line">break reason      : generic_jump TensorVariable()</span>
+</div>
+<p>Dynamo hit a jump that depends on tensor <em>data</em> it can't know at capture time — so it <span class="key">split the program</span>: compiled graph → run the <span class="inline">if</span> in plain Python → compiled graph. Where TF1 would error and JAX will error (Chapter 4), torch.compile degrades gracefully. Same with side effects:</p>
+<div class="math out"><span class="outlabel">output — real run: compiled fn containing print(), called twice</span>
+<span class="line">  [python print] called</span>
+<span class="line">call 1: tensor([3., 3.])</span>
+<span class="line">  [python print] called</span>
+<span class="line">call 2: tensor([3., 3.])</span>
+</div>
+<p>The print fires <em>every</em> call — compare tf.function, where it fired once and vanished. <span class="key">torch.compile's promise is "your program means what Python says, we just make parts faster."</span> tf.function's and jax.jit's promise is "your program becomes the trace." That difference in promise, more than any benchmark, is the design line between the camps.</p>
+<details><summary>One honest wrinkle: compiled math isn't bit-identical</summary>
+<div class="math out" style="margin-top:8px"><span class="outlabel">output — real run: sum of a fused chain, eager vs compiled</span>
+<span class="line">eager   : 667.49462890625</span>
+<span class="line">compiled: 667.4946899414062</span>
+</div>
+<p style="padding:4px">Fusion reorders float arithmetic; last-digit drift is expected and normal. Remember this in Chapter 9 when four frameworks agree to six decimals but not sixteen.</p></details>
+</div>
+
+<div class="card blue">
+<h3>Where compile stands (2026)</h3>
+<p>Speedups are real (the ASPLOS 2024 paper reports 2.27× inference / 1.41× training geomean on A100 across 180+ models; typical practice ~1.5–2×), but it's still <span class="key">opt-in, not default</span> — compile latency, recompiles from dynamic shapes, and debuggability keep eager as the ground truth. The pragmatic 2026 advice: develop eager, compile the hot path, check for graph breaks.</p>
+</div>
+<button class="nx" onclick="go(4)">Next: modules, mutation &amp; the ecosystem flywheel</button>
+</div>
+
+<!-- PAGE 4 -->
+<div class="page" data-t="4. State & ecosystem">
+<h2>State lives in objects — and an ecosystem grew around that</h2>
+
+<div class="card">
+<h3>The module owns its tensors; the optimizer mutates them</h3>
+<div class="math out"><span class="outlabel">output — real run</span>
+<span class="line">state_dict: {'weight': torch.Size([1, 2]), 'bias': torch.Size([1])}</span>
+<span class="line">torch: step() mutated weight in place: 0.00654  ->  -0.09346</span>
+</div>
+<p>An <span class="inline">nn.Module</span> is a stateful object holding parameter tensors; <span class="inline">optimizer.step()</span> writes new values <em>into</em> them. Checkpointing = pickling the <span class="inline">state_dict</span>. It's ordinary object-oriented Python — which is exactly the point, and exactly what JAX will refuse (its params go in and out of pure functions; you'll see the same update return <em>new</em> params in Chapter 6).</p>
+</div>
+
+<div class="card green">
+<h3>The flywheel</h3>
+<p>Being the researchers' default compounded: papers ship PyTorch code → libraries wrap papers → products build on libraries → more researchers train on what has libraries.</p>
+<ul>
+<li><span class="key">Hugging Face</span>: Transformers v5 (Dec 2025) is <em>PyTorch-only</em> — the de facto model hub standardized on it.</li>
+<li><span class="key">Inference</span>: vLLM and SGLang — the engines behind much of 2026's LLM serving — are PyTorch projects (both now under the PyTorch Foundation umbrella, alongside DeepSpeed and Ray).</li>
+<li><span class="key">Training at scale</span>: Meta's Llama 3 ran on two 24,576-H100 clusters on PyTorch (FSDP); OpenAI standardized on PyTorch back in Jan 2020.</li>
+<li><span class="key">Distributed stack</span>, one breath: DDP (replicate + all-reduce) → FSDP2 (shard params per-tensor on DTensor) → torchtitan (4-D parallelism reference stack). Imperative, library-driven — versus JAX's compiler-driven sharding, a Chapter 7 comparison.</li>
+</ul>
+<p class="faded">Governance matured too: Meta moved PyTorch to the Linux Foundation (Sept 2022) — like NumPy, no longer single-company-owned on paper.</p>
+</div>
+<button class="nx" onclick="go(5)">Next: PyTorch in 2026</button>
+</div>
+
+<!-- PAGE 5 -->
+<div class="page" data-t="5. PyTorch in 2026">
+<h2>Where PyTorch stands in 2026</h2>
+
+<div class="card red">
+<h3>The default, by the numbers (July 2026, sourced)</h3>
+<ul>
+<li>Latest stable <span class="key">2.12.1</span>; releases every ~2 months; no "3.0" — evolution, not revolution.</li>
+<li>~88M PyPI downloads/month (≈4.5× TensorFlow's), &gt;70% of research implementations (Linux Foundation figure; the once-standard tracker, Papers with Code, shut down mid-2025).</li>
+<li>Hugging Face model hub: PyTorch-tagged models outnumber TF-tagged ~14×.</li>
+</ul>
+</div>
+
+<div class="card">
+<h3>Edges of the empire — where PyTorch is NOT the obvious pick</h3>
+<table>
+<tr><th>Frontier</th><th>Status 2026</th></tr>
+<tr><td>TPUs</td><td>possible (torch/xla, and vLLM's TPU backend actually lowers through JAX!) but second-class vs JAX</td></tr>
+<tr><td>Mobile/edge</td><td>ExecuTorch 1.0 (Oct 2025) is young vs LiteRT's 2.7B-device install base — improving fast</td></tr>
+<tr><td>Serving artifacts</td><td>torch.export + AOTInductor replaced TorchScript; TorchServe was archived (2025) — LLM serving moved to vLLM/SGLang</td></tr>
+<tr><td>This laptop</td><td>MPS backend covers Apple GPUs (real: <span class="inline">mps available: True</span>), with op gaps still closing</td></tr>
+</table>
+</div>
+
+<div class="card purple">
+<h3>Carry forward from this chapter</h3>
+<ul>
+<li>Define-by-run: <span class="key">the graph is a side effect of running Python</span>; control flow is just Python.</li>
+<li>The tape lives <span class="key">on tensors</span> (<span class="inline">grad_fn</span> chain); gradients land in <span class="inline">.grad</span> mailboxes; modules/optimizers <span class="key">mutate state</span>.</li>
+<li>torch.compile = <span class="key">bytecode capture + guards + graph breaks</span>: Python semantics preserved, speed opportunistic.</li>
+<li>Its deepest moat isn't the engine — it's the <span class="key">ecosystem flywheel</span>.</li>
+</ul>
+</div>
+<a class="nx" href="4_jax.html">Next chapter: JAX — the compiler →</a>
+</div>
+
+<script>
+const pages=document.querySelectorAll('.page'),nav=document.getElementById('nav');
+pages.forEach((p,i)=>{
+  const b=document.createElement('button');
+  b.textContent=p.dataset.t;
+  b.onclick=()=>go(i);
+  if(i===0)b.classList.add('on');
+  nav.appendChild(b);
+});
+function go(n){
+  pages.forEach((p,i)=>p.classList.toggle('on',i===n));
+  nav.querySelectorAll('button').forEach((b,i)=>{
+    b.classList.remove('on');
+    if(i<n)b.classList.add('done');
+    else b.classList.remove('done');
+    if(i===n)b.classList.add('on');
+  });
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+</script>
+</body>
+</html>

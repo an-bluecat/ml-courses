@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>When does your Python run? — execution models</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0a0a1a;color:#e0e0e0;padding:20px 20px 80px;line-height:1.7}
+h1{text-align:center;color:#fff;margin-bottom:4px;font-size:1.5em}
+.sub{text-align:center;color:#888;margin-bottom:24px;font-size:.88em}
+.nav{display:flex;justify-content:center;gap:6px;margin-bottom:20px;flex-wrap:wrap}
+.nav button{padding:7px 13px;border:2px solid #333;background:#111;color:#888;border-radius:8px;cursor:pointer;font-size:.78em;transition:.2s}
+.nav button:hover{border-color:#555;color:#ccc}
+.nav button.on{border-color:#4fc3f7;color:#4fc3f7;background:#0d2137}
+.nav button.done{border-color:#4caf50;color:#4caf50}
+.page{display:none;max-width:880px;margin:0 auto}
+.page.on{display:block}
+.page h2{color:#4fc3f7;margin-bottom:12px;font-size:1.2em}
+.card{background:#12122a;border:1px solid #2a2a4a;border-radius:12px;padding:18px;margin-bottom:14px}
+.card.blue{border-color:#4fc3f7;background:#0d1b2a}
+.card.green{border-color:#4caf50;background:#0a1a0a}
+.card.orange{border-color:#ff9800;background:#1a1400}
+.card.red{border-color:#ef5350;background:#1a0a0a}
+.card.purple{border-color:#ce93d8;background:#1a0a2a}
+.card h3{color:#ffb74d;margin-bottom:8px;font-size:1em}
+button.nx{padding:10px 24px;background:#4caf50;color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:.9em;margin-top:14px}
+button.nx:hover{background:#66bb6a}
+a.nx{display:inline-block;padding:10px 24px;background:#4caf50;color:#000;border-radius:8px;font-weight:700;font-size:.9em;margin-top:14px;text-decoration:none}
+table{width:100%;border-collapse:collapse;margin:10px 0}
+th,td{padding:8px 10px;border:1px solid #333;text-align:left;font-size:.84em}
+th{background:#1a1a3a;color:#4fc3f7}
+.math{background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:14px;margin:10px 0;font-family:'Fira Code',Consolas,monospace;font-size:.84em;line-height:1.8;overflow-x:auto}
+.math .line{margin:2px 0;display:block;white-space:pre}
+.math .cmt{color:#6a9955}
+.math .val{color:#b5cea8}
+.math .lbl{color:#9cdcfe}
+.math .kw{color:#c586c0}
+.math .fn{color:#dcdcaa}
+.math.out{border-left:3px solid #4caf50;background:#0d1a12}
+.outlabel{display:block;font-size:.72em;color:#4caf50;letter-spacing:.08em;text-transform:uppercase;margin-bottom:6px}
+.key{color:#ffb74d;font-weight:600}
+.inline{font-family:'Fira Code',Consolas,monospace;background:#1a1a2e;border:1px solid #333;border-radius:4px;padding:1px 6px;font-size:.86em;color:#9cdcfe}
+.faded{color:#888;font-size:.86em}
+ul{margin-left:20px;margin-top:6px}
+li{margin:4px 0}
+details{margin-top:12px}
+details summary{cursor:pointer;color:#888;font-size:.85em;padding:8px 12px;background:#12122a;border:1px solid #333;border-radius:8px}
+details summary:hover{color:#ccc;border-color:#555}
+details[open] summary{color:#4fc3f7;border-color:#4fc3f7}
+.fw{display:inline-block;font-weight:700;padding:1px 8px;border-radius:4px;font-size:.82em;border:1px solid}
+.fw.np{color:#4fc3f7;border-color:rgba(79,195,247,.4);background:rgba(79,195,247,.08)}
+.fw.tf{color:#ff9800;border-color:rgba(255,152,0,.4);background:rgba(255,152,0,.08)}
+.fw.pt{color:#ef5350;border-color:rgba(239,83,80,.4);background:rgba(239,83,80,.08)}
+.fw.jx{color:#ce93d8;border-color:rgba(206,147,216,.4);background:rgba(206,147,216,.08)}
+.ok{color:#4caf50;font-weight:700}
+.bad{color:#ef5350;font-weight:700}
+.meh{color:#ff9800;font-weight:700}
+</style>
+</head>
+<body>
+<a href="../index.html" style="position:fixed;top:10px;left:14px;font-size:.75em;color:#555;text-decoration:none;z-index:999;padding:4px 8px;background:#0a0a1a;border:1px solid #333;border-radius:6px;">&larr; index</a>
+
+<h1><span style="font-size:.7em;vertical-align:middle;color:#ff9800;border:1px solid rgba(255,152,0,.4);border-radius:4px;padding:1px 8px;background:rgba(255,152,0,.08);font-weight:700">Part 2</span> When does your Python run?</h1>
+<p class="sub">One question explains eager vs graph vs compiled, and predicts nearly every gotcha in all four frameworks.</p>
+
+<div class="nav" id="nav"></div>
+
+<!-- PAGE 0 -->
+<div class="page on" data-t="0. The one question">
+<h2>Ask of any framework: when does this line execute?</h2>
+
+<div class="card">
+<h3>The same line, six execution stories</h3>
+<p>Take <span class="inline">y = w * x</span> inside a model function <span class="inline">f</span>. What actually happens, and when?</p>
+<table>
+<tr><th>System</th><th>While defining / decorating f</th><th>Call #1: f(3.0)</th><th>Call #2: f(4.0)</th></tr>
+<tr><td><span class="fw np">NumPy</span> &amp; <span class="fw pt">torch eager</span></td><td>nothing</td><td>Python runs the line; C kernel multiplies <em>now</em></td><td>same — Python runs everything, every time</td></tr>
+<tr><td><span class="fw tf">TF 1</span></td><td>Python runs the line ONCE — but it only <em>builds a Mul node</em></td><td colspan="2">Python never runs the line again; you <span class="inline">sess.run</span> the graph with data</td></tr>
+<tr><td><span class="fw tf">tf.function</span></td><td>nothing</td><td><span class="key">trace</span>: Python runs the line with symbolic tensors, records a graph, runs the graph</td><td>graph replayed; <span class="key">Python skipped</span> (unless retrace triggered)</td></tr>
+<tr><td><span class="fw jx">jax.jit</span></td><td>nothing</td><td><span class="key">trace</span>: Python runs with tracers → jaxpr → XLA compiles → runs</td><td>compiled binary replayed; <span class="key">Python skipped</span> (unless new shape)</td></tr>
+<tr><td><span class="fw pt">torch.compile</span></td><td>nothing</td><td><span class="key">capture</span>: bytecode → graphs (+ guards); compiled pieces + leftover Python run</td><td>guards checked; compiled pieces reused; <span class="key">leftover Python still runs</span></td></tr>
+</table>
+<p>Everything in this chapter is this table, demonstrated. Two big camps: <span class="key">Python-runs-every-time</span> (eager) and <span class="key">Python-ran-once</span> (traced/compiled) — with torch.compile deliberately straddling.</p>
+</div>
+
+<div class="card blue">
+<h3>Why you can't just have "fast and eager"</h3>
+<p>To optimize across operations — fuse <span class="inline">mul</span>+<span class="inline">add</span> into one memory pass, plan buffers, split across devices, target a TPU — the system needs to see <em>the future</em>: the whole computation before running it. Eager execution, by definition, reveals one op at a time. So every framework that wants whole-program speed must somehow obtain the program as data: <span class="key">build it</span> (TF1), <span class="key">trace it</span> (tf.function, jax.jit), or <span class="key">lift it from bytecode</span> (dynamo). The differences are just <em>where</em> they intercept your program.</p>
+</div>
+<button class="nx" onclick="go(1)">Next: the print experiment</button>
+</div>
+
+<!-- PAGE 1 -->
+<div class="page" data-t="1. Print experiment">
+<h2>One diagnostic to memorize: put a print inside and call twice</h2>
+
+<div class="card">
+<h3>The same function, four systems</h3>
+<div class="math">
+<span class="line"><span class="kw">def</span> <span class="fn">f</span>(x):</span>
+<span class="line">    <span class="fn">print</span>(<span class="val">"called, x ="</span>, x)</span>
+<span class="line">    <span class="kw">return</span> x * <span class="val">2.0</span></span>
+<span class="line"><span class="cmt"># run f(3.0) then f(4.0) under each regime</span></span>
+</div>
+<div class="math out"><span class="outlabel">output — real runs (from chapters 2–4), consolidated</span>
+<span class="line">numpy / torch eager:   prints BOTH calls, real values (3.0 then 4.0)</span>
+<span class="line"></span>
+<span class="line">tf.function:           prints ONCE:  x = Tensor("x:0", shape=(), dtype=float32)</span>
+<span class="line">                       call 2: silence — the graph replays, Python doesn't run</span>
+<span class="line"></span>
+<span class="line">jax.jit:               prints ONCE:  x = JitTracer(float32[])</span>
+<span class="line">                       call 2: silence — compiled code replays</span>
+<span class="line"></span>
+<span class="line">torch.compile:         prints BOTH calls — dynamo makes a graph break at print,</span>
+<span class="line">                       runs it in Python each time, resumes compiled code after</span>
+</div>
+</div>
+
+<div class="card orange">
+<h3>What the experiment reveals</h3>
+<table>
+<tr><th>You observed</th><th>You now know</th></tr>
+<tr><td>print fires every call, real values</td><td>your Python <em>is</em> the program (eager)</td></tr>
+<tr><td>print fires once, sees a symbolic thing</td><td>your Python was a <span class="key">program generator</span>; only its recorded output survives</td></tr>
+<tr><td>print keeps firing under torch.compile</td><td>the compiler is committed to <span class="key">preserving Python semantics</span>, paying with graph breaks</td></tr>
+</table>
+<p>This generalizes far beyond print: appending to a list, logging to wandb, mutating a counter, reading a file — <span class="key">any side effect</span> in traced code happens once at trace time (or, in JAX's case, may capture a tracer and blow up later). When a colleague says "my logging shows the same loss every step," you can now diagnose it from across the room: the log statement got baked into a trace.</p>
+</div>
+
+<div class="card green">
+<h3>The three promises, stated once</h3>
+<ul>
+<li><span class="fw tf">tf.function</span> / <span class="fw jx">jax.jit</span>: <span class="key">"your function becomes the trace."</span> Whatever Python did on trace day is the program, forever (until retrace).</li>
+<li><span class="fw pt">torch.compile</span>: <span class="key">"your program means what Python says."</span> Compilation is an optimization detail, never a semantics change.</li>
+<li><span class="fw np">NumPy</span> / eager: no promise needed — nothing is hidden.</li>
+</ul>
+<p class="faded">Neither promise is "better" — the first buys whole-program optimization and portability; the second buys debuggability and zero rewrites. It's the same trade TF1 vs PyTorch made in 2017, replayed inside each modern framework.</p>
+</div>
+<button class="nx" onclick="go(2)">Next: the if statement, four ways</button>
+</div>
+
+<!-- PAGE 2 -->
+<div class="page" data-t="2. The if statement">
+<h2>Control flow on data: the four responses to one if</h2>
+
+<div class="card">
+<h3>The test case</h3>
+<div class="math">
+<span class="line"><span class="kw">def</span> <span class="fn">h</span>(x):</span>
+<span class="line">    <span class="kw">if</span> x &gt; <span class="val">0</span>:          <span class="cmt"># branch depends on the DATA in x</span></span>
+<span class="line">        <span class="kw">return</span> x * <span class="val">2.0</span></span>
+<span class="line">    <span class="kw">return</span> -x</span>
+</div>
+<p>Why it's hard: a traced/compiled system runs Python once — but this <span class="inline">if</span> needs an answer <em>per call</em>. Something has to give. Four systems, four answers — all real runs:</p>
+</div>
+
+<div class="card red">
+<h3><span class="fw pt">torch eager</span>: nothing to solve <span class="faded">· and <span class="fw np">numpy</span> likewise</span></h3>
+<div class="math out"><span class="outlabel">output — real run (chapter 3)</span>
+<span class="line">step(2,3) -> tensor(-4.)     # took the true branch</span>
+<span class="line">step(1,3) -> tensor(13.)     # took the false branch</span>
+</div>
+<p>Python evaluates the condition on a real value. Different calls, different branches, autograd records whichever ran. This is the freedom everything else is negotiating to keep.</p>
+</div>
+
+<div class="card orange">
+<h3><span class="fw tf">tf.function</span>: rewrite the source (AutoGraph)</h3>
+<div class="math out"><span class="outlabel">output — real run: tf.autograph.to_code(h), abridged</span>
+<span class="line">def tf__h(x):</span>
+<span class="line">    def if_body(): retval_ = x * 2.0</span>
+<span class="line">    def else_body(): retval_ = -x</span>
+<span class="line">    ag__.if_stmt(x &gt; 0, if_body, else_body, ...)   # → tf.cond node</span>
+</div>
+<p>Before tracing, an AST rewriter turns your <span class="inline">if</span> into a <em>branch node in the graph</em> — both branches traced, condition evaluated at run time. Transparent when it works; bewildering when it half-works (only tensor-conditioned statements convert; Python-value conditions still bake).</p>
+</div>
+
+<div class="card purple">
+<h3><span class="fw jx">jax.jit</span>: refuse, and offer explicit ops</h3>
+<div class="math out"><span class="outlabel">output — real run (chapter 4)</span>
+<span class="line">TracerBoolConversionError: Attempted boolean conversion of traced array…</span>
+<span class="line">jnp.where fix: 4.0 2.0      lax.cond fix : 4.0 2.0</span>
+</div>
+<p>The tracer can't answer <span class="inline">x &gt; 0</span>, so JAX errors and you choose: <span class="inline">jnp.where</span> (compute both, select — fine for cheap branches) or <span class="inline">lax.cond</span> (a real conditional primitive). Least magic, most honesty, most rewriting.</p>
+</div>
+
+<div class="card red">
+<h3><span class="fw pt">torch.compile</span>: split the program (graph break)</h3>
+<div class="math out"><span class="outlabel">output — real run (chapter 3)</span>
+<span class="line">graph_count: 2   graph_break_count: 1   reason: generic_jump TensorVariable()</span>
+</div>
+<p>Dynamo compiles up to the branch, lets Python take the jump for real, then compiles the rest. Zero rewrites, correct semantics — at the cost of an optimization boundary right where you might want fusion most.</p>
+</div>
+
+<div class="card blue">
+<h3>Same table, abstract form — worth memorizing</h3>
+<table>
+<tr><th>System</th><th>Strategy for data-dependent control flow</th><th>You pay</th></tr>
+<tr><td>eager</td><td>just run it</td><td>no whole-program optimization</td></tr>
+<tr><td>AutoGraph</td><td>rewrite source → branch nodes</td><td>magic; corner cases; harder mental model</td></tr>
+<tr><td>JAX</td><td>error → you write <span class="inline">where</span>/<span class="inline">cond</span>/<span class="inline">scan</span></td><td>explicit rewrites, functional idioms</td></tr>
+<tr><td>Dynamo</td><td>graph break → Python decides</td><td>lost fusion across the break</td></tr>
+</table>
+</div>
+<button class="nx" onclick="go(3)">Next: how each one captures your program</button>
+</div>
+
+<!-- PAGE 3 -->
+<div class="page" data-t="3. Capture mechanics">
+<h2>Three interception points: source, values, bytecode</h2>
+
+<div class="card">
+<h3>Where can a framework grab "the program"?</h3>
+<p>Your function exists in three forms, and each framework picked one to operate on:</p>
+<table>
+<tr><th>Form</th><th>Interceptor</th><th>How it works</th></tr>
+<tr><td><span class="key">Source text / AST</span></td><td><span class="fw tf">AutoGraph</span></td><td>parse your function's source, rewrite control flow into framework calls, then trace the rewritten function</td></tr>
+<tr><td><span class="key">Running values</span></td><td><span class="fw tf">tf.function trace</span> &amp; <span class="fw jx">JAX tracers</span></td><td>call f with special objects; every operator they touch gets recorded (operator overloading — the same trick as PyTorch's tape! just recording an IR instead of a backward graph)</td></tr>
+<tr><td><span class="key">Bytecode</span></td><td><span class="fw pt">TorchDynamo</span></td><td>hook CPython frame evaluation (PEP 523), simulate the bytecode, extract tensor ops into graphs, leave the rest to Python</td></tr>
+</table>
+</div>
+
+<div class="card orange">
+<h3>What escapes each net — the design consequences</h3>
+<table>
+<tr><th>Your code contains…</th><th>tracer-based (jit / tf.function)</th><th>bytecode-based (dynamo)</th></tr>
+<tr><td>a Python side effect (print, append, log)</td><td class="meh">runs once at trace, then vanishes</td><td class="ok">preserved (graph break)</td></tr>
+<tr><td>an <span class="inline">if</span> on tensor data</td><td class="bad">error (JAX) / needs AutoGraph (TF)</td><td class="ok">works (graph break)</td></tr>
+<tr><td>a call into an untraceable library (scipy, regex, requests)</td><td class="bad">runs at trace time on tracers → error or baked result</td><td class="ok">works (graph break)</td></tr>
+<tr><td>a Python scalar that changes per call</td><td class="meh">baked as constant → retrace per value</td><td class="meh">guard on it → recompile per value (or mark dynamic)</td></tr>
+<tr><td>pure tensor math, stable shapes</td><td class="ok">one clean whole graph — maximal optimization</td><td class="ok">one graph, same</td></tr>
+</table>
+<p>Notice the pattern: <span class="key">the tracer approach is all-or-nothing</span> (great IR when it swallows everything, hard wall when it can't), while <span class="key">bytecode capture is incremental</span> (never fails outright, but silently fragments into pieces). That's why JAX code looks "designed for the compiler" and torch.compile code looks "normal code, mysteriously fast or mysteriously not."</p>
+</div>
+
+<div class="card blue">
+<h3>Underneath, they converge again</h3>
+<p>All three roads produce a functional graph IR that flows into a handful of compiler backends: TF and JAX lower to <span class="key">XLA</span> (via StableHLO — a standardized op set, "the LLVM IR of ML"); torch.compile lowers FX graphs through Inductor to <span class="key">Triton</span> kernels on GPU. Even the exotic paths cross: PyTorch-on-TPU runs through XLA, and vLLM's 2025 TPU backend runs PyTorch models by lowering them <em>through JAX</em>. Thirty years of framework wars, and everyone ships their tensors to about two compilers.</p>
+</div>
+<button class="nx" onclick="go(4)">Next: what compilation buys, what it costs</button>
+</div>
+
+<!-- PAGE 4 -->
+<div class="page" data-t="4. The economics">
+<h2>The economics of compiling: pay once, profit per call</h2>
+
+<div class="card green">
+<h3>The buy side, measured (chapter 4's run)</h3>
+<div class="math out"><span class="outlabel">output — real run: 5-op elementwise chain, 1M floats, CPU</span>
+<span class="line">op-by-op   :    1.97 ms/call      # eager: 5 memory passes, 4 temporaries</span>
+<span class="line">first jit  :   14.41 ms           # includes compiling</span>
+<span class="line">jitted     :    0.47 ms/call      # ONE fused pass: 4.2x</span>
+</div>
+<ul>
+<li><span class="key">Fusion</span> — the big one: eager's per-op temporaries (NumPy's Chapter-1 weakness, inherited by eager torch/tf) collapse into single passes. Memory traffic, not arithmetic, is usually the bottleneck — fusion attacks exactly that.</li>
+<li><span class="key">Whole-program planning</span>: buffer reuse, dead-code elimination, layout choices, and (JAX) cross-device partitioning.</li>
+<li><span class="key">Portability</span>: a compiled artifact can leave Python — the TF SavedModel story, now echoed by torch.export and jax.export.</li>
+</ul>
+</div>
+
+<div class="card red">
+<h3>The cost side — a checklist you'll actually use</h3>
+<table>
+<tr><th>Cost</th><th>Shows up as</th><th>Trigger by system</th></tr>
+<tr><td>compile latency</td><td>slow first call / slow starts at cluster scale</td><td>everyone (14ms here; minutes for big models)</td></tr>
+<tr><td>retraces / recompiles</td><td>mysterious periodic slowness</td><td><span class="fw tf">TF</span>: new Python arg values · <span class="fw jx">JAX</span>: new shapes/dtypes · <span class="fw pt">compile</span>: guard failures</td></tr>
+<tr><td>staleness surprise</td><td>side effects/logs frozen at trace time</td><td>tracer systems only</td></tr>
+<tr><td>debuggability</td><td>can't print/step inside</td><td>tracer systems (JAX: <span class="inline">jax.debug.print</span>, <span class="inline">disable_jit</span>); dynamo keeps Python debuggable between graphs</td></tr>
+<tr><td>numeric drift</td><td>last-digit differences vs eager</td><td>any fusion (you saw 667.494<span class="key">63</span> vs 667.494<span class="key">69</span> in chapter 3)</td></tr>
+</table>
+<p><span class="key">When eager simply wins</span>: small models where per-op overhead is irrelevant, shape-chaotic workloads, anything you're actively debugging, and code you run twice. Compilation is an investment; don't invest in throwaway code.</p>
+</div>
+
+<div class="card purple">
+<h3>The convergence, and the one real difference left</h3>
+<p>2015: graphs vs eager was a religious war. 2026: everyone runs <span class="key">eager for development + trace/compile for production speed</span> — TF added eager (2019), PyTorch added compile (2023), JAX launched in the middle on purpose (2018). What still genuinely differs is the <span class="key">promise</span> when Python and the compiler disagree: tf.function/jax.jit answer "the trace is the truth," torch.compile answers "Python is the truth." Choose your framework by which failure mode you'd rather debug.</p>
+</div>
+<a class="nx" href="6_autodiff_and_state.html">Next chapter: where do gradients &amp; state live? →</a>
+</div>
+
+<script>
+const pages=document.querySelectorAll('.page'),nav=document.getElementById('nav');
+pages.forEach((p,i)=>{
+  const b=document.createElement('button');
+  b.textContent=p.dataset.t;
+  b.onclick=()=>go(i);
+  if(i===0)b.classList.add('on');
+  nav.appendChild(b);
+});
+function go(n){
+  pages.forEach((p,i)=>p.classList.toggle('on',i===n));
+  nav.querySelectorAll('button').forEach((b,i)=>{
+    b.classList.remove('on');
+    if(i<n)b.classList.add('done');
+    else b.classList.remove('done');
+    if(i===n)b.classList.add('on');
+  });
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+</script>
+</body>
+</html>

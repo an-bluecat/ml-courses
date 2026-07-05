@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VAE Course — Chapter 1: Autoencoder</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0a0a1a;color:#e0e0e0;padding:20px 20px 80px;line-height:1.7}
+h1{text-align:center;color:#fff;margin-bottom:4px;font-size:1.5em}
+.sub{text-align:center;color:#888;margin-bottom:24px;font-size:.88em}
+.nav{display:flex;justify-content:center;gap:6px;margin-bottom:20px;flex-wrap:wrap}
+.nav button{padding:7px 13px;border:2px solid #333;background:#111;color:#888;border-radius:8px;cursor:pointer;font-size:.78em;transition:.2s}
+.nav button:hover{border-color:#555;color:#ccc}
+.nav button.on{border-color:#4fc3f7;color:#4fc3f7;background:#0d2137}
+.nav button.done{border-color:#4caf50;color:#4caf50}
+.page{display:none;max-width:860px;margin:0 auto}
+.page.on{display:block}
+.page h2{color:#4fc3f7;margin-bottom:12px;font-size:1.2em}
+.card{background:#12122a;border:1px solid #2a2a4a;border-radius:12px;padding:18px;margin-bottom:14px}
+.card.blue{border-color:#4fc3f7;background:#0d1b2a}
+.card.green{border-color:#4caf50;background:#0a1a0a}
+.card.orange{border-color:#ff9800;background:#1a1400}
+.card.red{border-color:#ef5350;background:#1a0a0a}
+.card.purple{border-color:#ce93d8;background:#1a0a2a}
+.card h3{color:#ffb74d;margin-bottom:8px;font-size:1em}
+button.nx{padding:10px 24px;background:#4caf50;color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:.9em;margin-top:14px}
+button.nx:hover{background:#66bb6a}
+table{width:100%;border-collapse:collapse;margin:10px 0}
+th,td{padding:8px 12px;border:1px solid #333;text-align:center;font-size:.88em}
+th{background:#1a1a3a;color:#4fc3f7}
+td{text-align:left}
+.math{background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:14px;margin:10px 0;font-family:'Fira Code',Consolas,monospace;font-size:.85em;line-height:1.8}
+.math .line{margin:2px 0;display:block}
+.math .hl{background:#264f78;padding:2px 6px;border-radius:4px;display:inline-block}
+.math .cmt{color:#6a9955}
+.math .val{color:#b5cea8}
+.math .lbl{color:#9cdcfe}
+.key{color:#ffb74d;font-weight:600}
+/* pixel grid */
+.px{display:inline-grid;grid-template-columns:32px 32px;gap:2px;vertical-align:middle}
+.px div{width:32px;height:32px;border-radius:4px;border:1px solid #444}
+/* pixel compare */
+.comp-row{display:flex;align-items:flex-start;gap:20px;margin:14px 0;flex-wrap:wrap}
+.comp-row>div:first-child{flex:1;min-width:260px}
+.pixel-compare{text-align:center}
+.pixel-compare .label{font-size:.75em;color:#888;margin-bottom:4px}
+.pixel-grid{display:inline-grid;grid-template-columns:40px 40px;gap:3px}
+.pixel-grid div{width:40px;height:40px;border:1px solid #444;border-radius:3px}
+.pixel-val{font-family:monospace;font-size:.65em;color:#555;margin-top:4px;text-align:center}
+.pixel-note{font-family:monospace;font-size:.62em;color:#ff9800;margin-top:2px;text-align:center}
+/* step heading inside card */
+.step-head{font-size:.82em;font-weight:700;color:#4fc3f7;margin:16px 0 8px;padding-top:12px;border-top:1px solid #2a2a4a}
+.step-head:first-child{border-top:none;padding-top:0;margin-top:0}
+/* number line */
+.nline-wrap{position:relative;height:68px;margin:16px 40px}
+.nline{position:absolute;bottom:12px;left:0;right:0;height:1px;background:#2a2a4a}
+.nline-tick{position:absolute;bottom:6px;width:1px;height:13px;background:#555}
+.nline-lbl{position:absolute;bottom:-2px;font-size:.65em;color:#888;transform:translateX(-50%)}
+.nline-dot{position:absolute;bottom:6px;width:14px;height:14px;border-radius:50%;transform:translateX(-50%);border:2px solid}
+.nline-dot-lbl{position:absolute;font-size:.65em;white-space:nowrap;transform:translateX(-50%)}
+/* pipeline */
+.pipeline{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:center;margin:12px 0}
+.pipe-box{border-radius:8px;padding:8px 14px;font-size:.82em;text-align:center;border:2px solid}
+.pipe-box.p{border-color:#ce93d8;color:#ce93d8;background:#2a0a3a}
+.pipe-box.c{border-color:#4fc3f7;color:#4fc3f7;background:#1a3a5c}
+.pipe-box.a{border-color:#ffb74d;color:#ffb74d;background:#3a2a0a}
+.pipe-box.g{border-color:#4caf50;color:#4caf50;background:#0a3a0a}
+.pipe-arr{color:#666;font-size:1.3em}
+/* cloud diagram */
+.cloud-diagram{position:relative;height:80px;margin:16px 40px;border-bottom:1px solid #2a2a4a}
+.cloud-blob{position:absolute;bottom:-2px;border-radius:50%;pointer-events:none}
+.cloud-dot{position:absolute;bottom:5px;width:10px;height:10px;border-radius:50%;transform:translateX(-50%);border:2px solid}
+.cloud-label{position:absolute;font-size:.62em;white-space:nowrap;transform:translateX(-50%)}
+/* bell viz */
+.bell-viz{position:relative;height:100px;background:#12122a;border-radius:8px;overflow:hidden;border:1px solid #2a2a4a}
+/* embed space */
+.embed-space{position:relative;width:100%;height:200px;background:#12122a;border:1px solid #2a2a4a;border-radius:8px;margin:12px 0;overflow:hidden}
+.embed-dot{position:absolute;width:12px;height:12px;border-radius:50%;border:2px solid;transform:translate(-50%,-50%)}
+.embed-label{position:absolute;font-size:.62em;transform:translateX(-50%)}
+/* pair visual */
+.pair-box{display:flex;gap:8px;align-items:center;justify-content:center;padding:12px 0}
+.pair-item{width:52px;height:52px;border-radius:8px;border:2px solid;display:flex;align-items:center;justify-content:center;font-size:1.6em}
+.pair-arrow{font-size:.8em;padding:4px 10px;border-radius:4px;border:1px solid;font-weight:600}
+/* batch grid */
+.batch-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:14px 0}
+.batch-cell{border-radius:5px;border:2px solid;padding:8px;text-align:center;font-size:.75em;font-family:monospace}
+.batch-cell.anchor{border-color:#4fc3f7;background:rgba(79,195,247,.08)}
+.batch-cell.pos{border-color:#4caf50;background:rgba(76,175,80,.08)}
+.batch-cell.neg{border-color:#444;background:#12122a;color:#666}
+/* clip matrix */
+.clip-matrix{display:grid;gap:4px;margin:14px 0}
+.clip-cell{border-radius:4px;padding:8px;text-align:center;font-size:.72em;border:1px solid #333}
+.clip-cell.match{border-color:#4caf50;background:rgba(76,175,80,.12);color:#4caf50;font-weight:600}
+.clip-cell.no-match{background:#12122a;color:#555}
+.clip-cell.header{border-color:transparent;background:none;color:#666;font-size:.68em}
+/* priority badges */
+.priority{display:inline-block;font-size:.65em;font-weight:600;padding:2px 8px;border-radius:3px;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px}
+.p1{background:rgba(239,83,80,.15);color:#ef5350;border:1px solid rgba(239,83,80,.4)}
+.p2{background:rgba(255,152,0,.15);color:#ff9800;border:1px solid rgba(255,152,0,.4)}
+.p3{background:rgba(79,195,247,.15);color:#4fc3f7;border:1px solid rgba(79,195,247,.4)}
+.course-item{padding:14px 0;border-bottom:1px solid #2a2a4a}
+.course-item:last-child{border-bottom:none}
+.course-title{font-weight:600;color:#e0e0e0;margin-bottom:4px}
+.course-desc{font-size:.88em;color:#888;margin-bottom:6px}
+.course-topics{font-size:.72em;color:#555;line-height:1.8;font-family:monospace}
+.course-topics span{color:#4fc3f7}
+details summary{cursor:pointer;color:#888;font-size:.85em;padding:8px 12px;background:#12122a;border:1px solid #333;border-radius:8px}
+.amber{border-color:#e3b341;background:#1a1500}
+.vs{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:10px 0}
+@media(max-width:650px){.vs{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<a href="../index.html" style="position:fixed;top:10px;left:14px;font-size:.75em;color:#555;text-decoration:none;z-index:999;padding:4px 8px;background:#0a0a1a;border:1px solid #333;border-radius:6px;">&larr; index</a>
+
+<h1>VAE Course — Chapter 1: Autoencoder</h1>
+<p class="sub">Compress an image down to one number, then reconstruct it</p>
+
+<div class="nav" id="nav"></div>
+
+<!-- PAGE 0 -->
+<div class="page on" data-t="0. The Data">
+<h2>Our Tiny Images</h2>
+
+<div class="card blue">
+<h3>Three 2×2 pixel images</h3>
+<div style="display:flex;gap:48px;justify-content:center;align-items:flex-start;margin:20px 0;flex-wrap:wrap">
+  <div style="text-align:center">
+    <div class="px"><div style="background:#fff"></div><div style="background:#fff"></div><div style="background:#fff"></div><div style="background:#fff"></div></div>
+    <div style="font-family:monospace;font-size:.72em;color:#888;margin-top:6px">"bright"</div>
+    <div style="font-family:monospace;font-size:.68em;color:#555;text-align:center">[1, 1, 1, 1]</div>
+  </div>
+  <div style="text-align:center">
+    <div class="px"><div style="background:#1a1a1a"></div><div style="background:#1a1a1a"></div><div style="background:#1a1a1a"></div><div style="background:#1a1a1a"></div></div>
+    <div style="font-family:monospace;font-size:.72em;color:#888;margin-top:6px">"dark"</div>
+    <div style="font-family:monospace;font-size:.68em;color:#555;text-align:center">[0, 0, 0, 0]</div>
+  </div>
+  <div style="text-align:center">
+    <div class="px"><div style="background:#fff"></div><div style="background:#fff"></div><div style="background:#1a1a1a"></div><div style="background:#1a1a1a"></div></div>
+    <div style="font-family:monospace;font-size:.72em;color:#888;margin-top:6px">"half"</div>
+    <div style="font-family:monospace;font-size:.68em;color:#555;text-align:center">[1, 1, 0, 0]</div>
+  </div>
+</div>
+<p>Each image is 4 numbers (one per pixel, 0=black, 1=white). That's our entire dataset.</p>
+</div>
+
+<div class="card">
+<h3>The goal — compress 4 numbers down to 1</h3>
+<div class="pipeline">
+  <div class="pipe-box p"><strong>[1, 1, 1, 1]</strong><br>4 numbers</div>
+  <span class="pipe-arr">→</span>
+  <div class="pipe-box c">Encoder</div>
+  <span class="pipe-arr">→</span>
+  <div class="pipe-box a"><strong>z = 2.7</strong><br>1 number</div>
+  <span class="pipe-arr">→</span>
+  <div class="pipe-box c">Decoder</div>
+  <span class="pipe-arr">→</span>
+  <div class="pipe-box g"><strong>[0.98, 0.97, 0.99, 0.96]</strong><br>reconstructed</div>
+</div>
+<p>The single number <strong>z</strong> is the <span class="key">latent code</span>. It has to contain enough info to rebuild the image.</p>
+</div>
+<button class="nx" onclick="go(1)">The encoder and decoder</button>
+</div>
+
+<!-- PAGE 1 -->
+<div class="page" data-t="1. Encode & Decode">
+<h2>The Encoder and Decoder — With Numbers</h2>
+
+<div class="card blue">
+<h3>Encoder — 4 inputs → 1 output</h3>
+<div class="math">
+<span class="line cmt">// A single linear layer + ReLU activation</span>
+<span class="line cmt">// weights: [0.5, 0.5, 0.5, 0.5], bias: -1.0</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Encode "bright" = [1, 1, 1, 1]:</span>
+<span class="line"><span class="lbl">z</span> = ReLU(0.5×1 + 0.5×1 + 0.5×1 + 0.5×1 + (−1.0))</span>
+<span class="line">  = ReLU(2.0 − 1.0) = ReLU(1.0) = <span class="val">1.0</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Encode "dark" = [0, 0, 0, 0]:</span>
+<span class="line"><span class="lbl">z</span> = ReLU(0 − 1.0) = ReLU(−1.0) = <span class="val">0.0</span> <span class="cmt">// ReLU clamps negative to 0</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Encode "half" = [1, 1, 0, 0]:</span>
+<span class="line"><span class="lbl">z</span> = ReLU(0.5×1 + 0.5×1 + 0 + 0 − 1.0) = ReLU(0) = <span class="val">0.0</span></span>
+</div>
+</div>
+
+<div class="card orange">
+<h3>Decoder — a completely separate network (not the inverse)</h3>
+<p>The decoder is <strong>not</strong> the encoder run backwards. It has its own weights, learned independently. There is no way to mathematically invert the encoder — the encoder throws information away (4 numbers → 1 number), so there's no unique reverse.</p>
+<div class="math">
+<span class="line cmt">// Decoder: Linear(1→4) + Sigmoid — one weight+bias per output pixel</span>
+<span class="line cmt">// pixel1: w=0.98, bias=0.02</span>
+<span class="line cmt">// pixel2: w=0.97, bias=0.02</span>
+<span class="line cmt">// pixel3: w=0.98, bias=0.02</span>
+<span class="line cmt">// pixel4: w=0.97, bias=0.01</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Decode z=1.0 (the "bright" encoding):</span>
+<span class="line"><span class="lbl">pixel1</span> = sigmoid(0.98×1.0 + 0.02) = sigmoid(1.00) = <span class="val">0.73</span></span>
+<span class="line"><span class="lbl">pixel2</span> = sigmoid(0.97×1.0 + 0.02) = sigmoid(0.99) = <span class="val">0.73</span></span>
+<span class="line"><span class="lbl">pixel3</span> = sigmoid(0.98×1.0 + 0.02) = sigmoid(1.00) = <span class="val">0.73</span></span>
+<span class="line"><span class="lbl">pixel4</span> = sigmoid(0.97×1.0 + 0.01) = sigmoid(0.98) = <span class="val">0.73</span></span>
+<span class="line"><span class="lbl">output</span> = [<span class="val">0.73, 0.73, 0.73, 0.73</span>] <span class="cmt">// not great — training will improve</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Decode z=0.0 (dark):</span>
+<span class="line"><span class="lbl">pixel1</span> = sigmoid(0.98×0.0 + 0.02) = sigmoid(0.02) = <span class="val">0.50</span></span>
+<span class="line cmt">// All pixels ≈0.5 — MSE([0,0,0,0],[0.5,0.5,0.5,0.5]) = 0.25 — large. Training will fix.</span>
+</div>
+<p style="margin-top:10px">The decoder starts random, outputs bad reconstructions, gets a loss, and its own weights update via backprop. <strong>Nothing to do with the encoder's weights</strong> — same loop, completely separate parameters.</p>
+</div>
+
+<div class="card">
+<h3>Why can't we just invert the encoder?</h3>
+<p>The encoder does: [1,1,1,1] → z=1.0. To invert you'd need: z=1.0 → [1,1,1,1]. But any [a,b,c,d] where a+b+c+d=4 gives the same z. No unique answer. The decoder has to <em>learn</em> a reconstruction from scratch.</p>
+</div>
+
+<div class="card">
+<h3>Where each image lands on the number line</h3>
+<div class="nline-wrap">
+  <div class="nline"></div>
+  <div class="nline-tick" style="left:0%"></div>
+  <div class="nline-tick" style="left:50%"></div>
+  <div class="nline-tick" style="left:100%"></div>
+  <div class="nline-lbl" style="left:0%">0.0</div>
+  <div class="nline-lbl" style="left:50%">0.5</div>
+  <div class="nline-lbl" style="left:100%">1.0</div>
+  <!-- dark -->
+  <div class="nline-dot" style="left:0%;background:#333;border-color:#888"></div>
+  <div class="nline-dot-lbl" style="left:0%;top:2px;color:#888">dark</div>
+  <!-- half — also at 0! -->
+  <div class="nline-dot" style="left:0%;top:-18px;background:#555;border-color:#ffb74d"></div>
+  <div class="nline-dot-lbl" style="left:0%;top:-36px;color:#ffb74d">half</div>
+  <!-- bright -->
+  <div class="nline-dot" style="left:100%;background:#fff;border-color:#4caf50"></div>
+  <div class="nline-dot-lbl" style="left:100%;top:2px;color:#e0e0e0">bright</div>
+</div>
+</div>
+
+<div class="card red">
+<h3>Problem — "dark" and "half" map to the same z!</h3>
+<p>Both got z=0.0. The decoder can't tell them apart. The encoder has to squeeze all information about the image into a single number. That's the bottleneck — and also the problem.</p>
+</div>
+<button class="nx" onclick="go(2)">After training</button>
+</div>
+
+<!-- PAGE 2 -->
+<div class="page" data-t="2. After Training">
+<h2>After Training — What the Decoder Learned</h2>
+
+<div class="card blue">
+<h3>Trained encoder — each image gets a distinct z</h3>
+<div class="nline-wrap">
+  <div class="nline"></div>
+  <div class="nline-tick" style="left:0%"></div>
+  <div class="nline-tick" style="left:50%"></div>
+  <div class="nline-tick" style="left:100%"></div>
+  <div class="nline-lbl" style="left:0%">−1</div>
+  <div class="nline-lbl" style="left:50%">0</div>
+  <div class="nline-lbl" style="left:100%">+1</div>
+  <!-- dark at −0.8 = 10% from left -->
+  <div class="nline-dot" style="left:10%;background:#333;border-color:#888"></div>
+  <div class="nline-dot-lbl" style="left:10%;top:2px;color:#888">dark (−0.8)</div>
+  <!-- half at 0.0 = 50% -->
+  <div class="nline-dot" style="left:50%;background:linear-gradient(to bottom,#fff 50%,#333 50%);border-color:#ffb74d"></div>
+  <div class="nline-dot-lbl" style="left:50%;top:2px;color:#ffb74d">half (0.0)</div>
+  <!-- bright at +0.8 = 90% -->
+  <div class="nline-dot" style="left:90%;background:#fff;border-color:#4caf50"></div>
+  <div class="nline-dot-lbl" style="left:90%;top:2px;color:#e0e0e0">bright (+0.8)</div>
+</div>
+</div>
+
+<div class="card">
+<h3>Trained decoder weights — and what they mean</h3>
+<p>Linear(1→4) + Sigmoid. One weight and one bias per output pixel:</p>
+<div class="math">
+<span class="line cmt">// Each pixel: output = sigmoid(w × z + b)</span>
+<span class="line">&nbsp;</span>
+<span class="line"><span class="lbl">pixel1</span>: w = <span class="val">1.50</span>,  b = <span class="val">+0.20</span>  <span class="cmt">// top-left — positive bias → ON by default</span></span>
+<span class="line"><span class="lbl">pixel2</span>: w = <span class="val">1.50</span>,  b = <span class="val">+0.20</span>  <span class="cmt">// top-right</span></span>
+<span class="line"><span class="lbl">pixel3</span>: w = <span class="val">1.25</span>,  b = <span class="val">−1.00</span> <span class="cmt">// bottom-left — negative bias → OFF by default</span></span>
+<span class="line"><span class="lbl">pixel4</span>: w = <span class="val">1.25</span>,  b = <span class="val">−1.00</span> <span class="cmt">// bottom-right</span></span>
+</div>
+<p style="margin-top:8px">These values encode "half"=[1,1,0,0] at z=0: top pixels slightly on, bottom pixels off. Then w scales how much z pushes everything toward white.</p>
+</div>
+
+<div class="card green">
+<h3>Decode each z — compute by hand, see the pixel</h3>
+
+<!-- z = +0.8 -->
+<div class="step-head">z = +0.8 → "bright"</div>
+<div class="comp-row">
+  <div>
+    <div class="math" style="margin:0">
+<span class="line">p1 = sigmoid(1.50×0.8 + 0.20) = sigmoid(1.40) = <span class="val">0.80</span></span>
+<span class="line">p2 = sigmoid(1.50×0.8 + 0.20) = sigmoid(1.40) = <span class="val">0.80</span></span>
+<span class="line">p3 = sigmoid(1.25×0.8 − 1.00) = sigmoid(0.00) = <span class="val">0.50</span></span>
+<span class="line">p4 = sigmoid(1.25×0.8 − 1.00) = sigmoid(0.00) = <span class="val">0.50</span></span>
+    </div>
+  </div>
+  <div class="pixel-compare">
+    <div class="label">output</div>
+    <div class="pixel-grid">
+      <div style="background:rgb(204,204,204)"></div><div style="background:rgb(204,204,204)"></div>
+      <div style="background:rgb(128,128,128)"></div><div style="background:rgb(128,128,128)"></div>
+    </div>
+    <div class="pixel-val">[0.80, 0.80, 0.50, 0.50]</div>
+    <div class="pixel-note">more epochs needed</div>
+  </div>
+  <div class="pixel-compare">
+    <div class="label">target</div>
+    <div class="pixel-grid">
+      <div style="background:#fff"></div><div style="background:#fff"></div>
+      <div style="background:#fff"></div><div style="background:#fff"></div>
+    </div>
+    <div class="pixel-val">[1, 1, 1, 1]</div>
+  </div>
+</div>
+
+<!-- z = -0.8 -->
+<div class="step-head">z = −0.8 → "dark"</div>
+<div class="comp-row">
+  <div>
+    <div class="math" style="margin:0">
+<span class="line">p1 = sigmoid(1.50×−0.8 + 0.20) = sigmoid(−1.00) = <span class="val">0.27</span></span>
+<span class="line">p2 = sigmoid(1.50×−0.8 + 0.20) = sigmoid(−1.00) = <span class="val">0.27</span></span>
+<span class="line">p3 = sigmoid(1.25×−0.8 − 1.00) = sigmoid(−2.00) = <span class="val">0.12</span></span>
+<span class="line">p4 = sigmoid(1.25×−0.8 − 1.00) = sigmoid(−2.00) = <span class="val">0.12</span></span>
+    </div>
+  </div>
+  <div class="pixel-compare">
+    <div class="label">output</div>
+    <div class="pixel-grid">
+      <div style="background:rgb(69,69,69)"></div><div style="background:rgb(69,69,69)"></div>
+      <div style="background:rgb(31,31,31)"></div><div style="background:rgb(31,31,31)"></div>
+    </div>
+    <div class="pixel-val">[0.27, 0.27, 0.12, 0.12]</div>
+  </div>
+  <div class="pixel-compare">
+    <div class="label">target</div>
+    <div class="pixel-grid">
+      <div style="background:#000"></div><div style="background:#000"></div>
+      <div style="background:#000"></div><div style="background:#000"></div>
+    </div>
+    <div class="pixel-val">[0, 0, 0, 0]</div>
+  </div>
+</div>
+
+<!-- z = 0.0 -->
+<div class="step-head">z = 0.0 → "half"</div>
+<div class="comp-row">
+  <div>
+    <div class="math" style="margin:0">
+<span class="line">p1 = sigmoid(1.50×0.0 + 0.20) = sigmoid(0.20) = <span class="val">0.55</span></span>
+<span class="line">p2 = sigmoid(1.50×0.0 + 0.20) = sigmoid(0.20) = <span class="val">0.55</span></span>
+<span class="line">p3 = sigmoid(1.25×0.0 − 1.00) = sigmoid(−1.00) = <span class="val">0.27</span></span>
+<span class="line">p4 = sigmoid(1.25×0.0 − 1.00) = sigmoid(−1.00) = <span class="val">0.27</span></span>
+    </div>
+  </div>
+  <div class="pixel-compare">
+    <div class="label">output</div>
+    <div class="pixel-grid">
+      <div style="background:rgb(140,140,140)"></div><div style="background:rgb(140,140,140)"></div>
+      <div style="background:rgb(69,69,69)"></div><div style="background:rgb(69,69,69)"></div>
+    </div>
+    <div class="pixel-val">[0.55, 0.55, 0.27, 0.27]</div>
+  </div>
+  <div class="pixel-compare">
+    <div class="label">target</div>
+    <div class="pixel-grid">
+      <div style="background:#fff"></div><div style="background:#fff"></div>
+      <div style="background:#000"></div><div style="background:#000"></div>
+    </div>
+    <div class="pixel-val">[1, 1, 0, 0]</div>
+  </div>
+</div>
+<p style="font-size:.82em;color:#888;margin-top:10px">Single linear layer: ~70–80% accuracy. Real autoencoders use deeper networks. The direction is correct: bright→brighter, dark→darker, half→top lighter than bottom.</p>
+</div>
+
+<div class="card orange">
+<h3>z = +0.4 — not in the training set</h3>
+<div class="comp-row">
+  <div>
+    <div class="math" style="margin:0">
+<span class="line">p1 = sigmoid(1.50×0.4 + 0.20) = sigmoid(0.80) = <span class="val">0.69</span></span>
+<span class="line">p2 = sigmoid(1.50×0.4 + 0.20) = sigmoid(0.80) = <span class="val">0.69</span></span>
+<span class="line">p3 = sigmoid(1.25×0.4 − 1.00) = sigmoid(−0.50) = <span class="val">0.38</span></span>
+<span class="line">p4 = sigmoid(1.25×0.4 − 1.00) = sigmoid(−0.50) = <span class="val">0.38</span></span>
+    </div>
+  </div>
+  <div class="pixel-compare">
+    <div class="label" style="color:#ff9800">output z=0.4</div>
+    <div class="pixel-grid">
+      <div style="background:rgb(176,176,176)"></div><div style="background:rgb(176,176,176)"></div>
+      <div style="background:rgb(97,97,97)"></div><div style="background:rgb(97,97,97)"></div>
+    </div>
+    <div class="pixel-val">[0.69, 0.69, 0.38, 0.38]</div>
+  </div>
+</div>
+<p style="margin-top:8px">Looks like a smooth blend between "half" (z=0.0) and "bright" (z=0.8) — because a linear decoder interpolates by definition. With a deeper real network, z=0.4 might produce anything unpredictable.</p>
+</div>
+<button class="nx" onclick="go(3)">Why this breaks generation</button>
+</div>
+
+<!-- PAGE 3 -->
+<div class="page" data-t="3. The Problem">
+<h2>The Autoencoder Can't Generate</h2>
+
+<div class="card blue">
+<h3>What we want — sample a random z, get a valid image</h3>
+<div class="math">
+<span class="line cmt">// Dream: pick z randomly, decoder outputs something good</span>
+<span class="line"><span class="lbl">z</span> = random()  <span class="cmt">// e.g. 0.3</span></span>
+<span class="line"><span class="lbl">new_image</span> = decoder(0.3)  <span class="cmt">// → a real-looking image?</span></span>
+</div>
+<p>This would let us <strong>generate</strong> new images — not just reconstruct old ones.</p>
+</div>
+
+<div class="card red">
+<h3>What actually happens</h3>
+<p>Three tiny dots with huge gaps. Sample z randomly → almost certainly land in a gap. The decoder has no idea what to do there.</p>
+<div class="nline-wrap" style="height:90px">
+  <div class="nline"></div>
+  <div class="nline-tick" style="left:0%"></div>
+  <div class="nline-tick" style="left:100%"></div>
+  <div class="nline-lbl" style="left:0%">−1</div>
+  <div class="nline-lbl" style="left:100%">+1</div>
+  <div class="nline-dot" style="left:10%;background:#333;border-color:#888"></div>
+  <div class="nline-dot" style="left:50%;background:#555;border-color:#ffb74d"></div>
+  <div class="nline-dot" style="left:90%;background:#fff;border-color:#4caf50"></div>
+  <div style="position:absolute;top:4px;left:27%;font-family:monospace;font-size:.62em;color:#ef5350">← gap →</div>
+  <div style="position:absolute;top:4px;right:12%;font-family:monospace;font-size:.62em;color:#ef5350">← gap →</div>
+  <div style="position:absolute;top:30px;left:22%;font-family:monospace;font-size:.6em;color:#ef5350;text-align:center">decoder never<br>saw this region</div>
+  <div style="position:absolute;top:30px;right:14%;font-family:monospace;font-size:.6em;color:#ef5350;text-align:center">garbage<br>outputs here</div>
+</div>
+</div>
+
+<div class="card green">
+<h3>What we need instead</h3>
+<p>A latent space where:</p>
+<ul style="margin-left:18px;margin-top:6px">
+<li>Trained points <strong>spread out smoothly</strong> — no gaps</li>
+<li>Regions between points <strong>blend meaningfully</strong></li>
+<li>Random samples from N(0,1) <strong>always land somewhere the decoder understands</strong></li>
+</ul>
+<p style="margin-top:10px"><span class="key">That's what a VAE does.</span> Chapter 2 shows how.</p>
+</div>
+<button class="nx" onclick="go(4)">Summary</button>
+</div>
+
+<!-- PAGE 4 -->
+<div class="page" data-t="4. Summary">
+<h2>Chapter 1 Summary</h2>
+<div class="card blue">
+<table>
+<tr><th>Concept</th><th>What it does</th></tr>
+<tr><td>Encoder</td><td>Image [1,1,1,1] → single number z=0.8</td></tr>
+<tr><td>Decoder</td><td>z=0.8 → reconstructed image [0.97,0.98,0.96,0.97]</td></tr>
+<tr><td>Bottleneck</td><td>z is smaller than the input — forces compression</td></tr>
+<tr><td>Loss</td><td>MSE between input and reconstruction</td></tr>
+<tr><td style="color:#ef5350">Problem</td><td style="color:#ef5350">Gaps in latent space. Random z → garbage. Can't generate.</td></tr>
+</table>
+<p style="margin-top:12px;font-style:italic;color:#888">Next: the VAE fixes the gaps by making the encoder output a <strong style="color:#e0e0e0">cloud</strong> instead of a <strong style="color:#e0e0e0">dot</strong>.</p>
+</div>
+</div>
+
+<script>
+const pages=document.querySelectorAll('.page'),nav=document.getElementById('nav');
+pages.forEach((p,i)=>{
+  const b=document.createElement('button');
+  b.textContent=p.dataset.t;
+  b.onclick=()=>go(i);
+  if(i===0)b.classList.add('on');
+  nav.appendChild(b);
+});
+function go(n){
+  pages.forEach((p,i)=>p.classList.toggle('on',i===n));
+  nav.querySelectorAll('button').forEach((b,i)=>{
+    b.classList.remove('on');
+    if(i<n)b.classList.add('done');
+    else b.classList.remove('done');
+    if(i===n)b.classList.add('on');
+  });
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+</script>
+</body>
+</html>

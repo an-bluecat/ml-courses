@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chapter 3: Cross-Entropy</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0a0a1a;color:#e0e0e0;padding:20px 20px 80px;line-height:1.7}
+h1{text-align:center;color:#fff;margin-bottom:4px;font-size:1.5em}
+.sub{text-align:center;color:#888;margin-bottom:24px;font-size:.88em}
+.nav{display:flex;justify-content:center;gap:6px;margin-bottom:20px;flex-wrap:wrap}
+.nav button{padding:7px 13px;border:2px solid #333;background:#111;color:#888;border-radius:8px;cursor:pointer;font-size:.78em;transition:.2s}
+.nav button:hover{border-color:#555;color:#ccc}
+.nav button.on{border-color:#4fc3f7;color:#4fc3f7;background:#0d2137}
+.nav button.done{border-color:#4caf50;color:#4caf50}
+.page{display:none;max-width:860px;margin:0 auto}
+.page.on{display:block}
+.page h2{color:#4fc3f7;margin-bottom:12px;font-size:1.2em}
+.card{background:#12122a;border:1px solid #2a2a4a;border-radius:12px;padding:18px;margin-bottom:14px}
+.card.blue{border-color:#4fc3f7;background:#0d1b2a}
+.card.green{border-color:#4caf50;background:#0a1a0a}
+.card.orange{border-color:#ff9800;background:#1a1400}
+.card.purple{border-color:#ce93d8;background:#1a0a2a}
+.card h3{color:#ffb74d;margin-bottom:8px;font-size:1em}
+button.nx{padding:10px 24px;background:#4caf50;color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:.9em;margin-top:14px}
+button.nx:hover{background:#66bb6a}
+table{width:100%;border-collapse:collapse;margin:10px 0}
+th,td{padding:8px 12px;border:1px solid #333;text-align:center;font-size:.88em}
+th{background:#1a1a3a;color:#4fc3f7}
+.math{background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:14px;margin:10px 0;font-family:'Fira Code',monospace;font-size:.85em;line-height:1.8}
+.math .line{margin:2px 0}
+.math .hl{background:#264f78;padding:2px 6px;border-radius:4px;display:inline-block}
+.math .cmt{color:#6a9955}
+.math .val{color:#b5cea8}
+.math .lbl{color:#9cdcfe}
+.key{color:#ffb74d;font-weight:600}
+</style>
+</head>
+<body>
+<a href="../index.html" style="position:fixed;top:10px;left:14px;font-size:.75em;color:#555;text-decoration:none;z-index:999;padding:4px 8px;background:#0a0a1a;border:1px solid #333;border-radius:6px;">&larr; index</a>
+<h1>Chapter 3: Cross-Entropy</h1>
+<p class="sub">What happens when you use the wrong code — and why this is the loss function in ML</p>
+<div class="nav" id="nav"></div>
+
+<!-- PAGE 0 -->
+<div class="page on" data-t="0. Wrong Code">
+<h2>Using Someone Else's Code</h2>
+
+<div class="card blue">
+<h3>Bob (dog person) and Alice (cat person)</h3>
+<table>
+<tr><th>Animal</th><th>Bob's distribution q(x)</th><th>Alice's distribution p(x)</th></tr>
+<tr><td>dog</td><td style="color:#4caf50">1/2</td><td>1/8</td></tr>
+<tr><td>cat</td><td>1/4</td><td style="color:#4caf50">1/2</td></tr>
+<tr><td>fish</td><td>1/8</td><td>1/4</td></tr>
+<tr><td>bird</td><td>1/8</td><td>1/8</td></tr>
+</table>
+<p>Bob designed his code for <strong>his</strong> distribution (dogs are common). Alice talks differently (cats are common).</p>
+</div>
+
+<div class="card">
+<h3>Bob's code (optimized for Bob, not Alice)</h3>
+<table>
+<tr><th>Animal</th><th>Bob's code</th><th>Length</th></tr>
+<tr><td>dog</td><td><code>0</code></td><td>1 bit (short — Bob says dog a lot)</td></tr>
+<tr><td>cat</td><td><code>10</code></td><td>2 bits</td></tr>
+<tr><td>fish</td><td><code>110</code></td><td>3 bits</td></tr>
+<tr><td>bird</td><td><code>111</code></td><td>3 bits</td></tr>
+</table>
+</div>
+
+<div class="card orange">
+<h3>Now Alice uses Bob's code. What happens?</h3>
+<p>Alice says "cat" half the time, but Bob's code gives cat 2 bits (not 1). She's wasting bits.</p>
+<div class="math">
+<div class="line"><span class="cmt">// Alice's messages, Bob's codeword lengths:</span></div>
+<div class="line"><span class="lbl">avg length</span> = <span class="lbl">p(dog)</span>&times;L(dog) + <span class="lbl">p(cat)</span>&times;L(cat) + <span class="lbl">p(fish)</span>&times;L(fish) + <span class="lbl">p(bird)</span>&times;L(bird)</div>
+<div class="line">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; = (1/8)&times;1 + (1/2)&times;2 + (1/4)&times;3 + (1/8)&times;3</div>
+<div class="line">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; = 0.125 + 1.0 + 0.75 + 0.375</div>
+<div class="line"><span class="hl">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; = <span class="val">2.25 bits</span></span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// Alice's entropy (if she used her own optimal code):</span></div>
+<div class="line"><span class="lbl">H(Alice)</span> = (1/8)&times;3 + (1/2)&times;1 + (1/4)&times;2 + (1/8)&times;3 = <span class="val">1.75 bits</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// Waste from using the wrong code:</span></div>
+<div class="line"><span class="val">2.25 - 1.75 = 0.5 extra bits per message</span></div>
+</div>
+<p>Alice could communicate in 1.75 bits with her own code. Using Bob's code costs 2.25. The 0.5 extra bits are pure waste.</p>
+</div>
+<button class="nx" onclick="go(1)">Next: The formula &#x2192;</button>
+</div>
+
+<!-- PAGE 1 -->
+<div class="page" data-t="1. The Formula">
+<h2>Cross-Entropy Formula</h2>
+
+<div class="card blue">
+<h3>What we just calculated has a name</h3>
+<p><strong>Cross-entropy H(p, q)</strong> = average message length when:</p>
+<ul style="margin-left:18px">
+<li>The <strong>real distribution</strong> is p (Alice's — what actually happens)</li>
+<li>The <strong>code</strong> is designed for q (Bob's — what we assumed would happen)</li>
+</ul>
+</div>
+
+<div class="card">
+<h3>Building the formula from what we already know</h3>
+<div class="math">
+<div class="line"><span class="cmt">// Entropy uses: p(x) weights, p(x) code lengths</span></div>
+<div class="line">H(p) = &Sigma; <span style="color:#4caf50">p(x)</span> &middot; log&#x2082;(1/<span style="color:#4caf50">p(x)</span>)</div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// Cross-entropy uses: p(x) weights, q(x) code lengths</span></div>
+<div class="line"><span class="hl">H(p, q) = &Sigma; <span style="color:#4caf50">p(x)</span> &middot; log&#x2082;(1/<span style="color:#ef5350">q(x)</span>)</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// Same structure. Just swap which distribution designs the code.</span></div>
+<div class="line"><span class="cmt">// The weights are always p (what really happens).</span></div>
+<div class="line"><span class="cmt">// The code lengths come from q (what we assumed).</span></div>
+</div>
+</div>
+
+<div class="card green">
+<h3>Key property: cross-entropy ≥ entropy. Always.</h3>
+<div class="math">
+<div class="line">H(Alice, Bob's code) = <span class="val">2.25</span> &ge; H(Alice) = <span class="val">1.75</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// The wrong code always costs at least as much as the right one.</span></div>
+<div class="line"><span class="cmt">// Equal only when p = q (you used the right code).</span></div>
+</div>
+</div>
+<button class="nx" onclick="go(2)">Next: The ML connection &#x2192;</button>
+</div>
+
+<!-- PAGE 2 -->
+<div class="page" data-t="2. ML Connection">
+<h2>Cross-Entropy in Neural Network Training</h2>
+
+<div class="card orange">
+<h3>Map it to ML</h3>
+<table>
+<tr><th>Info theory</th><th>ML training</th></tr>
+<tr><td>p(x) = true distribution</td><td>The label: [1, 0, 0] = "this is a dog"</td></tr>
+<tr><td>q(x) = assumed distribution</td><td>Model output: [0.5, 0.3, 0.2]</td></tr>
+<tr><td>Cross-entropy H(p, q)</td><td>The loss function you minimize</td></tr>
+</table>
+</div>
+
+<div class="card blue">
+<h3>Concrete example: image classifier</h3>
+<div class="math">
+<div class="line"><span class="cmt">// True label (one-hot): this image is a dog</span></div>
+<div class="line"><span class="lbl">p</span> = [1, 0, 0]  <span class="cmt">// dog=1, cat=0, fish=0</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// Model output (softmax probabilities):</span></div>
+<div class="line"><span class="lbl">q</span> = [0.7, 0.2, 0.1]  <span class="cmt">// model thinks 70% dog, 20% cat, 10% fish</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// Cross-entropy:</span></div>
+<div class="line">H(p, q) = 1 &times; log&#x2082;(1/0.7) + 0 &times; log&#x2082;(1/0.2) + 0 &times; log&#x2082;(1/0.1)</div>
+<div class="line">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; = 1 &times; 0.515 + 0 + 0</div>
+<div class="line"><span class="hl">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; = <span class="val">0.515 bits</span></span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// Only the correct class survives! Because p is one-hot,</span></div>
+<div class="line"><span class="cmt">// every term with p(x)=0 vanishes. You're left with:</span></div>
+<div class="line"><span class="hl">H(p, q) = &minus;log(q(correct class)) = &minus;log(0.7) = <span class="val">0.515</span></span></div>
+</div>
+</div>
+
+<div class="card">
+<h3>What happens as the model gets better?</h3>
+<div class="math">
+<div class="line"><span class="cmt">// Bad model: q(dog) = 0.1</span></div>
+<div class="line">loss = &minus;log(0.1) = <span class="val" style="color:#ef5350">3.32 bits</span> <span class="cmt">// high loss!</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// Decent model: q(dog) = 0.7</span></div>
+<div class="line">loss = &minus;log(0.7) = <span class="val" style="color:#ffb74d">0.51 bits</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// Great model: q(dog) = 0.99</span></div>
+<div class="line">loss = &minus;log(0.99) = <span class="val" style="color:#4caf50">0.014 bits</span> <span class="cmt">// almost zero!</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// Perfect model: q(dog) = 1.0</span></div>
+<div class="line">loss = &minus;log(1.0) = <span class="val" style="color:#4caf50">0 bits</span> <span class="cmt">// loss = 0, model is perfect</span></div>
+</div>
+<p><span class="key">Training a neural network = minimizing cross-entropy = making the model's code match reality.</span></p>
+</div>
+
+<div class="card purple">
+<h3>One-hot labels make cross-entropy = KL divergence</h3>
+<p>Remember: H(one-hot) = 0. And KL = cross-entropy minus entropy. So:</p>
+<div class="math">
+<div class="line">KL(p &#x2016; q) = H(p, q) &minus; H(p) = H(p, q) &minus; 0 = H(p, q)</div>
+</div>
+<p>When the label is one-hot, cross-entropy loss IS KL divergence. Same number. This is why minimizing cross-entropy loss is equivalent to minimizing the distance between model and truth.</p>
+</div>
+<button class="nx" onclick="go(3)">Summary &#x2192;</button>
+</div>
+
+<!-- PAGE 3 -->
+<div class="page" data-t="3. Summary">
+<h2>Chapter 3 Summary</h2>
+<div class="card blue">
+<table>
+<tr><th>Concept</th><th>Formula</th><th>Meaning</th></tr>
+<tr><td>Entropy</td><td>H(p) = Σ p(x) · log(1/p(x))</td><td>Best code for p. Minimum bits.</td></tr>
+<tr><td>Cross-entropy</td><td>H(p,q) = Σ p(x) · log(1/q(x))</td><td>Using q's code for p's data. Always ≥ H(p).</td></tr>
+<tr><td>ML loss</td><td>−log(q(correct))</td><td>Cross-entropy with one-hot labels</td></tr>
+<tr><td>When p is one-hot</td><td>H(p,q) = KL(p‖q)</td><td>Cross-entropy = KL divergence (since H(p)=0)</td></tr>
+</table>
+<p style="margin-top:10px">Next: what is that 0.5 bits of waste exactly? That's KL divergence.</p>
+</div>
+</div>
+
+<script>
+const pages=document.querySelectorAll('.page');const nav=document.getElementById('nav');
+pages.forEach((p,i)=>{const b=document.createElement('button');b.textContent=p.dataset.t;b.onclick=()=>go(i);if(i===0)b.classList.add('on');nav.appendChild(b);});
+function go(n){pages.forEach((p,i)=>p.classList.toggle('on',i===n));nav.querySelectorAll('button').forEach((b,i)=>{b.classList.remove('on');if(i<n)b.classList.add('done');else b.classList.remove('done');if(i===n)b.classList.add('on');});window.scrollTo({top:0,behavior:'smooth'});}
+</script>
+</body></html>

@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Transformer Ch1: Attention</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0a0a1a;color:#e0e0e0;padding:20px 20px 80px;line-height:1.7}
+h1{text-align:center;color:#fff;margin-bottom:4px;font-size:1.5em}
+.sub{text-align:center;color:#888;margin-bottom:24px;font-size:.88em}
+.nav{display:flex;justify-content:center;gap:6px;margin-bottom:20px;flex-wrap:wrap}
+.nav button{padding:7px 13px;border:2px solid #333;background:#111;color:#888;border-radius:8px;cursor:pointer;font-size:.78em;transition:.2s}
+.nav button:hover{border-color:#555;color:#ccc}
+.nav button.on{border-color:#4fc3f7;color:#4fc3f7;background:#0d2137}
+.nav button.done{border-color:#4caf50;color:#4caf50}
+.page{display:none;max-width:860px;margin:0 auto}
+.page.on{display:block}
+.page h2{color:#4fc3f7;margin-bottom:12px;font-size:1.2em}
+.card{background:#12122a;border:1px solid #2a2a4a;border-radius:12px;padding:18px;margin-bottom:14px}
+.card.blue{border-color:#4fc3f7;background:#0d1b2a}
+.card.green{border-color:#4caf50;background:#0a1a0a}
+.card.orange{border-color:#ff9800;background:#1a1400}
+.card.red{border-color:#ef5350;background:#1a0a0a}
+.card.purple{border-color:#ce93d8;background:#1a0a2a}
+.card h3{color:#ffb74d;margin-bottom:8px;font-size:1em}
+button.nx{padding:10px 24px;background:#4caf50;color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:.9em;margin-top:14px}
+button.nx:hover{background:#66bb6a}
+table{width:100%;border-collapse:collapse;margin:10px 0}
+th,td{padding:8px 12px;border:1px solid #333;text-align:center;font-size:.88em}
+th{background:#1a1a3a;color:#4fc3f7}
+td{text-align:left}
+.math{background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:14px;margin:10px 0;font-family:'Fira Code',Consolas,monospace;font-size:.85em;line-height:1.8}
+.math .line{margin:2px 0;display:block}
+.math .hl{background:#264f78;padding:2px 6px;border-radius:4px;display:inline-block}
+.math .cmt{color:#6a9955}
+.math .val{color:#b5cea8}
+.math .lbl{color:#9cdcfe}
+.key{color:#ffb74d;font-weight:600}
+.vs{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:10px 0}
+@media(max-width:650px){.vs{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<a href="../index.html" style="position:fixed;top:10px;left:14px;font-size:.75em;color:#555;text-decoration:none;z-index:999;padding:4px 8px;background:#0a0a1a;border:1px solid #333;border-radius:6px;">&larr; index</a>
+
+<h1>Transformer Ch1: Attention</h1>
+<p class="sub">Q, K, V from scratch with tiny matrices — every multiply shown</p>
+
+<div class="nav" id="nav"></div>
+
+<!-- PAGE 0 -->
+<div class="page on" data-t="0. Why Attention">
+<h2>0. Why Attention</h2>
+
+<div class="card red">
+<h3>The RNN problem: sequential and forgetful</h3>
+<p>RNNs process tokens one-by-one. To understand token 100, you must first process tokens 1 through 99 — you <span class="key">cannot parallelize</span>.</p>
+<p style="margin-top:8px">Worse: the signal from token 1 has to survive 99 multiplication steps to reach token 100. Each step multiplies by a weight. If that weight is 0.9:</p>
+<div class="math">
+  <span class="line"><span class="cmt">// gradient surviving 99 steps:</span></span>
+  <span class="line"><span class="lbl">0.9</span><span class="val">^99</span> = <span class="hl">0.000026</span>  <span class="cmt">// nearly gone</span></span>
+  <span class="line"><span class="cmt">// gradient surviving 10 steps:</span></span>
+  <span class="line"><span class="lbl">0.9</span><span class="val">^10</span> = <span class="val">0.349</span>    <span class="cmt">// still alive</span></span>
+</div>
+<p>Long-range dependencies — like a pronoun referring to a noun 50 tokens earlier — are extremely hard to learn.</p>
+</div>
+
+<div class="card blue">
+<h3>Attention's answer: direct connections</h3>
+<p>Let every token look at every other token <span class="key">directly</span>, in a single step. No chain of multiplications. The path from token 1 to token 100 is length 1, not 99.</p>
+<div class="math">
+  <span class="line"><span class="cmt">// RNN: token 100 sees token 1 through 99 hops</span></span>
+  <span class="line"><span class="lbl">h_100</span> = f(f(f(...f(<span class="val">x_1</span>)...)))</span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// Attention: token 100 sees token 1 directly</span></span>
+  <span class="line"><span class="lbl">output_100</span> = <span class="val">sum</span>( attention_weights * values )  <span class="cmt">// one step</span></span>
+</div>
+</div>
+
+<div class="card green">
+<h3>Two more wins</h3>
+<p><span class="key">Parallelizable:</span> all attention scores for all tokens can be computed simultaneously with matrix multiplication. GPUs love this.</p>
+<p style="margin-top:8px"><span class="key">Variable-length context:</span> the same formula works whether the sequence has 10 tokens or 10,000. No fixed hidden state size bottleneck.</p>
+</div>
+
+<button class="nx" onclick="go(1)">Next: Q K V Intuition →</button>
+</div>
+
+<!-- PAGE 1 -->
+<div class="page" data-t="1. Q K V Intuition">
+<h2>1. Q K V Intuition</h2>
+
+<div class="card blue">
+<h3>The library analogy</h3>
+<p>Imagine you're searching a library. You have a <span class="key">query</span>: "books about cats". Each book has a <span class="key">key</span> on its spine (e.g., "feline behavior", "dog training", "astronomy"). Each book also has <span class="key">value</span> — its actual contents.</p>
+<p style="margin-top:8px">You match your query against each key, get a score, then retrieve a weighted mix of values from the best matches.</p>
+</div>
+
+<div class="vs">
+<div class="card orange">
+<h3>Q — Query</h3>
+<p>"What am I looking for?"</p>
+<p style="margin-top:8px">Each token generates a query vector representing what information it wants from other tokens.</p>
+<p style="margin-top:8px">Example: the word "it" generates a query like "find the noun I refer to".</p>
+</div>
+<div class="card orange">
+<h3>K — Key</h3>
+<p>"What do I contain?"</p>
+<p style="margin-top:8px">Each token generates a key vector announcing what kind of information it holds.</p>
+<p style="margin-top:8px">Example: "cat" generates a key like "I am a concrete noun, animate, singular".</p>
+</div>
+</div>
+
+<div class="card orange">
+<h3>V — Value</h3>
+<p>"What do I give if selected?"</p>
+<p style="margin-top:8px">Each token generates a value vector — the actual information it contributes when attended to. The attention weight determines <em>how much</em> of this value flows to the querying token.</p>
+<p style="margin-top:8px">Think of K as the title on a book spine and V as the book's contents. You search by title (K), but you read the contents (V).</p>
+</div>
+
+<div class="card green">
+<h3>How Q, K, V are created</h3>
+<p>They are <span class="key">learned linear projections</span> of the token's embedding vector x:</p>
+<div class="math">
+  <span class="line"><span class="lbl">Q</span> = x · <span class="val">W_Q</span>   <span class="cmt">// project embedding into "what I want" space</span></span>
+  <span class="line"><span class="lbl">K</span> = x · <span class="val">W_K</span>   <span class="cmt">// project embedding into "what I have" space</span></span>
+  <span class="line"><span class="lbl">V</span> = x · <span class="val">W_V</span>   <span class="cmt">// project embedding into "what I give" space</span></span>
+</div>
+<p>W_Q, W_K, W_V are weight matrices learned during training. The same embedding x gets projected three different ways for three different purposes.</p>
+</div>
+
+<button class="nx" onclick="go(2)">Next: The Math →</button>
+</div>
+
+<!-- PAGE 2 -->
+<div class="page" data-t="2. The Math">
+<h2>2. The Math — Every Number Traced</h2>
+
+<div class="card blue">
+<h3>Setup: 2 tokens, 2D embeddings</h3>
+<p>Two tokens: <span class="key">"cat"</span> and <span class="key">"sat"</span>. Each has a 2D embedding:</p>
+<div class="math">
+  <span class="line"><span class="lbl">x_cat</span> = [<span class="val">1</span>, <span class="val">0</span>]</span>
+  <span class="line"><span class="lbl">x_sat</span> = [<span class="val">0</span>, <span class="val">1</span>]</span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// Stack into input matrix X (2 tokens × 2 dims):</span></span>
+  <span class="line"><span class="lbl">X</span> = [[<span class="val">1</span>, <span class="val">0</span>],   <span class="cmt">// row 0 = "cat"</span></span>
+  <span class="line">      [<span class="val">0</span>, <span class="val">1</span>]]  <span class="cmt">// row 1 = "sat"</span></span>
+</div>
+</div>
+
+<div class="card">
+<h3>Weight matrices (2×2, tiny values for illustration)</h3>
+<div class="math">
+  <span class="line"><span class="lbl">W_Q</span> = [[<span class="val">1</span>, <span class="val">0</span>],   <span class="lbl">W_K</span> = [[<span class="val">0</span>, <span class="val">1</span>],   <span class="lbl">W_V</span> = [[<span class="val">1</span>, <span class="val">1</span>],</span>
+  <span class="line">         [<span class="val">0</span>, <span class="val">1</span>]]          [<span class="val">1</span>, <span class="val">0</span>]]          [<span class="val">0</span>, <span class="val">1</span>]]</span>
+</div>
+</div>
+
+<div class="card blue">
+<h3>Step 1: Compute Q = X · W_Q</h3>
+<div class="math">
+  <span class="line"><span class="cmt">// "cat" row: [1,0] · W_Q</span></span>
+  <span class="line"><span class="lbl">q_cat</span> = [<span class="val">1</span>·<span class="val">1</span>+<span class="val">0</span>·<span class="val">0</span>, <span class="val">1</span>·<span class="val">0</span>+<span class="val">0</span>·<span class="val">1</span>] = [<span class="hl">1, 0</span>]</span>
+  <span class="line"><span class="cmt">// "sat" row: [0,1] · W_Q</span></span>
+  <span class="line"><span class="lbl">q_sat</span> = [<span class="val">0</span>·<span class="val">1</span>+<span class="val">1</span>·<span class="val">0</span>, <span class="val">0</span>·<span class="val">0</span>+<span class="val">1</span>·<span class="val">1</span>] = [<span class="hl">0, 1</span>]</span>
+  <span class="line"></span>
+  <span class="line"><span class="lbl">Q</span> = [[<span class="val">1</span>, <span class="val">0</span>],  <span class="cmt">// query for "cat"</span></span>
+  <span class="line">      [<span class="val">0</span>, <span class="val">1</span>]] <span class="cmt">// query for "sat"</span></span>
+</div>
+</div>
+
+<div class="card blue">
+<h3>Step 2: Compute K = X · W_K</h3>
+<div class="math">
+  <span class="line"><span class="lbl">k_cat</span> = [<span class="val">1</span>·<span class="val">0</span>+<span class="val">0</span>·<span class="val">1</span>, <span class="val">1</span>·<span class="val">1</span>+<span class="val">0</span>·<span class="val">0</span>] = [<span class="hl">0, 1</span>]</span>
+  <span class="line"><span class="lbl">k_sat</span> = [<span class="val">0</span>·<span class="val">0</span>+<span class="val">1</span>·<span class="val">1</span>, <span class="val">0</span>·<span class="val">1</span>+<span class="val">1</span>·<span class="val">0</span>] = [<span class="hl">1, 0</span>]</span>
+  <span class="line"></span>
+  <span class="line"><span class="lbl">K</span> = [[<span class="val">0</span>, <span class="val">1</span>],  <span class="cmt">// key for "cat"</span></span>
+  <span class="line">      [<span class="val">1</span>, <span class="val">0</span>]] <span class="cmt">// key for "sat"</span></span>
+</div>
+</div>
+
+<div class="card blue">
+<h3>Step 3: Compute V = X · W_V</h3>
+<div class="math">
+  <span class="line"><span class="lbl">v_cat</span> = [<span class="val">1</span>·<span class="val">1</span>+<span class="val">0</span>·<span class="val">0</span>, <span class="val">1</span>·<span class="val">1</span>+<span class="val">0</span>·<span class="val">1</span>] = [<span class="hl">1, 1</span>]</span>
+  <span class="line"><span class="lbl">v_sat</span> = [<span class="val">0</span>·<span class="val">1</span>+<span class="val">1</span>·<span class="val">0</span>, <span class="val">0</span>·<span class="val">1</span>+<span class="val">1</span>·<span class="val">1</span>] = [<span class="hl">0, 1</span>]</span>
+  <span class="line"></span>
+  <span class="line"><span class="lbl">V</span> = [[<span class="val">1</span>, <span class="val">1</span>],  <span class="cmt">// value for "cat"</span></span>
+  <span class="line">      [<span class="val">0</span>, <span class="val">1</span>]] <span class="cmt">// value for "sat"</span></span>
+</div>
+</div>
+
+<div class="card orange">
+<h3>Step 4: Compute attention scores = Q · K^T</h3>
+<p>K^T is K transposed (columns become rows):</p>
+<div class="math">
+  <span class="line"><span class="lbl">K^T</span> = [[<span class="val">0</span>, <span class="val">1</span>],  <span class="cmt">// col 0 of K → row 0</span></span>
+  <span class="line">         [<span class="val">1</span>, <span class="val">0</span>]] <span class="cmt">// col 1 of K → row 1</span></span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// Scores[i][j] = how much token i attends to token j</span></span>
+  <span class="line"><span class="lbl">scores[0][0]</span> = q_cat · k_cat = <span class="val">1</span>·<span class="val">0</span>+<span class="val">0</span>·<span class="val">1</span> = <span class="hl">0</span>  <span class="cmt">// cat→cat</span></span>
+  <span class="line"><span class="lbl">scores[0][1]</span> = q_cat · k_sat = <span class="val">1</span>·<span class="val">1</span>+<span class="val">0</span>·<span class="val">0</span> = <span class="hl">1</span>  <span class="cmt">// cat→sat</span></span>
+  <span class="line"><span class="lbl">scores[1][0]</span> = q_sat · k_cat = <span class="val">0</span>·<span class="val">0</span>+<span class="val">1</span>·<span class="val">1</span> = <span class="hl">1</span>  <span class="cmt">// sat→cat</span></span>
+  <span class="line"><span class="lbl">scores[1][1]</span> = q_sat · k_sat = <span class="val">0</span>·<span class="val">1</span>+<span class="val">1</span>·<span class="val">0</span> = <span class="hl">0</span>  <span class="cmt">// sat→sat</span></span>
+  <span class="line"></span>
+  <span class="line"><span class="lbl">scores</span> = [[<span class="val">0</span>, <span class="val">1</span>],</span>
+  <span class="line">           [<span class="val">1</span>, <span class="val">0</span>]]</span>
+</div>
+</div>
+
+<div class="card orange">
+<h3>Step 5: Scale by sqrt(d_k) = sqrt(2) ≈ 1.414</h3>
+<div class="math">
+  <span class="line"><span class="lbl">scaled</span> = scores / <span class="val">1.414</span></span>
+  <span class="line">        = [[<span class="val">0</span>/<span class="val">1.414</span>,  <span class="val">1</span>/<span class="val">1.414</span>],</span>
+  <span class="line">           [<span class="val">1</span>/<span class="val">1.414</span>,  <span class="val">0</span>/<span class="val">1.414</span>]]</span>
+  <span class="line">        = [[<span class="hl">0.000</span>, <span class="hl">0.707</span>],</span>
+  <span class="line">           [<span class="hl">0.707</span>, <span class="hl">0.000</span>]]</span>
+</div>
+</div>
+
+<div class="card orange">
+<h3>Step 6: Softmax each row (row = one token's attention distribution)</h3>
+<div class="math">
+  <span class="line"><span class="cmt">// softmax([0.000, 0.707])</span></span>
+  <span class="line"><span class="cmt">// e^0.000 = 1.000,  e^0.707 = 2.028,  sum = 3.028</span></span>
+  <span class="line"><span class="lbl">row0</span> = [<span class="val">1.000</span>/<span class="val">3.028</span>, <span class="val">2.028</span>/<span class="val">3.028</span>] = [<span class="hl">0.330</span>, <span class="hl">0.670</span>]</span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// softmax([0.707, 0.000]) — same numbers, flipped</span></span>
+  <span class="line"><span class="lbl">row1</span> = [<span class="hl">0.670</span>, <span class="hl">0.330</span>]</span>
+  <span class="line"></span>
+  <span class="line"><span class="lbl">attn_weights</span> = [[<span class="val">0.330</span>, <span class="val">0.670</span>],  <span class="cmt">// "cat" attends 33% to itself, 67% to "sat"</span></span>
+  <span class="line">                 [<span class="val">0.670</span>, <span class="val">0.330</span>]] <span class="cmt">// "sat" attends 67% to "cat", 33% to itself</span></span>
+</div>
+</div>
+
+<div class="card green">
+<h3>Step 7: Multiply attention weights by V</h3>
+<div class="math">
+  <span class="line"><span class="cmt">// Output for "cat": 0.330 * v_cat + 0.670 * v_sat</span></span>
+  <span class="line"><span class="lbl">out_cat</span> = <span class="val">0.330</span>·[<span class="val">1</span>,<span class="val">1</span>] + <span class="val">0.670</span>·[<span class="val">0</span>,<span class="val">1</span>]</span>
+  <span class="line">         = [<span class="val">0.330</span>, <span class="val">0.330</span>] + [<span class="val">0.000</span>, <span class="val">0.670</span>]</span>
+  <span class="line">         = [<span class="hl">0.330</span>, <span class="hl">1.000</span>]</span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// Output for "sat": 0.670 * v_cat + 0.330 * v_sat</span></span>
+  <span class="line"><span class="lbl">out_sat</span> = <span class="val">0.670</span>·[<span class="val">1</span>,<span class="val">1</span>] + <span class="val">0.330</span>·[<span class="val">0</span>,<span class="val">1</span>]</span>
+  <span class="line">         = [<span class="val">0.670</span>, <span class="val">0.670</span>] + [<span class="val">0.000</span>, <span class="val">0.330</span>]</span>
+  <span class="line">         = [<span class="hl">0.670</span>, <span class="hl">1.000</span>]</span>
+  <span class="line"></span>
+  <span class="line"><span class="lbl">Output</span> = [[<span class="val">0.330</span>, <span class="val">1.000</span>],  <span class="cmt">// new representation of "cat"</span></span>
+  <span class="line">           [<span class="val">0.670</span>, <span class="val">1.000</span>]] <span class="cmt">// new representation of "sat"</span></span>
+</div>
+<p style="margin-top:8px">Each token's output is a blend of all values, weighted by how relevant each token was. "cat" pulled more from "sat" (67%) than itself (33%).</p>
+</div>
+
+<button class="nx" onclick="go(3)">Next: Why sqrt(d_k)? →</button>
+</div>
+
+<!-- PAGE 3 -->
+<div class="page" data-t="3. Why sqrt(d_k)?">
+<h2>3. Why Divide by sqrt(d_k)?</h2>
+
+<div class="card">
+<h3>The problem: dot products grow large with dimension</h3>
+<p>When d_k = 2 (like our example), dot products are small. But in real transformers, d_k = 64 or 512. With random unit vectors in d_k dimensions, the expected dot product magnitude is sqrt(d_k).</p>
+<div class="math">
+  <span class="line"><span class="cmt">// d_k = 512: expected |q·k| ≈ sqrt(512) ≈ 22.6</span></span>
+  <span class="line"><span class="cmt">// Without scaling, scores like [22, 5, 2, 1] are common</span></span>
+</div>
+</div>
+
+<div class="card red">
+<h3>What happens without scaling: peaked softmax</h3>
+<div class="math">
+  <span class="line"><span class="cmt">// Scores without scaling (large values):</span></span>
+  <span class="line"><span class="lbl">scores</span> = [<span class="val">8</span>, <span class="val">2</span>]</span>
+  <span class="line"><span class="cmt">// e^8 = 2981,  e^2 = 7.39,  sum = 2988</span></span>
+  <span class="line"><span class="lbl">softmax</span> = [<span class="val">2981</span>/<span class="val">2988</span>, <span class="val">7.39</span>/<span class="val">2988</span>]</span>
+  <span class="line">         = [<span class="hl">0.9975</span>, <span class="hl">0.0025</span>]</span>
+  <span class="line"><span class="cmt">// Nearly all weight on one token — attention collapses!</span></span>
+  <span class="line"><span class="cmt">// Gradient of softmax ≈ 0 when output is near 0 or 1</span></span>
+  <span class="line"><span class="cmt">// → vanishing gradients again</span></span>
+</div>
+</div>
+
+<div class="card green">
+<h3>With scaling: gentle softmax</h3>
+<div class="math">
+  <span class="line"><span class="cmt">// d_k = 4, sqrt(d_k) = 2, so we divide by 2:</span></span>
+  <span class="line"><span class="lbl">scaled scores</span> = [<span class="val">8</span>/<span class="val">2</span>, <span class="val">2</span>/<span class="val">2</span>] = [<span class="val">4</span>, <span class="val">1</span>]</span>
+  <span class="line"><span class="cmt">// e^4 = 54.6,  e^1 = 2.72,  sum = 57.3</span></span>
+  <span class="line"><span class="lbl">softmax</span> = [<span class="val">54.6</span>/<span class="val">57.3</span>, <span class="val">2.72</span>/<span class="val">57.3</span>]</span>
+  <span class="line">         = [<span class="hl">0.953</span>, <span class="hl">0.047</span>]</span>
+  <span class="line"><span class="cmt">// Still focused, but gradients can flow</span></span>
+</div>
+</div>
+
+<div class="card blue">
+<h3>Full d_k=512 example</h3>
+<div class="math">
+  <span class="line"><span class="cmt">// Typical scores in d_k=512:</span></span>
+  <span class="line"><span class="lbl">scores</span> = [<span class="val">22</span>, <span class="val">8</span>, <span class="val">3</span>]</span>
+  <span class="line"><span class="lbl">without scaling:</span> softmax ≈ [<span class="hl">~1.0</span>, ~0.0, ~0.0]  <span class="cmt">// useless</span></span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// Scaled by sqrt(512) ≈ 22.6:</span></span>
+  <span class="line"><span class="lbl">scores</span> = [<span class="val">22</span>/<span class="val">22.6</span>, <span class="val">8</span>/<span class="val">22.6</span>, <span class="val">3</span>/<span class="val">22.6</span>] = [<span class="val">0.97</span>, <span class="val">0.35</span>, <span class="val">0.13</span>]</span>
+  <span class="line"><span class="lbl">with scaling:</span>    softmax ≈ [<span class="hl">0.57</span>, 0.31, 0.12]  <span class="cmt">// informative</span></span>
+</div>
+<p style="margin-top:8px">Scaling keeps the variance of dot products at 1 regardless of d_k. Training is stable across all head dimensions.</p>
+</div>
+
+<button class="nx" onclick="go(4)">Next: Summary →</button>
+</div>
+
+<!-- PAGE 4 -->
+<div class="page" data-t="4. Summary">
+<h2>4. Summary</h2>
+
+<div class="card blue">
+<h3>The full attention formula</h3>
+<div class="math">
+  <span class="line"><span class="hl">Attention(Q, K, V) = softmax( Q·K^T / sqrt(d_k) ) · V</span></span>
+</div>
+</div>
+
+<table>
+<tr><th>Symbol</th><th>Shape</th><th>Plain English</th></tr>
+<tr><td><span class="key">X</span></td><td>T × d_model</td><td>Input: T tokens, each a d_model-dim vector</td></tr>
+<tr><td><span class="key">W_Q</span></td><td>d_model × d_k</td><td>Learned weight: projects token into "what I want" space</td></tr>
+<tr><td><span class="key">W_K</span></td><td>d_model × d_k</td><td>Learned weight: projects token into "what I have" space</td></tr>
+<tr><td><span class="key">W_V</span></td><td>d_model × d_v</td><td>Learned weight: projects token into "what I give" space</td></tr>
+<tr><td><span class="key">Q = XW_Q</span></td><td>T × d_k</td><td>Query matrix: one query per token</td></tr>
+<tr><td><span class="key">K = XW_K</span></td><td>T × d_k</td><td>Key matrix: one key per token</td></tr>
+<tr><td><span class="key">V = XW_V</span></td><td>T × d_v</td><td>Value matrix: one value per token</td></tr>
+<tr><td><span class="key">Q·K^T</span></td><td>T × T</td><td>Score matrix: score[i][j] = how much token i attends to token j</td></tr>
+<tr><td><span class="key">sqrt(d_k)</span></td><td>scalar</td><td>Scaling factor: prevents peaked softmax and vanishing gradients</td></tr>
+<tr><td><span class="key">softmax(...)</span></td><td>T × T</td><td>Attention weights: each row sums to 1</td></tr>
+<tr><td><span class="key">Output</span></td><td>T × d_v</td><td>Context-enriched representations: each token is now a blend of values</td></tr>
+</table>
+
+<div class="card green">
+<h3>The key insight</h3>
+<p>Before attention: "cat" = [1, 0] — a static vector with no knowledge of context.</p>
+<p style="margin-top:8px">After attention: "cat" = [0.330, 1.000] — a vector that has <span class="key">absorbed information from "sat"</span>. In a real sentence like "The cat sat on the mat", "cat" would absorb information from all surrounding tokens, becoming a richer, context-aware representation.</p>
+</div>
+</div>
+
+<script>
+const pages=document.querySelectorAll('.page'),nav=document.getElementById('nav');
+pages.forEach((p,i)=>{const b=document.createElement('button');b.textContent=p.dataset.t;b.onclick=()=>go(i);if(i===0)b.classList.add('on');nav.appendChild(b);});
+function go(n){pages.forEach((p,i)=>p.classList.toggle('on',i===n));nav.querySelectorAll('button').forEach((b,i)=>{b.classList.remove('on');if(i<n)b.classList.add('done');else b.classList.remove('done');if(i===n)b.classList.add('on');});window.scrollTo({top:0,behavior:'smooth'});}
+</script>
+</body>
+</html>

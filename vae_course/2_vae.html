@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VAE Course — Chapter 2: The VAE Fix</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0a0a1a;color:#e0e0e0;padding:20px 20px 80px;line-height:1.7}
+h1{text-align:center;color:#fff;margin-bottom:4px;font-size:1.5em}
+.sub{text-align:center;color:#888;margin-bottom:24px;font-size:.88em}
+.nav{display:flex;justify-content:center;gap:6px;margin-bottom:20px;flex-wrap:wrap}
+.nav button{padding:7px 13px;border:2px solid #333;background:#111;color:#888;border-radius:8px;cursor:pointer;font-size:.78em;transition:.2s}
+.nav button:hover{border-color:#555;color:#ccc}
+.nav button.on{border-color:#4fc3f7;color:#4fc3f7;background:#0d2137}
+.nav button.done{border-color:#4caf50;color:#4caf50}
+.page{display:none;max-width:860px;margin:0 auto}
+.page.on{display:block}
+.page h2{color:#4fc3f7;margin-bottom:12px;font-size:1.2em}
+.card{background:#12122a;border:1px solid #2a2a4a;border-radius:12px;padding:18px;margin-bottom:14px}
+.card.blue{border-color:#4fc3f7;background:#0d1b2a}
+.card.green{border-color:#4caf50;background:#0a1a0a}
+.card.orange{border-color:#ff9800;background:#1a1400}
+.card.red{border-color:#ef5350;background:#1a0a0a}
+.card.purple{border-color:#ce93d8;background:#1a0a2a}
+.card h3{color:#ffb74d;margin-bottom:8px;font-size:1em}
+button.nx{padding:10px 24px;background:#4caf50;color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:.9em;margin-top:14px}
+button.nx:hover{background:#66bb6a}
+table{width:100%;border-collapse:collapse;margin:10px 0}
+th,td{padding:8px 12px;border:1px solid #333;text-align:center;font-size:.88em}
+th{background:#1a1a3a;color:#4fc3f7}
+td{text-align:left}
+.math{background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:14px;margin:10px 0;font-family:'Fira Code',Consolas,monospace;font-size:.85em;line-height:1.8}
+.math .line{margin:2px 0;display:block}
+.math .hl{background:#264f78;padding:2px 6px;border-radius:4px;display:inline-block}
+.math .cmt{color:#6a9955}
+.math .val{color:#b5cea8}
+.math .lbl{color:#9cdcfe}
+.key{color:#ffb74d;font-weight:600}
+/* pixel grid */
+.px{display:inline-grid;grid-template-columns:32px 32px;gap:2px;vertical-align:middle}
+.px div{width:32px;height:32px;border-radius:4px;border:1px solid #444}
+/* pixel compare */
+.comp-row{display:flex;align-items:flex-start;gap:20px;margin:14px 0;flex-wrap:wrap}
+.comp-row>div:first-child{flex:1;min-width:260px}
+.pixel-compare{text-align:center}
+.pixel-compare .label{font-size:.75em;color:#888;margin-bottom:4px}
+.pixel-grid{display:inline-grid;grid-template-columns:40px 40px;gap:3px}
+.pixel-grid div{width:40px;height:40px;border:1px solid #444;border-radius:3px}
+.pixel-val{font-family:monospace;font-size:.65em;color:#555;margin-top:4px;text-align:center}
+.pixel-note{font-family:monospace;font-size:.62em;color:#ff9800;margin-top:2px;text-align:center}
+/* step heading inside card */
+.step-head{font-size:.82em;font-weight:700;color:#4fc3f7;margin:16px 0 8px;padding-top:12px;border-top:1px solid #2a2a4a}
+.step-head:first-child{border-top:none;padding-top:0;margin-top:0}
+/* number line */
+.nline-wrap{position:relative;height:68px;margin:16px 40px}
+.nline{position:absolute;bottom:12px;left:0;right:0;height:1px;background:#2a2a4a}
+.nline-tick{position:absolute;bottom:6px;width:1px;height:13px;background:#555}
+.nline-lbl{position:absolute;bottom:-2px;font-size:.65em;color:#888;transform:translateX(-50%)}
+.nline-dot{position:absolute;bottom:6px;width:14px;height:14px;border-radius:50%;transform:translateX(-50%);border:2px solid}
+.nline-dot-lbl{position:absolute;font-size:.65em;white-space:nowrap;transform:translateX(-50%)}
+/* pipeline */
+.pipeline{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:center;margin:12px 0}
+.pipe-box{border-radius:8px;padding:8px 14px;font-size:.82em;text-align:center;border:2px solid}
+.pipe-box.p{border-color:#ce93d8;color:#ce93d8;background:#2a0a3a}
+.pipe-box.c{border-color:#4fc3f7;color:#4fc3f7;background:#1a3a5c}
+.pipe-box.a{border-color:#ffb74d;color:#ffb74d;background:#3a2a0a}
+.pipe-box.g{border-color:#4caf50;color:#4caf50;background:#0a3a0a}
+.pipe-arr{color:#666;font-size:1.3em}
+/* cloud diagram */
+.cloud-diagram{position:relative;height:80px;margin:16px 40px;border-bottom:1px solid #2a2a4a}
+.cloud-blob{position:absolute;bottom:-2px;border-radius:50%;pointer-events:none}
+.cloud-dot{position:absolute;bottom:5px;width:10px;height:10px;border-radius:50%;transform:translateX(-50%);border:2px solid}
+.cloud-label{position:absolute;font-size:.62em;white-space:nowrap;transform:translateX(-50%)}
+/* bell viz */
+.bell-viz{position:relative;height:100px;background:#12122a;border-radius:8px;overflow:hidden;border:1px solid #2a2a4a}
+/* embed space */
+.embed-space{position:relative;width:100%;height:200px;background:#12122a;border:1px solid #2a2a4a;border-radius:8px;margin:12px 0;overflow:hidden}
+.embed-dot{position:absolute;width:12px;height:12px;border-radius:50%;border:2px solid;transform:translate(-50%,-50%)}
+.embed-label{position:absolute;font-size:.62em;transform:translateX(-50%)}
+/* pair visual */
+.pair-box{display:flex;gap:8px;align-items:center;justify-content:center;padding:12px 0}
+.pair-item{width:52px;height:52px;border-radius:8px;border:2px solid;display:flex;align-items:center;justify-content:center;font-size:1.6em}
+.pair-arrow{font-size:.8em;padding:4px 10px;border-radius:4px;border:1px solid;font-weight:600}
+/* batch grid */
+.batch-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:14px 0}
+.batch-cell{border-radius:5px;border:2px solid;padding:8px;text-align:center;font-size:.75em;font-family:monospace}
+.batch-cell.anchor{border-color:#4fc3f7;background:rgba(79,195,247,.08)}
+.batch-cell.pos{border-color:#4caf50;background:rgba(76,175,80,.08)}
+.batch-cell.neg{border-color:#444;background:#12122a;color:#666}
+/* clip matrix */
+.clip-matrix{display:grid;gap:4px;margin:14px 0}
+.clip-cell{border-radius:4px;padding:8px;text-align:center;font-size:.72em;border:1px solid #333}
+.clip-cell.match{border-color:#4caf50;background:rgba(76,175,80,.12);color:#4caf50;font-weight:600}
+.clip-cell.no-match{background:#12122a;color:#555}
+.clip-cell.header{border-color:transparent;background:none;color:#666;font-size:.68em}
+/* priority badges */
+.priority{display:inline-block;font-size:.65em;font-weight:600;padding:2px 8px;border-radius:3px;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px}
+.p1{background:rgba(239,83,80,.15);color:#ef5350;border:1px solid rgba(239,83,80,.4)}
+.p2{background:rgba(255,152,0,.15);color:#ff9800;border:1px solid rgba(255,152,0,.4)}
+.p3{background:rgba(79,195,247,.15);color:#4fc3f7;border:1px solid rgba(79,195,247,.4)}
+.course-item{padding:14px 0;border-bottom:1px solid #2a2a4a}
+.course-item:last-child{border-bottom:none}
+.course-title{font-weight:600;color:#e0e0e0;margin-bottom:4px}
+.course-desc{font-size:.88em;color:#888;margin-bottom:6px}
+.course-topics{font-size:.72em;color:#555;line-height:1.8;font-family:monospace}
+.course-topics span{color:#4fc3f7}
+details summary{cursor:pointer;color:#888;font-size:.85em;padding:8px 12px;background:#12122a;border:1px solid #333;border-radius:8px}
+.amber{border-color:#e3b341;background:#1a1500}
+.vs{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:10px 0}
+@media(max-width:650px){.vs{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<a href="../index.html" style="position:fixed;top:10px;left:14px;font-size:.75em;color:#555;text-decoration:none;z-index:999;padding:4px 8px;background:#0a0a1a;border:1px solid #333;border-radius:6px;">&larr; index</a>
+
+<h1>VAE Course — Chapter 2: The VAE Fix</h1>
+<p class="sub">Output a cloud instead of a dot — then the gaps fill themselves</p>
+
+<div class="nav" id="nav"></div>
+
+<!-- PAGE 0 -->
+<div class="page on" data-t="0. Dot → Cloud">
+<h2>The One Change: Dot → Cloud</h2>
+
+<div class="card blue">
+<h3>Autoencoder — a single point</h3>
+<div class="nline-wrap" style="height:56px">
+  <div class="nline"></div>
+  <div class="nline-dot" style="left:50%;background:#fff;border-color:#4caf50"></div>
+  <div class="nline-dot-lbl" style="left:50%;top:22px;color:#888">z = 0.8</div>
+</div>
+<p style="margin-top:8px">"This image is at z=0.8. Exactly. No wiggle room."</p>
+</div>
+
+<div class="card green">
+<h3>VAE encoder — a cloud (mean + spread)</h3>
+<div class="cloud-diagram">
+  <!-- cloud glow -->
+  <div class="cloud-blob" style="left:35%;width:30%;height:40px;background:radial-gradient(ellipse at center,rgba(76,175,80,.18) 0%,transparent 70%)"></div>
+  <div class="cloud-dot" style="left:50%;background:#fff;border-color:#4caf50"></div>
+  <div style="position:absolute;bottom:20px;left:36%;font-family:monospace;font-size:.75em;color:#4fc3f7">←</div>
+  <div style="position:absolute;bottom:20px;right:35%;font-family:monospace;font-size:.75em;color:#4fc3f7">→</div>
+  <div class="cloud-label" style="left:50%;top:52px;color:#888">μ=0.8, σ=0.3</div>
+</div>
+<p style="margin-top:8px">"This image is <em>around</em> z=0.8, give or take 0.3."</p>
+</div>
+
+<div class="card">
+<h3>What the encoder actually outputs</h3>
+<div class="math">
+<span class="line cmt">// Autoencoder encoder:</span>
+<span class="line"><span class="lbl">output</span> = z = <span class="val">0.8</span>  <span class="cmt">// one number</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// VAE encoder:</span>
+<span class="line"><span class="lbl">output</span> = (<span class="lbl">μ</span>=<span class="val">0.8</span>, <span class="lbl">σ</span>=<span class="val">0.3</span>)  <span class="cmt">// TWO numbers</span></span>
+<span class="line cmt">// μ = "center of the cloud" (mean)</span>
+<span class="line cmt">// σ = "width of the cloud" (standard deviation)</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Then SAMPLE a z from that cloud:</span>
+<span class="line"><span class="lbl">z</span> = sample from N(μ, σ²) = sample from N(0.8, 0.09)</span>
+<span class="line cmt">// Maybe z=0.72 this time, z=0.91 next time, z=0.65 the time after</span>
+</div>
+</div>
+<button class="nx" onclick="go(1)">Why does this fix the gaps</button>
+</div>
+
+<!-- PAGE 1 -->
+<div class="page" data-t="1. Gaps Fill In">
+<h2>Why Clouds Fill the Gaps</h2>
+
+<div class="card blue">
+<h3>Autoencoder — three dots, two gaps</h3>
+<div class="cloud-diagram">
+  <div class="cloud-dot" style="left:10%;background:#333;border-color:#888"></div>
+  <div class="cloud-dot" style="left:50%;background:#666;border-color:#ffb74d"></div>
+  <div class="cloud-dot" style="left:90%;background:#fff;border-color:#4caf50"></div>
+  <div style="position:absolute;top:4px;left:27%;font-family:monospace;font-size:.62em;color:#ef5350">gap (garbage)</div>
+  <div style="position:absolute;top:4px;right:12%;font-family:monospace;font-size:.62em;color:#ef5350">gap (garbage)</div>
+</div>
+</div>
+
+<div style="text-align:center;padding:6px 0;color:#555;font-family:monospace;font-size:1.1em">↓</div>
+
+<div class="card green">
+<h3>VAE — three overlapping clouds, no gaps</h3>
+<div class="cloud-diagram" style="height:90px">
+  <!-- dark cloud -->
+  <div class="cloud-blob" style="left:0;width:40%;height:50px;background:radial-gradient(ellipse at center,rgba(100,100,100,.15) 0%,transparent 70%)"></div>
+  <div class="cloud-dot" style="left:10%;background:#333;border-color:#888"></div>
+  <!-- half cloud -->
+  <div class="cloud-blob" style="left:30%;width:40%;height:50px;background:radial-gradient(ellipse at center,rgba(255,183,77,.12) 0%,transparent 70%)"></div>
+  <div class="cloud-dot" style="left:50%;background:#666;border-color:#ffb74d"></div>
+  <!-- bright cloud -->
+  <div class="cloud-blob" style="right:0;width:40%;height:50px;background:radial-gradient(ellipse at center,rgba(76,175,80,.12) 0%,transparent 70%)"></div>
+  <div class="cloud-dot" style="left:90%;background:#fff;border-color:#4caf50"></div>
+  <div style="position:absolute;top:6px;left:50%;transform:translateX(-50%);font-family:monospace;font-size:.62em;color:#4caf50;white-space:nowrap">clouds overlap → decoder trained here too!</div>
+</div>
+<p style="margin-top:44px">Because each image's z is sampled from a <em>cloud</em>, the decoder sees a range of z values during training. Clouds overlap, so the decoder learns what to do <strong>everywhere</strong>, not just at three exact spots.</p>
+</div>
+
+<div class="card">
+<h3>Concrete — generating from z=0.4</h3>
+<div class="math">
+<span class="line cmt">// z=0.4 is between "half" (μ=0.0) and "bright" (μ=0.8)</span>
+<span class="line cmt">// Autoencoder: never saw z=0.4 → garbage</span>
+<span class="line cmt">// VAE: both "half" and "bright" clouds reach z=0.4</span>
+<span class="line cmt">//   decoder was trained on z≈0.4 many times</span>
+<span class="hl"><span class="line"><span class="lbl">decoder</span>(0.4) = [0.85, 0.82, 0.35, 0.32]  <span class="cmt">// smooth blend!</span></span></span>
+</div>
+</div>
+<button class="nx" onclick="go(2)">The reparameterization trick</button>
+</div>
+
+<!-- PAGE 2 -->
+<div class="page" data-t="2. Reparam Trick">
+<h2>The Reparameterization Trick</h2>
+
+<div class="card red">
+<h3>The problem — you can't backprop through randomness</h3>
+<div class="math">
+<span class="line cmt">// Forward pass:</span>
+<span class="line">image → encoder → (μ=0.8, σ=0.3) → <span style="color:#ef5350">sample z ~ N(0.8, 0.09)</span> → decoder → reconstruction</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Backward pass:</span>
+<span class="line">... ← decoder ← <span style="color:#ef5350">??? can't differentiate sampling ???</span> ← encoder ← ...</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// If you nudge μ from 0.8 to 0.81, how does z change?</span>
+<span class="line cmt">// You don't know — z is random. Gradient is stuck.</span>
+</div>
+</div>
+
+<div class="card green">
+<h3>The trick — move the randomness outside</h3>
+<div class="math">
+<span class="line cmt">// Instead of: z = sample from N(μ, σ²)</span>
+<span class="line cmt">// Do this:</span>
+<span class="line">&nbsp;</span>
+<span class="line"><span class="lbl">ε</span> = sample from N(0, 1)  <span class="cmt">// random, NOT connected to μ or σ</span></span>
+<span class="hl"><span class="line"><span class="lbl">z</span> = μ + σ × ε  <span class="cmt">// just multiply and add — differentiable!</span></span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Concrete: μ=0.8, σ=0.3, ε=0.5 (random draw)</span>
+<span class="line"><span class="lbl">z</span> = 0.8 + 0.3 × 0.5 = <span class="val">0.95</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Now gradients can flow:</span>
+<span class="line cmt">// dz/dμ = 1          (if μ goes up, z goes up)</span>
+<span class="line cmt">// dz/dσ = ε = 0.5    (if σ goes up, z moves more)</span>
+</div>
+</div>
+
+<div class="card">
+<h3>Same distribution, different computation graph</h3>
+<div class="math">
+<span class="line cmt">// Both produce z ~ N(μ, σ²). Statistically identical.</span>
+<span class="line cmt">// But the second version has μ and σ connected to z</span>
+<span class="line cmt">// through plain arithmetic → gradients flow through.</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// In PyTorch:</span>
+<span class="line"><span class="lbl">eps</span> = torch.randn_like(sigma)  <span class="cmt">// random noise, no gradient</span></span>
+<span class="line"><span class="lbl">z</span>   = mu + sigma * eps          <span class="cmt">// differentiable w.r.t. mu and sigma</span></span>
+</div>
+</div>
+<button class="nx" onclick="go(3)">The KL loss</button>
+</div>
+
+<!-- PAGE 3 -->
+<div class="page" data-t="3. KL Loss">
+<h2>The KL Loss — Why N(0,1)?</h2>
+
+<div class="card">
+<h3>First: what does "generate a new image" mean?</h3>
+<p>After training, we want to create images the model never saw. The decoder can do this — give it any z, it outputs an image. But we need to know: what z values produce good images?</p>
+<div class="math">
+<span class="line cmt">// The decoder is a function: z → image</span>
+<span class="line cmt">// It will output SOMETHING for any z you give it.</span>
+<span class="line cmt">// But only z values it SAW during training will produce good images.</span>
+<span class="line cmt">// z values from dead space → garbage output.</span>
+</div>
+</div>
+
+<div class="card blue">
+<h3>Your intuition: "to generate a cat, sample from the cat region"</h3>
+<p>This is correct! If cats cluster around μ=2.0 in latent space during training, then sampling z near 2.0 and decoding should give a cat. This is exactly how conditional generation works.</p>
+<div class="math">
+<span class="line cmt">// After training a VAE on cats and dogs:</span>
+<span class="line cmt">//   cats → encoder → μ ≈ +1.5 (cats live here)</span>
+<span class="line cmt">//   dogs → encoder → μ ≈ -1.2 (dogs live here)</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// To generate a cat:</span>
+<span class="line"><span class="lbl">z</span> = sample near 1.5</span>
+<span class="line"><span class="lbl">cat_image</span> = decoder(z)   <span class="cmt">// works!</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// To generate a dog:</span>
+<span class="line"><span class="lbl">z</span> = sample near -1.2</span>
+<span class="line"><span class="lbl">dog_image</span> = decoder(z)   <span class="cmt">// works!</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// This is your mental model. It's RIGHT.</span>
+</div>
+</div>
+
+<div class="card orange">
+<h3>The problem: how do you know WHERE the cat region is?</h3>
+<p>Without any constraint, the encoder can put cats wherever it wants. Maybe μ=53.7 today, μ=-200 tomorrow. Maybe different runs put cats in completely different places. To find the cat region, you'd need to:</p>
+<div class="math">
+<span class="line cmt">// Option A: run encoder on many cats, average their μ, sample near there.</span>
+<span class="line cmt">// But now you need the encoder AND sample cat images just to generate.</span>
+<span class="line cmt">// You can't just "generate a random image" — you need inputs!</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Option B: force the encoder to put EVERYTHING near one known place.</span>
+<span class="line cmt">// Then you always know where to sample from: that one known place.</span>
+<span class="line cmt">// That place is N(0,1).</span>
+</div>
+<p style="margin-top:10px">The KL constraint doesn't contradict your intuition — it <strong>constrains</strong> it. Instead of "cats can be anywhere", it says "cats must be near μ=0, σ=1." This means the cat region and the dog region both get squished into the N(0,1) range.</p>
+</div>
+
+<div class="card green">
+<h3>How both are true at once — the 2D case makes it clear</h3>
+<p>In 1D it seems impossible: if cats AND dogs both live near 0, how do you tell them apart? In 2D (or higher), they can separate on different axes while both staying within the N(0,1) ball.</p>
+<div class="math">
+<span class="line cmt">// 2D latent space (z has two dimensions):</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// After training with KL constraint:</span>
+<span class="line"><span class="lbl">cats</span> → μ = [+0.8, +0.5], σ = [0.7, 0.8]</span>
+<span class="line"><span class="lbl">dogs</span> → μ = [-0.6, -0.4], σ = [0.8, 0.7]</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Both are near [0,0]. Both have σ near [1,1].</span>
+<span class="line cmt">// KL is small for both — they're "close to N(0,1)."</span>
+<span class="line cmt">// But they're on DIFFERENT SIDES of the origin → decoder can tell them apart.</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Generation: sample z ~ N(0,1) in 2D:</span>
+<span class="line"><span class="lbl">z</span> = [+0.6, +0.3] → probably a cat (near cat region)</span>
+<span class="line"><span class="lbl">z</span> = [-0.5, -0.2] → probably a dog (near dog region)</span>
+<span class="line"><span class="lbl">z</span> = [+0.1, -0.1] → something between cat and dog (smooth blend)</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// The constraint makes the regions overlap slightly.</span>
+<span class="line cmt">// That overlap is what makes the smooth transitions (cat→dog morphing).</span>
+</div>
+</div>
+
+<div class="card">
+<h3>So what IS the constraint doing?</h3>
+<table>
+<tr><th>Without KL</th><th>With KL</th></tr>
+<tr><td>Cats at μ=50, dogs at μ=-200</td><td>Cats at μ=+0.8, dogs at μ=-0.6</td></tr>
+<tr><td>To generate, you must know where 50 and -200 are</td><td>To generate, just sample N(0,1) — you'll hit cat or dog region</td></tr>
+<tr><td>Dead space between 50 and -200 → garbage</td><td>Everything is within [-2, +2] → no dead space</td></tr>
+<tr><td>No smooth transitions</td><td>Overlapping clouds → smooth cat-to-dog blending</td></tr>
+</table>
+<p style="margin-top:10px">The KL loss doesn't destroy your "cat region" intuition. It just forces the cat region to be NEAR the origin, so that blind N(0,1) sampling has a chance of landing there.</p>
+</div>
+
+<div class="card orange">
+<h3>Now: what happens without the KL constraint (two failure modes)</h3>
+<div class="math">
+<span class="line cmt">// Failure 1: encoder makes σ tiny (collapse)</span>
+<span class="line"><span class="lbl">cat</span> → μ=1.5, σ=0.001</span>
+<span class="line"><span class="lbl">z</span> = 1.5 + 0.001 × ε ≈ <span class="val">1.500</span>  <span class="cmt">// always exactly 1.5</span></span>
+<span class="line cmt">// Cloud is a dot. We're back to an autoencoder. Gaps between dots → dead space.</span>
+<span class="line cmt">// WHY this happens: reconstruction loss rewards precision. Less noise = easier to reconstruct.</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Failure 2: encoder makes μ huge (scatter)</span>
+<span class="line"><span class="lbl">cat</span> → μ=50, σ=1</span>
+<span class="line"><span class="lbl">dog</span> → μ=-200, σ=1</span>
+<span class="line cmt">// σ is fine (fat clouds), but they're at z=50 and z=-200.</span>
+<span class="line cmt">// N(0,1) sampling gives z in [-3, +3]. That's 47 units away from the nearest cloud.</span>
+<span class="line cmt">// Decoder never saw z=0.5 during training → garbage at generation time.</span>
+<span class="line cmt">// WHY this happens: reconstruction loss rewards separation. Far apart = easy to memorize.</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Both failures serve reconstruction. Both kill generation.</span>
+</div>
+</div>
+
+<div class="card green">
+<h3>The KL penalty stops both failures</h3>
+<div class="math">
+<span class="line cmt">// KL(encoder_cloud ‖ N(0,1)) measures:</span>
+<span class="line cmt">// "How different is this encoder's cloud from N(0,1)?"</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// If μ=50 → KL is huge (cloud is far from where N(0,1) has density)</span>
+<span class="line cmt">// If σ=0.001 → KL is huge (cloud is way narrower than N(0,1))</span>
+<span class="line cmt">// If μ≈0 and σ≈1 → KL ≈ 0 (cloud matches the prior)</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Total VAE loss = reconstruction_loss + KL</span>
+<span class="line cmt">// Reconstruction wants μ far and σ small.</span>
+<span class="line cmt">// KL wants μ=0 and σ=1.</span>
+<span class="line cmt">// Compromise: μ in [-2, +2], σ in [0.5, 1.2].</span>
+<span class="line cmt">// Different images get different μ (so decoder can tell them apart)</span>
+<span class="line cmt">// but all stay near the origin (so N(0,1) sampling works).</span>
+</div>
+</div>
+
+<div class="card blue">
+<h3>KL(encoder ‖ prior) — step by step, every number</h3>
+<p>Now we compute the actual penalty. KL(q ‖ p) where q = encoder's cloud, p = N(0,1).</p>
+
+<div class="step-head">Step 1 — What is q(z=3)?</div>
+<p>Encoder outputs μ=3, σ=0.2. Plug into the Gaussian PDF:</p>
+<div class="math">
+<span class="line cmt">// Gaussian PDF formula:</span>
+<span class="line">N(z; μ, σ) = 1/(σ√(2π)) × exp(−(z−μ)²/(2σ²))</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// At z=3, μ=3, σ=0.2:</span>
+<span class="line">q(z=3) = 1/(0.2 × 2.507) × exp(0)</span>
+<span class="line">       = 1/0.501 × 1</span>
+<span class="hl"><span class="line">       = <span class="val">2.0</span>  <span class="cmt">// peak density at the center</span></span></span>
+<span class="line cmt">// Note: PDF can be >1 — it's density, not probability.</span>
+</div>
+
+<div class="step-head">Step 2 — What is p(z=3)?</div>
+<p>The prior is N(0,1). μ=0, σ=1:</p>
+<div class="math">
+<span class="line">p(z=3) = 1/2.507 × exp(−9/2)</span>
+<span class="line">       = 0.399 × exp(−4.5)</span>
+<span class="line">       = 0.399 × 0.011</span>
+<span class="hl"><span class="line">       = <span class="val">0.0044</span>  <span class="cmt">// prior barely has density at z=3</span></span></span>
+</div>
+
+<div class="step-head">Step 3 — The KL term at z=3</div>
+<div class="math">
+<span class="line"><span class="cmt">// KL contribution from z=3:</span></span>
+<span class="line">term = q(z=3) × log(q(z=3) / p(z=3))</span>
+<span class="line">     = 2.0 × log(2.0 / 0.0044)</span>
+<span class="line">     = 2.0 × log(455)</span>
+<span class="line">     = 2.0 × 6.12</span>
+<span class="hl"><span class="line">     = <span class="val" style="color:#ef5350">12.2 — massive</span></span></span>
+<span class="line cmt">// q is large (2.0) AND log ratio is large (6.12)</span>
+<span class="line cmt">// Encoder is confidently at z=3 but prior barely exists there.</span>
+</div>
+
+<div style="margin:14px 0">
+  <p style="font-family:monospace;font-size:.72em;color:#888;margin-bottom:6px;text-align:center;text-transform:uppercase;letter-spacing:.06em">Prior N(0,1) vs encoder cloud at μ=3 — the escape</p>
+  <div class="bell-viz">
+    <div style="position:absolute;bottom:0;left:0;right:0;height:80px;background:linear-gradient(to top,rgba(76,175,80,.2),transparent);clip-path:polygon(20% 100%, 30% 40%, 40% 10%, 50% 4%, 60% 10%, 70% 40%, 80% 100%)"></div>
+    <div style="position:absolute;bottom:3px;left:50%;transform:translateX(-50%);font-family:monospace;font-size:.62em;color:#4caf50">N(0,1) prior</div>
+    <div style="position:absolute;bottom:0;right:4%;width:15%;height:82px;background:radial-gradient(ellipse at 50% 100%,rgba(239,83,80,.35) 0%,transparent 70%)"></div>
+    <div style="position:absolute;bottom:3px;right:5%;font-family:monospace;font-size:.62em;color:#ef5350;white-space:nowrap">encoder (μ=3)</div>
+    <div style="position:absolute;top:8px;right:5%;font-family:monospace;font-size:.68em;color:#ef5350;font-weight:600">KL = 12.2!</div>
+    <div style="position:absolute;bottom:3px;left:14%;font-family:monospace;font-size:.58em;color:#555">−2</div>
+    <div style="position:absolute;bottom:3px;left:46%;font-family:monospace;font-size:.58em;color:#555">0</div>
+    <div style="position:absolute;bottom:3px;right:18%;font-family:monospace;font-size:.58em;color:#555">+2</div>
+  </div>
+
+  <p style="font-family:monospace;font-size:.72em;color:#888;margin:10px 0 4px;text-align:center;text-transform:uppercase;letter-spacing:.06em">After training — encoder pulled back toward center</p>
+  <div class="bell-viz">
+    <div style="position:absolute;bottom:0;left:0;right:0;height:80px;background:linear-gradient(to top,rgba(76,175,80,.2),transparent);clip-path:polygon(20% 100%, 30% 40%, 40% 10%, 50% 4%, 60% 10%, 70% 40%, 80% 100%)"></div>
+    <div style="position:absolute;bottom:3px;left:50%;transform:translateX(-50%);font-family:monospace;font-size:.62em;color:#4caf50">N(0,1) prior</div>
+    <div style="position:absolute;bottom:0;left:58%;width:17%;height:78px;background:radial-gradient(ellipse at 50% 100%,rgba(79,195,247,.3) 0%,transparent 70%)"></div>
+    <div style="position:absolute;bottom:3px;left:59%;font-family:monospace;font-size:.62em;color:#4fc3f7;white-space:nowrap">encoder (μ=0.6)</div>
+    <div style="position:absolute;top:8px;left:59%;font-family:monospace;font-size:.68em;color:#4caf50;font-weight:600">KL = 0.2 ✓</div>
+    <div style="position:absolute;bottom:3px;left:14%;font-family:monospace;font-size:.58em;color:#555">−2</div>
+    <div style="position:absolute;bottom:3px;left:46%;font-family:monospace;font-size:.58em;color:#555">0</div>
+    <div style="position:absolute;bottom:3px;right:18%;font-family:monospace;font-size:.58em;color:#555">+2</div>
+  </div>
+</div>
+</div>
+
+<div class="card">
+<h3>The closed-form formula — where it comes from</h3>
+<p>Σ q(z)·log(q/p) over all z is an infinite integral. For two Gaussians it solves analytically:</p>
+<div class="math">
+<span class="line cmt">// KL(N(μ,σ²) ‖ N(0,1)) = ∫ q(z)·[log q(z) − log p(z)] dz</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Integrate each piece against q(z):</span>
+<span class="line cmt">// ∫q·[−½log(σ²)] dz   = −½log(σ²)    [constant, ∫q=1]</span>
+<span class="line cmt">// ∫q·[(z−μ)²/(2σ²)]dz = 1/2           [variance of q is σ²]</span>
+<span class="line cmt">// ∫q·[z²/2] dz        = (μ²+σ²)/2     [E[z²] = μ²+σ²]</span>
+<span class="line">&nbsp;</span>
+<span class="hl"><span class="line">KL = ½ × (σ² + μ² − 1 − log(σ²))</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Four terms:</span>
+<span class="line cmt">// σ²       → variance (want ≈ 1)</span>
+<span class="line cmt">// μ²       → how far from 0 (want μ ≈ 0)</span>
+<span class="line cmt">// −1       → baseline (KL=0 when perfect match)</span>
+<span class="line cmt">// −log(σ²) → penalizes σ→0 (log(tiny)→−∞ so −log→+∞)</span>
+</div>
+
+<div class="step-head">Plug in real numbers</div>
+<div class="math">
+<span class="line cmt">// Scenario A: encoder memorizing (μ=2.3, σ=0.01)</span>
+<span class="line cmt">// σ²=0.0001, μ²=5.29, log(σ²)=log(0.0001)=−9.21</span>
+<span class="line">KL = ½ × (<span class="val">0.0001</span> + <span class="val">5.29</span> − 1 − (<span class="val">−9.21</span>)) = ½ × 13.50 = <span class="val" style="color:#ef5350">6.75</span></span>
+<span class="line cmt">// μ²=5.29: far from 0 → big. −log(0.0001)=+9.21: σ tiny → massive.</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Scenario B: reasonable (μ=0.5, σ=0.8)</span>
+<span class="line cmt">// σ²=0.64, μ²=0.25, log(0.64)=−0.45</span>
+<span class="line">KL = ½ × (<span class="val">0.64</span> + <span class="val">0.25</span> − 1 − (<span class="val">−0.45</span>)) = ½ × 0.34 = <span class="val" style="color:#4caf50">0.17</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Scenario C: perfect match (μ=0, σ=1)</span>
+<span class="line">KL = ½ × (<span class="val">1</span> + <span class="val">0</span> − 1 − <span class="val">0</span>) = <span class="val" style="color:#4caf50">0.0</span>  <span class="cmt">// encoder IS the prior</span></span>
+</div>
+</div>
+
+<div class="card green">
+<h3>The two forces fighting each other</h3>
+<table>
+<tr><th>Force</th><th>Wants μ</th><th>Wants σ</th><th>Why</th></tr>
+<tr><td style="color:#4fc3f7">Reconstruction loss</td><td>Far apart per image</td><td>Tiny (precise)</td><td>Easier to reconstruct with exact z</td></tr>
+<tr><td style="color:#ce93d8">KL loss</td><td>Near 0</td><td>Near 1</td><td>Keep clouds near N(0,1)</td></tr>
+<tr><td style="color:#ffb74d">Compromise</td><td>Moderate spread</td><td>Medium width</td><td>Overlapping clouds, smooth latent space</td></tr>
+</table>
+<p style="margin-top:8px"><span class="key">Total VAE loss = reconstruction loss + KL loss.</span></p>
+</div>
+
+<details style="margin-top:14px">
+<summary>Appendix: why not KL(prior ‖ encoder) instead?</summary>
+<div class="card" style="margin-top:8px;border-color:rgba(255,255,255,.1)">
+<p>Your instinct from classification: p=reality, q=model, so shouldn't prior=p and encoder=q?</p>
+<p style="margin-top:8px"><strong>1. It wouldn't catch the escape.</strong> KL(prior‖encoder) = Σ p(z)·log(p/q). At z=3: p(z=3)≈0.004, so weight is tiny. penalty = 0.004 × log(0.004/0.90) ≈ −0.02. Near zero. Prior doesn't notice the encoder escaped.</p>
+<p style="margin-top:8px"><strong>2. It's not computable.</strong> KL(prior‖encoder) integrates over all z weighted by N(0,1) — infinite integral. KL(encoder‖prior) integrates over the encoder's cloud → closed-form <code>0.5×(σ²+μ²−1−log(σ²))</code>.</p>
+</div>
+</details>
+<button class="nx" onclick="go(4)">Full picture</button>
+</div>
+
+<!-- PAGE 4 -->
+<div class="page" data-t="4. Full Picture">
+<h2>The Complete VAE</h2>
+
+<div class="card blue">
+<h3>One forward pass — every step</h3>
+<div class="math">
+<span class="line cmt">// 1. INPUT</span>
+<span class="line"><span class="lbl">x</span> = [1, 1, 1, 1]  <span class="cmt">// "bright" image</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// 2. ENCODE → two numbers (not one!)</span>
+<span class="line"><span class="lbl">μ</span> = <span class="val">0.8</span>   <span class="lbl">σ</span> = <span class="val">0.3</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// 3. SAMPLE (reparameterization trick)</span>
+<span class="line"><span class="lbl">ε</span> = 0.5  <span class="cmt">// random from N(0,1)</span></span>
+<span class="line"><span class="lbl">z</span> = 0.8 + 0.3 × 0.5 = <span class="val">0.95</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// 4. DECODE</span>
+<span class="line"><span class="lbl">x̂</span> = decoder(0.95) = [0.96, 0.94, 0.93, 0.95]</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// 5. LOSSES</span>
+<span class="line"><span class="lbl">recon_loss</span> = MSE(x, x̂) = 0.003</span>
+<span class="line"><span class="lbl">kl_loss</span>    = 0.5 × (0.09 + 0.64 − 1 − (−2.41)) = 0.5 × 2.14 = 1.07</span>
+<span class="hl"><span class="line"><span class="lbl">total_loss</span> = 0.003 + 1.07 = <span class="val">1.073</span></span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// 6. BACKPROP: gradient flows through z = μ + σ*ε</span>
+<span class="line cmt">// Both encoder (μ, σ) and decoder get updated.</span>
+</div>
+</div>
+
+<div class="card green">
+<h3>After training — generation works</h3>
+<div class="math">
+<span class="line cmt">// Sample a random z from N(0, 1):</span>
+<span class="line"><span class="lbl">z</span> = 0.3  <span class="cmt">// random</span></span>
+<span class="line"><span class="lbl">new_image</span> = decoder(0.3) = [0.82, 0.79, 0.25, 0.22]</span>
+<span class="line cmt">// Smooth blend — not garbage! The decoder knows this region.</span>
+<span class="line">&nbsp;</span>
+<span class="line"><span class="lbl">z</span> = −0.5  <span class="cmt">// random</span></span>
+<span class="line"><span class="lbl">new_image</span> = decoder(−0.5) = [0.08, 0.06, 0.05, 0.07]</span>
+<span class="line cmt">// Darkish — makes sense, negative z = dark region.</span>
+</div>
+</div>
+
+<div class="card">
+<h3>Summary table</h3>
+<table>
+<tr><th></th><th>Autoencoder</th><th>VAE</th></tr>
+<tr><td>Encoder outputs</td><td>z (one number)</td><td>μ and σ (two numbers)</td></tr>
+<tr><td>z is</td><td>Deterministic</td><td>Sampled from N(μ, σ²)</td></tr>
+<tr><td>Gradient through z</td><td>Direct</td><td>Via reparam: z = μ + σε</td></tr>
+<tr><td>Loss</td><td>Reconstruction only</td><td>Reconstruction + KL</td></tr>
+<tr><td>Latent space</td><td>Dots with gaps</td><td>Overlapping clouds, smooth</td></tr>
+<tr><td>Can generate?</td><td style="color:#ef5350">No (gaps)</td><td style="color:#4caf50">Yes — sample z ~ N(0,1), decode</td></tr>
+</table>
+</div>
+</div>
+
+<script>
+const pages=document.querySelectorAll('.page'),nav=document.getElementById('nav');
+pages.forEach((p,i)=>{
+  const b=document.createElement('button');
+  b.textContent=p.dataset.t;
+  b.onclick=()=>go(i);
+  if(i===0)b.classList.add('on');
+  nav.appendChild(b);
+});
+function go(n){
+  pages.forEach((p,i)=>p.classList.toggle('on',i===n));
+  nav.querySelectorAll('button').forEach((b,i)=>{
+    b.classList.remove('on');
+    if(i<n)b.classList.add('done');
+    else b.classList.remove('done');
+    if(i===n)b.classList.add('on');
+  });
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+</script>
+</body>
+</html>

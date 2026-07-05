@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Transformer Course — Chapter 3b: RoPE</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0a0a1a;color:#e0e0e0;padding:20px 20px 80px;line-height:1.7}
+h1{text-align:center;color:#fff;margin-bottom:4px;font-size:1.5em}
+.sub{text-align:center;color:#888;margin-bottom:24px;font-size:.88em}
+.nav{display:flex;justify-content:center;gap:6px;margin-bottom:20px;flex-wrap:wrap}
+.nav button{padding:7px 13px;border:2px solid #333;background:#111;color:#888;border-radius:8px;cursor:pointer;font-size:.78em;transition:.2s}
+.nav button:hover{border-color:#555;color:#ccc}
+.nav button.on{border-color:#4fc3f7;color:#4fc3f7;background:#0d2137}
+.nav button.done{border-color:#4caf50;color:#4caf50}
+.page{display:none;max-width:860px;margin:0 auto}
+.page.on{display:block}
+.page h2{color:#4fc3f7;margin-bottom:12px;font-size:1.2em}
+.card{background:#12122a;border:1px solid #2a2a4a;border-radius:12px;padding:18px;margin-bottom:14px}
+.card.blue{border-color:#4fc3f7;background:#0d1b2a}
+.card.green{border-color:#4caf50;background:#0a1a0a}
+.card.orange{border-color:#ff9800;background:#1a1400}
+.card.red{border-color:#ef5350;background:#1a0a0a}
+.card.purple{border-color:#ce93d8;background:#1a0a2a}
+.card h3{color:#ffb74d;margin-bottom:8px;font-size:1em}
+button.nx{padding:10px 24px;background:#4caf50;color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:.9em;margin-top:14px}
+button.nx:hover{background:#66bb6a}
+table{width:100%;border-collapse:collapse;margin:10px 0}
+th,td{padding:8px 12px;border:1px solid #333;text-align:left;font-size:.85em}
+th{background:#1a1a3a;color:#4fc3f7}
+.math{background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:14px;margin:10px 0;font-family:'Fira Code',Consolas,monospace;font-size:.84em;line-height:1.9}
+.math .line{margin:2px 0;display:block}
+.math .hl{background:#264f78;padding:2px 6px;border-radius:4px;display:inline-block}
+.math .cmt{color:#6a9955}
+.math .val{color:#b5cea8}
+.math .lbl{color:#9cdcfe}
+.math .bad{color:#ef5350}
+.math .good{color:#4caf50}
+.step-head{font-size:.82em;font-weight:700;color:#4fc3f7;margin:16px 0 8px;padding-top:12px;border-top:1px solid #2a2a4a}
+.step-head:first-child{border-top:none;padding-top:0;margin-top:0}
+.vs{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:10px 0}
+@media(max-width:600px){.vs{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<a href="../index.html" style="position:fixed;top:10px;left:14px;font-size:.75em;color:#555;text-decoration:none;z-index:999;padding:4px 8px;background:#0a0a1a;border:1px solid #333;border-radius:6px;">&larr; index</a>
+
+<h1>Transformer Course — Chapter 3b: RoPE</h1>
+<p class="sub">Rotary Position Embedding — how every modern LLM encodes position</p>
+
+<div class="nav" id="nav"></div>
+
+<!-- PAGE 0: The Problem with Absolute PE -->
+<div class="page on" data-t="0. Why Not Absolute">
+<h2>What's Wrong with Absolute Positional Encoding?</h2>
+
+<div class="card">
+<h3>Recall from Ch3: sinusoidal PE adds a position vector to the token embedding</h3>
+<div class="math">
+<span class="line cmt">// Original transformer (Vaswani et al.):</span>
+<span class="line"><span class="lbl">input_to_attention</span> = token_embedding + PE(pos)</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// PE(pos) is a fixed vector — same for position 0 in every sequence.</span>
+<span class="line cmt">// The model gets position info because each position has a unique vector added.</span>
+</div>
+</div>
+
+<div class="card orange">
+<h3>Problem 1: position info gets diluted</h3>
+<div class="math">
+<span class="line cmt">// After adding PE, the token goes through layers of attention + MLP.</span>
+<span class="line cmt">// Position info is "baked in" at the start, then mixed/transformed.</span>
+<span class="line cmt">// By layer 30, how much of the original position signal remains?</span>
+<span class="line cmt">// Answer: very little. The model has to work hard to preserve it.</span>
+</div>
+</div>
+
+<div class="card orange">
+<h3>Problem 2: attention scores don't directly encode relative position</h3>
+<p>Attention computes q · k. If position is added to both:</p>
+<div class="math">
+<span class="line"><span class="lbl">q_m</span> = W_Q · (x_m + PE(m))</span>
+<span class="line"><span class="lbl">k_n</span> = W_K · (x_n + PE(n))</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// q_m · k_n expands to FOUR terms:</span>
+<span class="line">= (W_Q · x_m)·(W_K · x_n)          <span class="cmt">// content × content</span></span>
+<span class="line">+ (W_Q · x_m)·(W_K · PE(n))         <span class="cmt">// content × position</span></span>
+<span class="line">+ (W_Q · PE(m))·(W_K · x_n)         <span class="cmt">// position × content</span></span>
+<span class="line">+ (W_Q · PE(m))·(W_K · PE(n))       <span class="cmt">// position × position</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// The last term depends on ABSOLUTE positions m and n separately.</span>
+<span class="line cmt">// We want it to depend on the RELATIVE distance (m - n) only.</span>
+<span class="line cmt">// Sinusoidal PE partially achieves this (via the rotation property from Ch3),</span>
+<span class="line cmt">// but only in that last term, and only approximately.</span>
+</div>
+</div>
+
+<div class="card green">
+<h3>RoPE's idea: don't add position to the embedding — rotate Q and K</h3>
+<div class="math">
+<span class="line cmt">// RoPE approach:</span>
+<span class="line cmt">// 1. Compute Q and K from content alone (no position added to input)</span>
+<span class="line cmt">// 2. ROTATE Q and K by an angle proportional to their position</span>
+<span class="line cmt">// 3. The dot product q·k then AUTOMATICALLY depends on (m - n)</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Key insight: when you rotate two vectors and dot them,</span>
+<span class="line cmt">// the dot product only depends on the ANGLE BETWEEN them.</span>
+<span class="line cmt">// If q is rotated by m·θ and k is rotated by n·θ,</span>
+<span class="line cmt">// the angle between them is (m-n)·θ — relative position!</span>
+</div>
+</div>
+
+<button class="nx" onclick="go(1)">2D rotation</button>
+</div>
+
+<!-- PAGE 1: 2D Rotation -->
+<div class="page" data-t="1. 2D Rotation">
+<h2>2D Rotation — The Core Trick</h2>
+
+<div class="card">
+<h3>Rotating a 2D vector by angle θ</h3>
+<div class="math">
+<span class="line cmt">// A 2D vector [a, b], rotated by angle θ:</span>
+<span class="line"><span class="lbl">R(θ)</span> · [a, b] = [a·cos(θ) − b·sin(θ),  a·sin(θ) + b·cos(θ)]</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Concrete: vector [3, 4], rotate by 30° (π/6 ≈ 0.524 rad)</span>
+<span class="line"><span class="lbl">cos(0.524)</span> = <span class="val">0.866</span></span>
+<span class="line"><span class="lbl">sin(0.524)</span> = <span class="val">0.500</span></span>
+<span class="line">&nbsp;</span>
+<span class="line"><span class="lbl">R(30°)</span> · [3, 4] = [3·0.866 − 4·0.500,  3·0.500 + 4·0.866]</span>
+<span class="line">                = [2.598 − 2.000,  1.500 + 3.464]</span>
+<span class="line">                = [<span class="val">0.598</span>, <span class="val">4.964</span>]</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// The LENGTH didn't change: √(3²+4²) = 5, √(0.598²+4.964²) = 5.0</span>
+<span class="line cmt">// Only the direction changed.</span>
+</div>
+</div>
+
+<div class="card blue">
+<h3>The key property: dot product of two rotated vectors</h3>
+<div class="math">
+<span class="line cmt">// Given vectors q=[3,4] and k=[1,2]</span>
+<span class="line cmt">// Rotate q by angle α, rotate k by angle β:</span>
+<span class="line">&nbsp;</span>
+<span class="line"><span class="lbl">R(α)·q  ·  R(β)·k</span>  = q · R(α−β) · k = q · k rotated by (α−β)</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// The dot product depends ONLY on the difference (α − β).</span>
+<span class="line cmt">// Not on α alone. Not on β alone. Only on the gap between them.</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Verify with numbers: q=[3,4], k=[1,2], α=60°, β=30°</span>
+<span class="line cmt">// Difference = 30°</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Direct: R(60°)·q · R(30°)·k</span>
+<span class="line"><span class="lbl">R(60°)·q</span> = [3·0.500−4·0.866, 3·0.866+4·0.500] = [<span class="val">−1.964</span>, <span class="val">4.598</span>]</span>
+<span class="line"><span class="lbl">R(30°)·k</span> = [1·0.866−2·0.500, 1·0.500+2·0.866] = [<span class="val">−0.134</span>, <span class="val">2.232</span>]</span>
+<span class="line"><span class="lbl">dot</span>       = (−1.964)(−0.134) + (4.598)(2.232)   = 0.263 + 10.263 = <span class="val">10.526</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Equivalently: q · R(30°)·k   (just rotate k by the difference)</span>
+<span class="line"><span class="lbl">R(30°)·k</span> = [−0.134, 2.232]   <span class="cmt">// same as above</span></span>
+<span class="line"><span class="lbl">q · R(30°)·k</span> = 3·(−0.134) + 4·(2.232) = −0.402 + 8.928 = <span class="val">8.526</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Hmm, those don't match. Let me redo properly.</span>
+<span class="line cmt">// The identity is: R(α)q · R(β)k = q · R(β−α)k</span>
+<span class="line"><span class="lbl">R(β−α)·k</span> = R(−30°)·k = R(330°)·k</span>
+<span class="line">           = [1·0.866−2·(−0.500), 1·(−0.500)+2·0.866]</span>
+<span class="line">           = [<span class="val">1.866</span>, <span class="val">1.232</span>]</span>
+<span class="line"><span class="lbl">q · R(−30°)·k</span> = 3·1.866 + 4·1.232 = 5.598 + 4.928 = <span class="val">10.526</span>  ✓</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Same result: 10.526. Depends on gap (α−β) only.</span>
+</div>
+</div>
+
+<div class="card green">
+<h3>Now connect to attention: α = m·θ, β = n·θ</h3>
+<div class="math">
+<span class="line cmt">// RoPE says: rotate q at position m by angle m·θ</span>
+<span class="line cmt">//            rotate k at position n by angle n·θ</span>
+<span class="line">&nbsp;</span>
+<span class="line"><span class="lbl">score(m,n)</span> = R(m·θ)·q_m  ·  R(n·θ)·k_n</span>
+<span class="line">            = q_m · R((n−m)·θ) · k_n</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// The attention score depends on (m−n)·θ — the relative distance!</span>
+<span class="line cmt">// Position m=5 attending to position n=3: gap=2, angle=2θ</span>
+<span class="line cmt">// Position m=100 attending to position n=98: gap=2, angle=2θ — SAME</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Relative position is automatically baked into every attention score.</span>
+<span class="line cmt">// No addition to the input. No dilution over layers.</span>
+<span class="line cmt">// Applied fresh at every layer, right where attention happens.</span>
+</div>
+</div>
+
+<button class="nx" onclick="go(2)">Full 4-dim walkthrough</button>
+</div>
+
+<!-- PAGE 2: Full Walkthrough -->
+<div class="page" data-t="2. Full d=4 Walkthrough">
+<h2>RoPE on a Real Attention Head (d=4)</h2>
+
+<div class="card">
+<h3>Setup: 2 tokens, d=4 head dimension</h3>
+<div class="math">
+<span class="line cmt">// Sentence: "the cat"</span>
+<span class="line cmt">// Token 0: "the" at position m=0</span>
+<span class="line cmt">// Token 1: "cat" at position m=1</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// After W_Q and W_K projections (content only, no position yet):</span>
+<span class="line"><span class="lbl">q_0</span> = [1.0, 2.0, 3.0, 4.0]    <span class="cmt">// query for "the"</span></span>
+<span class="line"><span class="lbl">q_1</span> = [2.0, 1.0, 0.5, 1.5]    <span class="cmt">// query for "cat"</span></span>
+<span class="line"><span class="lbl">k_0</span> = [0.5, 1.5, 2.0, 0.5]    <span class="cmt">// key for "the"</span></span>
+<span class="line"><span class="lbl">k_1</span> = [1.0, 0.5, 1.0, 2.0]    <span class="cmt">// key for "cat"</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Base frequency: θ = 10000^(-2i/d) for each pair i</span>
+<span class="line cmt">// d=4 → two pairs (dims 0,1) and (dims 2,3)</span>
+<span class="line"><span class="lbl">θ_0</span> = 10000^(0/4)  = 10000^0 = <span class="val">1.0</span>       <span class="cmt">// pair 0: fast rotation</span></span>
+<span class="line"><span class="lbl">θ_1</span> = 10000^(-2/4) = 10000^(-0.5) = <span class="val">0.01</span>  <span class="cmt">// pair 1: slow rotation</span></span>
+</div>
+</div>
+
+<div class="card blue">
+<h3>Apply RoPE to q_1 (position m=1)</h3>
+<div class="math">
+<span class="line cmt">// q_1 = [2.0, 1.0, 0.5, 1.5]</span>
+<span class="line cmt">// Split into pairs: pair0=[2.0, 1.0], pair1=[0.5, 1.5]</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Rotation angles for position m=1:</span>
+<span class="line"><span class="lbl">angle_pair0</span> = m · θ_0 = 1 · 1.0 = <span class="val">1.0 rad</span> (57.3°)  <span class="cmt">// big rotation</span></span>
+<span class="line"><span class="lbl">angle_pair1</span> = m · θ_1 = 1 · 0.01 = <span class="val">0.01 rad</span> (0.57°) <span class="cmt">// tiny rotation</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Rotate pair 0 by 1.0 radian:</span>
+<span class="line"><span class="lbl">cos(1.0)</span> = <span class="val">0.540</span>,  <span class="lbl">sin(1.0)</span> = <span class="val">0.841</span></span>
+<span class="line"><span class="lbl">pair0_rotated</span> = [2.0·0.540 − 1.0·0.841,  2.0·0.841 + 1.0·0.540]</span>
+<span class="line">              = [1.080 − 0.841,  1.682 + 0.540]</span>
+<span class="line">              = [<span class="val">0.239</span>, <span class="val">2.222</span>]</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Rotate pair 1 by 0.01 radian:</span>
+<span class="line"><span class="lbl">cos(0.01)</span> = <span class="val">1.000</span>,  <span class="lbl">sin(0.01)</span> = <span class="val">0.010</span></span>
+<span class="line"><span class="lbl">pair1_rotated</span> = [0.5·1.000 − 1.5·0.010,  0.5·0.010 + 1.5·1.000]</span>
+<span class="line">              = [0.500 − 0.015,  0.005 + 1.500]</span>
+<span class="line">              = [<span class="val">0.485</span>, <span class="val">1.505</span>]</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Final RoPE'd query for "cat" at position 1:</span>
+<span class="line"><span class="hl"><span class="lbl">q̃_1</span> = [0.239, 2.222, 0.485, 1.505]</span></span>
+</div>
+</div>
+
+<div class="card blue">
+<h3>Apply RoPE to k_0 (position n=0)</h3>
+<div class="math">
+<span class="line cmt">// k_0 = [0.5, 1.5, 2.0, 0.5]</span>
+<span class="line cmt">// Rotation angles for position n=0:</span>
+<span class="line"><span class="lbl">angle_pair0</span> = 0 · 1.0 = <span class="val">0.0 rad</span>   <span class="cmt">// no rotation at position 0!</span></span>
+<span class="line"><span class="lbl">angle_pair1</span> = 0 · 0.01 = <span class="val">0.0 rad</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// cos(0)=1, sin(0)=0 → rotation by 0 is identity</span>
+<span class="line"><span class="hl"><span class="lbl">k̃_0</span> = [0.5, 1.5, 2.0, 0.5]  <span class="cmt">// unchanged at position 0</span></span></span>
+</div>
+</div>
+
+<div class="card green">
+<h3>Attention score: q̃_1 · k̃_0</h3>
+<div class="math">
+<span class="line"><span class="lbl">score(1→0)</span> = q̃_1 · k̃_0</span>
+<span class="line">            = 0.239·0.5 + 2.222·1.5 + 0.485·2.0 + 1.505·0.5</span>
+<span class="line">            = 0.120 + 3.333 + 0.970 + 0.753</span>
+<span class="line">            = <span class="val">5.175</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// This score encodes: "cat" (content) attending to "the" (content)</span>
+<span class="line cmt">// with relative distance = 1 position apart (encoded by the rotation).</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// If "cat" were at position 50 and "the" at position 49:</span>
+<span class="line cmt">// angles: q rotated by 50·θ, k rotated by 49·θ</span>
+<span class="line cmt">// difference is still 1·θ → SAME attention score</span>
+<span class="line cmt">// Relative position is translation-invariant.</span>
+</div>
+</div>
+
+<button class="nx" onclick="go(3)">Multi-frequency</button>
+</div>
+
+<!-- PAGE 3: Multi-Frequency -->
+<div class="page" data-t="3. Multi-Frequency">
+<h2>Why Multiple Frequencies (θ_0 fast, θ_1 slow)?</h2>
+
+<div class="card">
+<h3>Same idea as sinusoidal PE — different pairs see different scales</h3>
+<div class="math">
+<span class="line cmt">// With d=4, we have 2 pairs. With d=128 (real LLM), we have 64 pairs.</span>
+<span class="line cmt">// Each pair i rotates at frequency θ_i = 10000^(-2i/d)</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Pair 0 (i=0):  θ = 1.0      → full rotation every 2π ≈ 6 positions</span>
+<span class="line cmt">// Pair 1 (i=1):  θ = 0.01     → full rotation every 628 positions</span>
+<span class="line cmt">// Pair 32 (i=32): θ = 0.0001  → full rotation every 62,800 positions</span>
+<span class="line cmt">// Pair 63 (i=63): θ = 0.00001 → full rotation every 628,000 positions</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Fast pairs: distinguish pos 5 from pos 6 (local structure)</span>
+<span class="line cmt">// Slow pairs: distinguish pos 1000 from pos 5000 (global structure)</span>
+</div>
+</div>
+
+<div class="card blue">
+<h3>Position 0 vs 1: fast pair rotates a lot, slow pair barely moves</h3>
+<div class="math">
+<span class="line cmt">// At position 0: all pairs unrotated (identity)</span>
+<span class="line cmt">// At position 1:</span>
+<span class="line"><span class="lbl">pair 0</span>: rotated by 1.0 rad (57°)   <span class="cmt">// massive change</span></span>
+<span class="line"><span class="lbl">pair 1</span>: rotated by 0.01 rad (0.6°)  <span class="cmt">// barely moved</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// At position 100:</span>
+<span class="line"><span class="lbl">pair 0</span>: rotated by 100 rad ≈ 15.9 full rotations  <span class="cmt">// wrapped around many times</span></span>
+<span class="line"><span class="lbl">pair 1</span>: rotated by 1.0 rad (57°)                  <span class="cmt">// just starting to turn</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Fast pairs lose info at long range (they've wrapped around).</span>
+<span class="line cmt">// Slow pairs carry long-range position info.</span>
+<span class="line cmt">// Together: encode both local and global relative position.</span>
+</div>
+</div>
+
+<div class="card orange">
+<h3>Why this makes attention scores decay with distance</h3>
+<div class="math">
+<span class="line cmt">// q and k are rotated by different amounts.</span>
+<span class="line cmt">// The bigger the position gap (m-n), the more they're rotated apart.</span>
+<span class="line cmt">// On average, rotating two random vectors further apart → smaller dot product.</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// This gives a natural "local bias" — nearby tokens have higher attention.</span>
+<span class="line cmt">// Not a hard cutoff (like a window), but a smooth decay.</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// distance 1:  pair0 rotated 1 rad apart → mild dot product reduction</span>
+<span class="line cmt">// distance 10: pair0 rotated 10 rad apart → big dot product reduction</span>
+<span class="line cmt">// distance 100: pair0 wrapped, pair1 rotated 1 rad → some signal remains</span>
+</div>
+</div>
+
+<button class="nx" onclick="go(4)">RoPE vs others</button>
+</div>
+
+<!-- PAGE 4: Comparison + Context Extension -->
+<div class="page" data-t="4. RoPE vs Others">
+<h2>RoPE vs Other Position Methods</h2>
+
+<div class="card">
+<h3>Three approaches to position in transformers</h3>
+<table>
+<tr><th></th><th>Absolute Sinusoidal</th><th>Learned Absolute</th><th>RoPE</th></tr>
+<tr><td>Where applied</td><td>Added to input embedding, once</td><td>Added to input embedding, once</td><td>Applied to Q and K, every layer</td></tr>
+<tr><td>What it encodes</td><td>Absolute position</td><td>Absolute position</td><td>Relative position (in attention score)</td></tr>
+<tr><td>Extrapolation</td><td>Poor beyond training length</td><td>Impossible (no embedding for unseen pos)</td><td>Better (relative), but still decays</td></tr>
+<tr><td>Parameters</td><td>0 (fixed formula)</td><td>max_len × d</td><td>0 (fixed formula)</td></tr>
+<tr><td>Used by</td><td>Original transformer (2017)</td><td>BERT, GPT-2</td><td>LLaMA, GPT-NeoX, Mistral, Gemma, most modern LLMs</td></tr>
+</table>
+</div>
+
+<div class="card blue">
+<h3>Why RoPE won: applied at every layer, not just the input</h3>
+<div class="math">
+<span class="line cmt">// Absolute PE: position info added at layer 0. By layer 40, diluted.</span>
+<span class="line cmt">// RoPE: position info injected fresh at EVERY layer's attention.</span>
+<span class="line cmt">//        Layer 40 gets the same strong position signal as layer 1.</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// RoPE is applied to Q and K only (not V, not the residual stream).</span>
+<span class="line cmt">// The content representation stays clean.</span>
+<span class="line cmt">// Position only affects attention ROUTING, not the values being attended to.</span>
+</div>
+</div>
+
+<div class="card green">
+<h3>Context length extension — why RoPE enables longer sequences</h3>
+<div class="math">
+<span class="line cmt">// Problem: model trained with max 4096 positions.</span>
+<span class="line cmt">//          At inference, user gives 8192 tokens.</span>
+<span class="line cmt">//          Position 5000 was never seen during training.</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Learned absolute: position 5000 has NO embedding. Crash.</span>
+<span class="line cmt">// Sinusoidal: works numerically but model never learned patterns for pos 5000.</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// RoPE: the attention score only sees RELATIVE distance.</span>
+<span class="line cmt">//        Token at 5000 attending to token at 4999 → distance 1.</span>
+<span class="line cmt">//        The model has seen distance=1 millions of times. It works.</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// The failure mode: token at 5000 attending to token at 0 → distance 5000.</span>
+<span class="line cmt">//                  Model never saw distance=5000 in training. Degrades.</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Fix: scale the frequencies. Divide all θ by 2 → same rotation angles</span>
+<span class="line cmt">//      now span 8192 positions instead of 4096.</span>
+<span class="line cmt">// This is "NTK-aware" or "YaRN" scaling — works surprisingly well.</span>
+</div>
+</div>
+
+<div class="card purple">
+<h3>Summary</h3>
+<table>
+<tr><th>Concept</th><th>What it is</th></tr>
+<tr><td>Core idea</td><td>Rotate Q and K by position-dependent angles; dot product encodes relative distance</td></tr>
+<tr><td>Rotation pairs</td><td>d/2 pairs, each rotated at a different frequency θ_i = 10000^(-2i/d)</td></tr>
+<tr><td>Fast pairs</td><td>Encode local position (nearby tokens)</td></tr>
+<tr><td>Slow pairs</td><td>Encode global position (far-apart tokens)</td></tr>
+<tr><td>Key property</td><td>R(m·θ)·q · R(n·θ)·k depends only on (m-n), not m or n separately</td></tr>
+<tr><td>Applied where</td><td>Every layer's attention, to Q and K only (not V)</td></tr>
+<tr><td>Parameters</td><td>Zero — just a formula applied to existing Q/K vectors</td></tr>
+</table>
+</div>
+</div>
+
+<script>
+const pages=document.querySelectorAll('.page'),nav=document.getElementById('nav');
+pages.forEach((p,i)=>{const b=document.createElement('button');b.textContent=p.dataset.t;b.onclick=()=>go(i);if(i===0)b.classList.add('on');nav.appendChild(b);});
+function go(n){pages.forEach((p,i)=>p.classList.toggle('on',i===n));nav.querySelectorAll('button').forEach((b,i)=>{b.classList.remove('on');if(i<n)b.classList.add('done');else b.classList.remove('done');if(i===n)b.classList.add('on');});window.scrollTo({top:0,behavior:'smooth'});}
+</script>
+</body>
+</html>

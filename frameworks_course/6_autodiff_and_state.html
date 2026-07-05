@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Where do gradients and state live?</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0a0a1a;color:#e0e0e0;padding:20px 20px 80px;line-height:1.7}
+h1{text-align:center;color:#fff;margin-bottom:4px;font-size:1.5em}
+.sub{text-align:center;color:#888;margin-bottom:24px;font-size:.88em}
+.nav{display:flex;justify-content:center;gap:6px;margin-bottom:20px;flex-wrap:wrap}
+.nav button{padding:7px 13px;border:2px solid #333;background:#111;color:#888;border-radius:8px;cursor:pointer;font-size:.78em;transition:.2s}
+.nav button:hover{border-color:#555;color:#ccc}
+.nav button.on{border-color:#4fc3f7;color:#4fc3f7;background:#0d2137}
+.nav button.done{border-color:#4caf50;color:#4caf50}
+.page{display:none;max-width:880px;margin:0 auto}
+.page.on{display:block}
+.page h2{color:#4fc3f7;margin-bottom:12px;font-size:1.2em}
+.card{background:#12122a;border:1px solid #2a2a4a;border-radius:12px;padding:18px;margin-bottom:14px}
+.card.blue{border-color:#4fc3f7;background:#0d1b2a}
+.card.green{border-color:#4caf50;background:#0a1a0a}
+.card.orange{border-color:#ff9800;background:#1a1400}
+.card.red{border-color:#ef5350;background:#1a0a0a}
+.card.purple{border-color:#ce93d8;background:#1a0a2a}
+.card h3{color:#ffb74d;margin-bottom:8px;font-size:1em}
+button.nx{padding:10px 24px;background:#4caf50;color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:.9em;margin-top:14px}
+button.nx:hover{background:#66bb6a}
+a.nx{display:inline-block;padding:10px 24px;background:#4caf50;color:#000;border-radius:8px;font-weight:700;font-size:.9em;margin-top:14px;text-decoration:none}
+table{width:100%;border-collapse:collapse;margin:10px 0}
+th,td{padding:8px 10px;border:1px solid #333;text-align:left;font-size:.84em}
+th{background:#1a1a3a;color:#4fc3f7}
+.math{background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:14px;margin:10px 0;font-family:'Fira Code',Consolas,monospace;font-size:.84em;line-height:1.8;overflow-x:auto}
+.math .line{margin:2px 0;display:block;white-space:pre}
+.math .cmt{color:#6a9955}
+.math .val{color:#b5cea8}
+.math .lbl{color:#9cdcfe}
+.math .kw{color:#c586c0}
+.math .fn{color:#dcdcaa}
+.math.out{border-left:3px solid #4caf50;background:#0d1a12}
+.outlabel{display:block;font-size:.72em;color:#4caf50;letter-spacing:.08em;text-transform:uppercase;margin-bottom:6px}
+.key{color:#ffb74d;font-weight:600}
+.inline{font-family:'Fira Code',Consolas,monospace;background:#1a1a2e;border:1px solid #333;border-radius:4px;padding:1px 6px;font-size:.86em;color:#9cdcfe}
+.faded{color:#888;font-size:.86em}
+ul{margin-left:20px;margin-top:6px}
+li{margin:4px 0}
+details{margin-top:12px}
+details summary{cursor:pointer;color:#888;font-size:.85em;padding:8px 12px;background:#12122a;border:1px solid #333;border-radius:8px}
+details summary:hover{color:#ccc;border-color:#555}
+details[open] summary{color:#4fc3f7;border-color:#4fc3f7}
+.fw{display:inline-block;font-weight:700;padding:1px 8px;border-radius:4px;font-size:.82em;border:1px solid}
+.fw.np{color:#4fc3f7;border-color:rgba(79,195,247,.4);background:rgba(79,195,247,.08)}
+.fw.tf{color:#ff9800;border-color:rgba(255,152,0,.4);background:rgba(255,152,0,.08)}
+.fw.pt{color:#ef5350;border-color:rgba(239,83,80,.4);background:rgba(239,83,80,.08)}
+.fw.jx{color:#ce93d8;border-color:rgba(206,147,216,.4);background:rgba(206,147,216,.08)}
+</style>
+</head>
+<body>
+<a href="../index.html" style="position:fixed;top:10px;left:14px;font-size:.75em;color:#555;text-decoration:none;z-index:999;padding:4px 8px;background:#0a0a1a;border:1px solid #333;border-radius:6px;">&larr; index</a>
+
+<h1><span style="font-size:.7em;vertical-align:middle;color:#ff9800;border:1px solid rgba(255,152,0,.4);border-radius:4px;padding:1px 8px;background:rgba(255,152,0,.08);font-weight:700">Part 2</span> Where do gradients &amp; state live?</h1>
+<p class="sub">Three frameworks, three homes for ∂loss/∂w — and three philosophies of who owns your parameters, your optimizer, and your randomness.</p>
+
+<div class="nav" id="nav"></div>
+
+<!-- PAGE 0 -->
+<div class="page on" data-t="0. Three homes for -24">
+<h2>The same −24, delivered three different ways</h2>
+
+<div class="card">
+<h3>One computation, three mechanisms — all real runs</h3>
+<div class="math">
+<span class="line"><span class="cmt"># PyTorch: recording is a property OF THE TENSORS</span></span>
+<span class="line">w = torch.<span class="fn">tensor</span>(<span class="val">2.0</span>, requires_grad=<span class="kw">True</span>)   <span class="cmt"># w opts in</span></span>
+<span class="line">loss = (w*<span class="val">3.0</span> - <span class="val">10.0</span>)**<span class="val">2</span>                     <span class="cmt"># ops record silently</span></span>
+<span class="line">loss.<span class="fn">backward</span>()                              <span class="cmt"># grad DELIVERED to w.grad</span></span>
+</div>
+<div class="math">
+<span class="line"><span class="cmt"># TensorFlow: recording is a CONTEXT you open</span></span>
+<span class="line">w = tf.<span class="fn">Variable</span>(<span class="val">2.0</span>)</span>
+<span class="line"><span class="kw">with</span> tf.<span class="fn">GradientTape</span>() <span class="kw">as</span> tape:              <span class="cmt"># recording ON here</span></span>
+<span class="line">    loss = (w*<span class="val">3.0</span> - <span class="val">10.0</span>)**<span class="val">2</span></span>
+<span class="line">grad = tape.<span class="fn">gradient</span>(loss, w)                <span class="cmt"># grad RETURNED to you</span></span>
+</div>
+<div class="math">
+<span class="line"><span class="cmt"># JAX: no recording at run time at all — grad TRANSFORMS the function</span></span>
+<span class="line">f = <span class="kw">lambda</span> w: (w*<span class="val">3.0</span> - <span class="val">10.0</span>)**<span class="val">2</span></span>
+<span class="line">grad = jax.<span class="fn">grad</span>(f)(<span class="val">2.0</span>)                      <span class="cmt"># grad IS a return value</span></span>
+</div>
+<div class="math out"><span class="outlabel">output — real run, all three</span>
+<span class="line">torch   w.grad            = -24.0</span>
+<span class="line">tf      tape.gradient     = -24.0</span>
+<span class="line">jax     jax.grad(f)(2.0)  = -24.0</span>
+</div>
+</div>
+
+<div class="card blue">
+<h3>The design axis under the syntax</h3>
+<table>
+<tr><th></th><th><span class="fw pt">PyTorch</span></th><th><span class="fw tf">TensorFlow 2</span></th><th><span class="fw jx">JAX</span></th></tr>
+<tr><td>What records?</td><td>the tensors themselves (always-on for opted-in tensors)</td><td>an explicit tape context</td><td>nothing at run time — tracing happens per transform</td></tr>
+<tr><td>Scope of recording</td><td>ambient, global — <em>any</em> op on tracked tensors, anywhere</td><td>lexical — only inside the <span class="inline">with</span></td><td>the function you transformed, exactly</td></tr>
+<tr><td>Gradient arrives…</td><td>as a <span class="key">side effect</span> (mailbox <span class="inline">w.grad</span>)</td><td>as a return value</td><td>as a return value of a new function</td></tr>
+<tr><td>Differentiate w.r.t.</td><td>whatever has <span class="inline">requires_grad</span></td><td>Variables (or watched tensors)</td><td>whatever argument you point at</td></tr>
+</table>
+<p>PyTorch optimizes for <span class="key">"training loops should be short"</span> — no ceremony, gradients appear where the optimizer looks. TF optimizes for <span class="key">explicit control</span> of an eager tape bolted onto a graph system. JAX optimizes for <span class="key">math</span>: gradient-of-function is a function, so everything you know about functions (composition, mapping) applies to gradients. The next pages cash out each choice's consequences.</p>
+</div>
+<button class="nx" onclick="go(1)">Next: the consequences</button>
+</div>
+
+<!-- PAGE 1 -->
+<div class="page" data-t="1. Consequences">
+<h2>Push each design and watch where it bends</h2>
+
+<div class="card red">
+<h3>Push #1: compute the gradient twice</h3>
+<div class="math out"><span class="outlabel">output — real runs</span>
+<span class="line">torch:  after 1st backward: tensor(-24.)</span>
+<span class="line">        after 2nd backward: tensor(-48.)   &lt;- ADDED, not replaced</span>
+<span class="line"></span>
+<span class="line">tf:     1st gradient: -24.0</span>
+<span class="line">        2nd gradient: RuntimeError: A non-persistent GradientTape can only</span>
+<span class="line">                      be used to compute one set of gradients…</span>
+<span class="line"></span>
+<span class="line">jax:    grad(f)(2.0) → -24.0, every time, forever  (it's a pure function)</span>
+</div>
+<ul>
+<li><span class="fw pt">torch</span>'s mailbox <span class="key">accumulates</span> (+=) — by design, to support gradient accumulation across micro-batches — which is why <span class="inline">zero_grad()</span> is a ritual and forgetting it is the classic bug (your PyTorch Mechanics course, page 5).</li>
+<li><span class="fw tf">tf</span>'s tape frees its memory after one use unless you say <span class="inline">persistent=True</span> — explicit resource management.</li>
+<li><span class="fw jx">jax</span> has <span class="key">no state to manage</span> — nothing accumulates, nothing to zero, nothing to free. Statelessness deletes the whole bug family.</li>
+</ul>
+</div>
+
+<div class="card orange">
+<h3>Push #2: the second derivative</h3>
+<p>d²/dw² of (3w−10)² = 2·9 = <span class="key">18</span>. Watch each framework earn it:</p>
+<div class="math">
+<span class="line"><span class="cmt"># torch, classic route: differentiate the tape OF the differentiation</span></span>
+<span class="line">(g,) = torch.autograd.<span class="fn">grad</span>(loss, w, create_graph=<span class="kw">True</span>)  <span class="cmt"># keep a tape of backward!</span></span>
+<span class="line">(gg,) = torch.autograd.<span class="fn">grad</span>(g, w)</span>
+<span class="line"></span>
+<span class="line"><span class="cmt"># jax: differentiation is a function transform — apply twice</span></span>
+<span class="line">jax.<span class="fn">grad</span>(jax.<span class="fn">grad</span>(f))(<span class="val">2.0</span>)</span>
+</div>
+<div class="math out"><span class="outlabel">output — real run</span>
+<span class="line">torch create_graph route: tensor(18.)</span>
+<span class="line">torch.func compose route: tensor(18.)</span>
+<span class="line">jax compose route       : 18.0</span>
+</div>
+<p>All agree — but look at the shape of the code. Torch needs a flag (<span class="inline">create_graph</span>) that changes backward's behavior; JAX needs <em>nothing new</em>. And the middle line is the convergence story in one output: <span class="key">torch.func.grad(torch.func.grad(f))</span> — PyTorch shipped JAX's composable-transform API inside itself (upstreamed from functorch in 2.0), because for higher-order autodiff, per-sample grads and ensembling, function-transform style is simply the right call.</p>
+</div>
+
+<div class="card blue">
+<h3>Where this shows up in real work</h3>
+<ul>
+<li>Gradient penalties (WGAN-GP), meta-learning (MAML), physics-informed losses — all differentiate-through-gradients: painless in JAX / torch.func, flag-juggling with tapes.</li>
+<li>Gradient accumulation across micro-batches: <em>free</em> in torch (the mailbox +=). In JAX you write it yourself: <span class="inline">grads = tree.map(add, grads, new_grads)</span> — explicit, four extra words, zero magic.</li>
+<li>Debugging "my grads are wrong": torch — inspect <span class="inline">.grad</span> mid-loop; jax — call <span class="inline">grad(f)</span> on a toy input in a REPL, it's just a function.</li>
+</ul>
+</div>
+<button class="nx" onclick="go(2)">Next: who owns the parameters?</button>
+</div>
+
+<!-- PAGE 2 -->
+<div class="page" data-t="2. Parameters">
+<h2>Objects that own tensors vs data you pass around</h2>
+
+<div class="card">
+<h3>Ask each framework "where is the model?" — real outputs</h3>
+<div class="math out"><span class="outlabel">output — real run</span>
+<span class="line">torch: the module OWNS tensors -> {'weight': (1, 2), 'bias': (1,)}</span>
+<span class="line">tf   : the layer owns Variables -> [('kernel', (2, 1)), ('bias', (1,))]</span>
+<span class="line">jax  : params are just data     -> {'b': (1,), 'w': (2, 1)}</span>
+</div>
+<p><span class="fw pt">torch</span> and <span class="fw tf">tf</span> agree here: the model is an <span class="key">object graph</span> (Modules/Layers) holding live tensors (Parameters/Variables), discovered by traversal (<span class="inline">model.parameters()</span>). <span class="fw jx">jax</span>'s model is a <span class="key">plain nested dict of arrays</span> — the "model object," if you use Flax, is just a convenient factory and namer for that pytree.</p>
+</div>
+
+<div class="card orange">
+<h3>The optimizer follows the same split — watch both, real</h3>
+<div class="math">
+<span class="line"><span class="cmt"># torch: the optimizer holds REFERENCES to the module's tensors and OVERWRITES them</span></span>
+<span class="line">opt = torch.optim.<span class="fn">SGD</span>(lin.<span class="fn">parameters</span>(), lr=<span class="val">0.1</span>)</span>
+<span class="line">opt.<span class="fn">step</span>()                        <span class="cmt"># mutation, in place</span></span>
+<span class="line"></span>
+<span class="line"><span class="cmt"># jax/optax: pure function — old params in, new params out</span></span>
+<span class="line">updates, state = opt.<span class="fn">update</span>(grads, state)</span>
+<span class="line">new_params = optax.<span class="fn">apply_updates</span>(params, updates)</span>
+</div>
+<div class="math out"><span class="outlabel">output — real run</span>
+<span class="line">torch: step() mutated weight in place: 0.00654  ->  -0.09346</span>
+<span class="line">jax  : update() returned NEW params: 0.0 -> -0.1 | old object untouched: 0.0</span>
+</div>
+<p>Note the last clause: after the JAX update, <span class="key">the old params still exist, unchanged</span>. Whole optimizer state (Adam moments etc.) is likewise an explicit pytree you hold.</p>
+</div>
+
+<div class="card green">
+<h3>What each buys you</h3>
+<table>
+<tr><th>Situation</th><th>object-owns-state (<span class="fw pt">pt</span>/<span class="fw tf">tf</span>)</th><th>state-as-data (<span class="fw jx">jax</span>)</th></tr>
+<tr><td>everyday training loop</td><td>shortest possible code; familiar OOP</td><td>~5 extra lines of threading</td></tr>
+<tr><td>checkpoint <em>everything</em> (params + opt + RNG)</td><td>collect state_dicts from each object, hope you got all of them</td><td>it's already one pytree — serialize it</td></tr>
+<tr><td>keep 2 model versions (EMA, old/new policy in RL)</td><td>deepcopy modules, manage aliasing carefully</td><td>hold two pytrees; they can't alias, they're values</td></tr>
+<tr><td>transform the model (vmap over an ensemble, per-sample grads)</td><td>fights the object graph (torch.func has to "functionalize" modules first)</td><td>native — functions of data transform freely</td></tr>
+<tr><td>time-travel debugging ("what were params at step 100?")</td><td>you overwrote them</td><td>you probably still have them</td></tr>
+</table>
+<p>One sentence to keep: <span class="key">mutation is a convenience loan — transformation and reproducibility pay the interest.</span> JAX refuses the loan up front; PyTorch takes it and (via torch.func, FSDP's DTensor rewrites, etc.) refinances later when it needs transformability.</p>
+</div>
+<button class="nx" onclick="go(3)">Next: randomness</button>
+</div>
+
+<!-- PAGE 3 -->
+<div class="page" data-t="3. Randomness">
+<h2>Four RNG designs — who holds the dice?</h2>
+
+<div class="card">
+<h3>Same request, four dialects — real outputs</h3>
+<div class="math">
+<span class="line">np.random.<span class="fn">default_rng</span>(<span class="val">0</span>).<span class="fn">normal</span>(size=<span class="val">2</span>)          <span class="cmt"># generator OBJECT holds state</span></span>
+<span class="line">torch.<span class="fn">manual_seed</span>(<span class="val">0</span>); torch.<span class="fn">randn</span>(<span class="val">2</span>)             <span class="cmt"># hidden GLOBAL state</span></span>
+<span class="line">tf.random.<span class="fn">stateless_normal</span>([<span class="val">2</span>], seed=[<span class="val">0</span>,<span class="val">0</span>])      <span class="cmt"># seed passed in, pure</span></span>
+<span class="line">jax.random.<span class="fn">normal</span>(jax.random.<span class="fn">key</span>(<span class="val">0</span>), (<span class="val">2</span>,))       <span class="cmt"># key passed in, split to advance</span></span>
+</div>
+<div class="math out"><span class="outlabel">output — real run</span>
+<span class="line">numpy Generator      : [ 0.12573022 -0.13210486]</span>
+<span class="line">torch global seed    : [ 1.5410, -0.2934]</span>
+<span class="line">tf stateless         : [-1.697034  -0.4813767]</span>
+<span class="line">jax explicit key     : [1.6226422 2.0252647]</span>
+</div>
+</div>
+
+<div class="card blue">
+<h3>The spectrum, and why it matters</h3>
+<table>
+<tr><th>Design</th><th>State lives…</th><th>Reproducible when…</th><th>Fails when…</th></tr>
+<tr><td><span class="fw pt">torch</span> global seed <span class="faded">(also numpy legacy <span class="inline">np.random.seed</span>)</span></td><td>in a hidden global</td><td>single process, fixed call order</td><td>anything reorders calls: a new dataloader worker, a moved line, a library that also draws</td></tr>
+<tr><td><span class="fw np">numpy</span> <span class="inline">Generator</span></td><td>in an object you pass</td><td>you control who draws from it</td><td>two owners share one generator</td></tr>
+<tr><td><span class="fw tf">tf</span> stateless / <span class="fw jx">jax</span> keys</td><td>nowhere — the seed/key is an argument</td><td><span class="key">always</span> — same key, same numbers, any device count, any order</td><td>you reuse a key by accident (you get <em>identical</em> "randomness" — visible, at least)</td></tr>
+</table>
+<p>JAX had no choice: a global RNG is hidden mutable state, and Chapter 4 established that tracing + parallelism can't tolerate hidden state. But notice <span class="fw tf">TF</span> quietly ships the same stateless design, and torch added passable <span class="inline">Generator</span> objects too — <span class="key">everyone drifts toward explicit randomness as they scale</span>; JAX just starts there and refuses the training wheels.</p>
+</div>
+<button class="nx" onclick="go(4)">Next: the scoreboard</button>
+</div>
+
+<!-- PAGE 4 -->
+<div class="page" data-t="4. Scoreboard">
+<h2>Part 2 so far, on one card</h2>
+
+<div class="card">
+<h3>The honest scoreboard</h3>
+<table>
+<tr><th></th><th><span class="fw np">NumPy</span></th><th><span class="fw tf">TensorFlow 2</span></th><th><span class="fw pt">PyTorch</span></th><th><span class="fw jx">JAX</span></th></tr>
+<tr><td>execution</td><td>eager, always</td><td>eager + tf.function traces</td><td>eager + optional bytecode compile</td><td>traced &amp; compiled by default habit</td></tr>
+<tr><td>autodiff</td><td>none (by design)</td><td>explicit tape context</td><td>ambient tape on tensors → mailboxes</td><td>function transform (also fwd-mode, grad-of-grad free)</td></tr>
+<tr><td>params</td><td>your variables</td><td>Variables in Layer objects</td><td>Parameters in Module objects</td><td>pytrees of arrays</td></tr>
+<tr><td>optimizer</td><td>you</td><td>mutates Variables</td><td>mutates Parameters</td><td>pure: returns new params</td></tr>
+<tr><td>randomness</td><td>Generator objects</td><td>stateful + stateless APIs</td><td>global seed (+ Generators)</td><td>explicit split keys only</td></tr>
+<tr><td>control flow</td><td colspan="1">just Python</td><td>AutoGraph rewrites</td><td>just Python (compile: graph breaks)</td><td>where/cond/scan primitives</td></tr>
+<tr><td>failure style</td><td>loud &amp; local</td><td>trace-time surprises</td><td>quiet wrong grads if you fight the tape; else local</td><td>loud at trace time; cryptic inside jit</td></tr>
+<tr><td>superpower</td><td>universality</td><td>ship-anywhere artifacts</td><td>ecosystem + frictionless research</td><td>transformations + compiler scaling</td></tr>
+</table>
+</div>
+
+<div class="card purple">
+<h3>The one-sentence synthesis</h3>
+<p>Every row is the same underlying trade: <span class="key">implicit, stateful designs make the common case short; explicit, functional designs make the extreme case possible.</span> PyTorch chose the first and retrofits the second (torch.func, compile, DTensor); JAX chose the second and papers over the first (Flax NNX brings object-feel back); TF tried to move from one to the other mid-flight and paid with two incompatible eras; NumPy stays out of the fight by doing one thing.</p>
+<p class="faded">You now have the full design map. Next: turn it into decisions — hardware, deployment, scale, and "what should I actually use in 2026?"</p>
+</div>
+<a class="nx" href="7_choosing.html">Next chapter: choosing — the use-case map →</a>
+</div>
+
+<script>
+const pages=document.querySelectorAll('.page'),nav=document.getElementById('nav');
+pages.forEach((p,i)=>{
+  const b=document.createElement('button');
+  b.textContent=p.dataset.t;
+  b.onclick=()=>go(i);
+  if(i===0)b.classList.add('on');
+  nav.appendChild(b);
+});
+function go(n){
+  pages.forEach((p,i)=>p.classList.toggle('on',i===n));
+  nav.querySelectorAll('button').forEach((b,i)=>{
+    b.classList.remove('on');
+    if(i<n)b.classList.add('done');
+    else b.classList.remove('done');
+    if(i===n)b.classList.add('on');
+  });
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+</script>
+</body>
+</html>

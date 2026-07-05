@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Transformer Ch4: The Full Encoder Block</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0a0a1a;color:#e0e0e0;padding:20px 20px 80px;line-height:1.7}
+h1{text-align:center;color:#fff;margin-bottom:4px;font-size:1.5em}
+.sub{text-align:center;color:#888;margin-bottom:24px;font-size:.88em}
+.nav{display:flex;justify-content:center;gap:6px;margin-bottom:20px;flex-wrap:wrap}
+.nav button{padding:7px 13px;border:2px solid #333;background:#111;color:#888;border-radius:8px;cursor:pointer;font-size:.78em;transition:.2s}
+.nav button:hover{border-color:#555;color:#ccc}
+.nav button.on{border-color:#4fc3f7;color:#4fc3f7;background:#0d2137}
+.nav button.done{border-color:#4caf50;color:#4caf50}
+.page{display:none;max-width:860px;margin:0 auto}
+.page.on{display:block}
+.page h2{color:#4fc3f7;margin-bottom:12px;font-size:1.2em}
+.card{background:#12122a;border:1px solid #2a2a4a;border-radius:12px;padding:18px;margin-bottom:14px}
+.card.blue{border-color:#4fc3f7;background:#0d1b2a}
+.card.green{border-color:#4caf50;background:#0a1a0a}
+.card.orange{border-color:#ff9800;background:#1a1400}
+.card.red{border-color:#ef5350;background:#1a0a0a}
+.card.purple{border-color:#ce93d8;background:#1a0a2a}
+.card h3{color:#ffb74d;margin-bottom:8px;font-size:1em}
+button.nx{padding:10px 24px;background:#4caf50;color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:.9em;margin-top:14px}
+button.nx:hover{background:#66bb6a}
+table{width:100%;border-collapse:collapse;margin:10px 0}
+th,td{padding:8px 12px;border:1px solid #333;text-align:center;font-size:.88em}
+th{background:#1a1a3a;color:#4fc3f7}
+td{text-align:left}
+.math{background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:14px;margin:10px 0;font-family:'Fira Code',Consolas,monospace;font-size:.85em;line-height:1.8}
+.math .line{margin:2px 0;display:block}
+.math .hl{background:#264f78;padding:2px 6px;border-radius:4px;display:inline-block}
+.math .cmt{color:#6a9955}
+.math .val{color:#b5cea8}
+.math .lbl{color:#9cdcfe}
+.key{color:#ffb74d;font-weight:600}
+.vs{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:10px 0}
+@media(max-width:650px){.vs{grid-template-columns:1fr}}
+.flow{display:flex;flex-direction:column;align-items:center;gap:4px;margin:14px 0}
+.flow-box{padding:10px 20px;border-radius:8px;text-align:center;font-size:.88em;font-weight:600;min-width:200px}
+.flow-arrow{color:#4fc3f7;font-size:1.3em}
+</style>
+</head>
+<body>
+<a href="../index.html" style="position:fixed;top:10px;left:14px;font-size:.75em;color:#555;text-decoration:none;z-index:999;padding:4px 8px;background:#0a0a1a;border:1px solid #333;border-radius:6px;">&larr; index</a>
+
+<h1>Transformer Ch4: The Full Encoder Block</h1>
+<p class="sub">MHA + FFN + LayerNorm + residuals — why each exists</p>
+
+<div class="nav" id="nav"></div>
+
+<!-- PAGE 0 -->
+<div class="page on" data-t="0. The Full Block">
+<h2>0. The Full Encoder Block</h2>
+
+<div class="card blue">
+<h3>The complete data flow</h3>
+<div class="flow">
+  <div class="flow-box" style="background:#1a1a3a;border:2px solid #4fc3f7;color:#4fc3f7">Input x (T × 512)</div>
+  <div class="flow-arrow">↓</div>
+  <div class="flow-box" style="background:#1a2a1a;border:2px solid #4caf50;color:#4caf50">LayerNorm(x)</div>
+  <div class="flow-arrow">↓</div>
+  <div class="flow-box" style="background:#1a1a3a;border:2px solid #4fc3f7;color:#4fc3f7">Multi-Head Attention → output</div>
+  <div class="flow-arrow">↓</div>
+  <div class="flow-box" style="background:#3a2a0a;border:2px solid #ff9800;color:#ff9800">Residual: x = x + output</div>
+  <div class="flow-arrow">↓</div>
+  <div class="flow-box" style="background:#1a2a1a;border:2px solid #4caf50;color:#4caf50">LayerNorm(x)</div>
+  <div class="flow-arrow">↓</div>
+  <div class="flow-box" style="background:#2a0a2a;border:2px solid #ce93d8;color:#ce93d8">FFN: 512 → 2048 → 512</div>
+  <div class="flow-arrow">↓</div>
+  <div class="flow-box" style="background:#3a2a0a;border:2px solid #ff9800;color:#ff9800">Residual: x = x + ffn_output</div>
+  <div class="flow-arrow">↓</div>
+  <div class="flow-box" style="background:#1a1a3a;border:2px solid #4fc3f7;color:#4fc3f7">Output (T × 512)</div>
+</div>
+<p style="text-align:center;color:#888;font-size:.85em">Repeat N times (N=6 in original paper, N=12 in BERT-base, N=96 in GPT-3)</p>
+</div>
+
+<div class="card">
+<h3>Concrete sizes (original Transformer)</h3>
+<table>
+<tr><th>Component</th><th>Input shape</th><th>Output shape</th><th>Parameters</th></tr>
+<tr><td>MHA (h=8, d_k=64)</td><td>T × 512</td><td>T × 512</td><td>~1M</td></tr>
+<tr><td>LayerNorm</td><td>T × 512</td><td>T × 512</td><td>1024 (γ and β)</td></tr>
+<tr><td>FFN (d_ff=2048)</td><td>T × 512</td><td>T × 512</td><td>~2M</td></tr>
+<tr><td><span class="key">One encoder block</span></td><td>T × 512</td><td>T × 512</td><td><span class="key">~3M</span></td></tr>
+<tr><td><span class="key">6 encoder blocks</span></td><td>T × 512</td><td>T × 512</td><td><span class="key">~18M</span></td></tr>
+</table>
+</div>
+
+<button class="nx" onclick="go(1)">Next: LayerNorm →</button>
+</div>
+
+<!-- PAGE 1 -->
+<div class="page" data-t="1. LayerNorm">
+<h2>1. LayerNorm — Why Not BatchNorm?</h2>
+
+<div class="card red">
+<h3>BatchNorm's problem for transformers</h3>
+<p>BatchNorm normalizes across the batch dimension for each feature. For sequences this creates two problems:</p>
+<ul style="margin-left:16px;margin-top:8px">
+<li><span class="key">Variable length:</span> different sentences have different lengths. Padding complicates statistics.</li>
+<li><span class="key">Small batch size:</span> language models often use batch size 1-8. With tiny batches, mean/variance estimates are noisy.</li>
+<li><span class="key">Autoregressive generation:</span> at inference, batch size is 1. BatchNorm statistics are meaningless.</li>
+</ul>
+</div>
+
+<div class="card blue">
+<h3>LayerNorm: normalize each token independently</h3>
+<p>For each token, compute mean and std across its d_model features, then normalize:</p>
+<div class="math">
+  <span class="line"><span class="lbl">μ</span> = mean(x)  <span class="cmt">// mean across the d_model features of this one token</span></span>
+  <span class="line"><span class="lbl">σ</span> = std(x)   <span class="cmt">// std across the d_model features of this one token</span></span>
+  <span class="line"><span class="lbl">x_norm</span> = (x - μ) / (σ + ε)</span>
+  <span class="line"><span class="lbl">output</span> = γ · x_norm + β  <span class="cmt">// γ and β are learned scalars</span></span>
+</div>
+<p style="margin-top:8px">No cross-batch or cross-position statistics. Works perfectly with any batch size, any sequence length.</p>
+</div>
+
+<div class="card orange">
+<h3>Worked example: one token with d_model=4</h3>
+<div class="math">
+  <span class="line"><span class="lbl">x</span> = [<span class="val">3</span>, <span class="val">-1</span>, <span class="val">2</span>, <span class="val">0</span>]</span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// Step 1: compute mean</span></span>
+  <span class="line"><span class="lbl">μ</span> = (3 + (-1) + 2 + 0) / 4 = <span class="val">4</span>/<span class="val">4</span> = <span class="hl">1.0</span></span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// Step 2: compute variance, then std</span></span>
+  <span class="line"><span class="lbl">var</span> = [(3-1)² + (-1-1)² + (2-1)² + (0-1)²] / 4</span>
+  <span class="line">    = [4 + 4 + 1 + 1] / 4 = <span class="val">10/4</span> = <span class="val">2.5</span></span>
+  <span class="line"><span class="lbl">σ</span> = sqrt(2.5) = <span class="hl">1.581</span></span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// Step 3: normalize each element</span></span>
+  <span class="line"><span class="lbl">x_norm[0]</span> = (3 - 1) / 1.581 = 2.0 / 1.581 = <span class="hl">1.265</span></span>
+  <span class="line"><span class="lbl">x_norm[1]</span> = (-1 - 1) / 1.581 = -2.0 / 1.581 = <span class="hl">-1.265</span></span>
+  <span class="line"><span class="lbl">x_norm[2]</span> = (2 - 1) / 1.581 = 1.0 / 1.581 = <span class="hl">0.632</span></span>
+  <span class="line"><span class="lbl">x_norm[3]</span> = (0 - 1) / 1.581 = -1.0 / 1.581 = <span class="hl">-0.632</span></span>
+  <span class="line"></span>
+  <span class="line"><span class="lbl">x_norm</span> = [<span class="val">1.265</span>, <span class="val">-1.265</span>, <span class="val">0.632</span>, <span class="val">-0.632</span>]</span>
+  <span class="line"><span class="cmt">// mean ≈ 0, std ≈ 1 ✓</span></span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// Step 4: scale and shift (γ=1, β=0 initially)</span></span>
+  <span class="line"><span class="lbl">output</span> = <span class="val">1</span>·x_norm + <span class="val">0</span> = [<span class="hl">1.265</span>, <span class="hl">-1.265</span>, <span class="hl">0.632</span>, <span class="hl">-0.632</span>]</span>
+</div>
+</div>
+
+<button class="nx" onclick="go(2)">Next: Residual Connections →</button>
+</div>
+
+<!-- PAGE 2 -->
+<div class="page" data-t="2. Residuals">
+<h2>2. Residual Connections</h2>
+
+<div class="card blue">
+<h3>The formula</h3>
+<div class="math">
+  <span class="line"><span class="lbl">output</span> = x + <span class="val">Sublayer</span>(x)</span>
+  <span class="line"><span class="cmt">// The input x is added to the sublayer's output</span></span>
+  <span class="line"><span class="cmt">// Introduced by ResNet (2015), adopted by transformers</span></span>
+</div>
+</div>
+
+<div class="card orange">
+<h3>Why? Gradient flow</h3>
+<p>In a deep network without residuals, gradients must pass through every layer during backprop. Each layer multiplies the gradient by its Jacobian. After N layers:</p>
+<div class="math">
+  <span class="line"><span class="cmt">// Gradient at layer 0 (without residuals):</span></span>
+  <span class="line"><span class="lbl">grad_0</span> = J_N · J_{N-1} · ... · J_1 · grad_N</span>
+  <span class="line"><span class="cmt">// If each Jacobian norm is 0.9: 0.9^96 ≈ 0.000005 → vanishes!</span></span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// With residual: output = x + f(x), so gradient includes +1 path:</span></span>
+  <span class="line"><span class="lbl">d(output)/dx</span> = <span class="val">1</span> + d(f(x))/dx</span>
+  <span class="line"><span class="cmt">// The "1" is an identity shortcut — gradient can always flow</span></span>
+  <span class="line"><span class="cmt">// Even if d(f(x))/dx ≈ 0, gradient ≈ 1 still passes through</span></span>
+</div>
+</div>
+
+<div class="card green">
+<h3>The "if MHA learned nothing" argument</h3>
+<p>Suppose MHA at some layer learned essentially nothing useful (W_Q, W_K, W_V ≈ 0). Then MHA(x) ≈ 0.</p>
+<div class="math">
+  <span class="line"><span class="cmt">// Without residual:</span></span>
+  <span class="line"><span class="lbl">output</span> = <span class="val">MHA(x)</span> ≈ <span class="val">0</span>  <span class="cmt">// information destroyed!</span></span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// With residual:</span></span>
+  <span class="line"><span class="lbl">output</span> = x + <span class="val">MHA(x)</span> ≈ x + <span class="val">0</span> = <span class="hl">x</span>  <span class="cmt">// information preserved!</span></span>
+</div>
+<p style="margin-top:8px">Residuals make each layer's job easier: <span class="key">just learn the residual correction</span>, not the full transformation. An "identity function" is trivially learnable (set all weights to 0).</p>
+</div>
+
+<div class="card">
+<h3>Depth enabled by residuals</h3>
+<p>Without residuals: training reliably to 6 layers is hard, 12 layers extremely hard, 96 layers (GPT-3) essentially impossible with SGD.</p>
+<p style="margin-top:8px">With residuals: GPT-3 has 96 layers. PaLM has 118 layers. Residual connections are what make depth achievable.</p>
+</div>
+
+<button class="nx" onclick="go(3)">Next: FFN →</button>
+</div>
+
+<!-- PAGE 3 -->
+<div class="page" data-t="3. FFN">
+<h2>3. Feed-Forward Network</h2>
+
+<div class="card blue">
+<h3>Structure: two linear layers with a nonlinearity</h3>
+<div class="math">
+  <span class="line"><span class="lbl">FFN(x)</span> = max(0, x · W_1 + b_1) · W_2 + b_2</span>
+  <span class="line"><span class="cmt">// W_1: d_model × d_ff   (e.g., 512 × 2048)</span></span>
+  <span class="line"><span class="cmt">// W_2: d_ff × d_model   (e.g., 2048 × 512)</span></span>
+  <span class="line"><span class="cmt">// ReLU in original paper; GELU used in BERT and most modern models</span></span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// Parameters:</span></span>
+  <span class="line"><span class="lbl">W_1</span> = <span class="val">512</span>×<span class="val">2048</span> = <span class="val">1,048,576</span></span>
+  <span class="line"><span class="lbl">W_2</span> = <span class="val">2048</span>×<span class="val">512</span> = <span class="val">1,048,576</span></span>
+  <span class="line"><span class="lbl">total</span> = <span class="hl">~2M per block</span></span>
+</div>
+</div>
+
+<div class="card orange">
+<h3>Worked example: one token, tiny sizes</h3>
+<div class="math">
+  <span class="line"><span class="cmt">// d_model=2, d_ff=4 (illustrative)</span></span>
+  <span class="line"><span class="lbl">x</span> = [<span class="val">0.5</span>, <span class="val">-0.3</span>]</span>
+  <span class="line"></span>
+  <span class="line"><span class="lbl">W_1</span> = [[<span class="val">1</span>, <span class="val">2</span>, <span class="val">-1</span>, <span class="val">0.5</span>],  <span class="cmt">// 2×4</span></span>
+  <span class="line">         [<span class="val">0</span>, <span class="val">1</span>, <span class="val">2</span>,  <span class="val">-1</span>  ]]</span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// Step 1: x · W_1</span></span>
+  <span class="line"><span class="lbl">h[0]</span> = <span class="val">0.5</span>·<span class="val">1</span>  + (-<span class="val">0.3</span>)·<span class="val">0</span>  = <span class="val">0.50</span></span>
+  <span class="line"><span class="lbl">h[1]</span> = <span class="val">0.5</span>·<span class="val">2</span>  + (-<span class="val">0.3</span>)·<span class="val">1</span>  = <span class="val">0.70</span></span>
+  <span class="line"><span class="lbl">h[2]</span> = <span class="val">0.5</span>·(-<span class="val">1</span>) + (-<span class="val">0.3</span>)·<span class="val">2</span>  = <span class="val">-1.10</span></span>
+  <span class="line"><span class="lbl">h[3]</span> = <span class="val">0.5</span>·<span class="val">0.5</span> + (-<span class="val">0.3</span>)·(-<span class="val">1</span>) = <span class="val">0.55</span></span>
+  <span class="line"><span class="lbl">h</span> = [<span class="val">0.50</span>, <span class="val">0.70</span>, <span class="val">-1.10</span>, <span class="val">0.55</span>]</span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// Step 2: ReLU — zero out negatives</span></span>
+  <span class="line"><span class="lbl">h_relu</span> = [<span class="hl">0.50</span>, <span class="hl">0.70</span>, <span class="hl">0.00</span>, <span class="hl">0.55</span>]  <span class="cmt">// -1.10 zeroed</span></span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// Step 3: project back</span></span>
+  <span class="line"><span class="lbl">W_2</span> = [[<span class="val">1</span>, <span class="val">0</span>], [<span class="val">0</span>, <span class="val">1</span>], [<span class="val">1</span>, <span class="val">0</span>], [<span class="val">0</span>, <span class="val">1</span>]]  <span class="cmt">// 4×2</span></span>
+  <span class="line"><span class="lbl">out[0]</span> = <span class="val">0.50</span>·<span class="val">1</span> + <span class="val">0.70</span>·<span class="val">0</span> + <span class="val">0.00</span>·<span class="val">1</span> + <span class="val">0.55</span>·<span class="val">0</span> = <span class="val">0.50</span></span>
+  <span class="line"><span class="lbl">out[1]</span> = <span class="val">0.50</span>·<span class="val">0</span> + <span class="val">0.70</span>·<span class="val">1</span> + <span class="val">0.00</span>·<span class="val">0</span> + <span class="val">0.55</span>·<span class="val">1</span> = <span class="val">1.25</span></span>
+  <span class="line"><span class="lbl">FFN(x)</span> = [<span class="hl">0.50</span>, <span class="hl">1.25</span>]</span>
+</div>
+</div>
+
+<div class="card blue">
+<h3>Why expand to 4× d_model?</h3>
+<p><span class="key">MHA's job:</span> mix information <em>across positions</em>. After MHA, token i has incorporated context from other tokens.</p>
+<p style="margin-top:8px"><span class="key">FFN's job:</span> process each position <em>independently</em>. It applies the same transformation to every token's vector. This is where the model stores factual knowledge and does computation on individual token representations.</p>
+<p style="margin-top:8px">The 4× expansion (d_model → 4·d_model) creates a "thinking space" — more hidden dimensions = more capacity to represent complex token-level transformations. Modern LLMs often use 8/3 × d_model with SwiGLU activation instead of ReLU.</p>
+</div>
+
+<button class="nx" onclick="go(4)">Next: Pre-LN vs Post-LN →</button>
+</div>
+
+<!-- PAGE 4 -->
+<div class="page" data-t="4. Pre-LN vs Post-LN">
+<h2>4. Pre-LN vs Post-LN</h2>
+
+<div class="vs">
+<div class="card red">
+<h3>Post-LN (original paper)</h3>
+<div class="math" style="font-size:.78em">
+  <span class="line"><span class="lbl">x1</span> = <span class="hl">LayerNorm</span>(x + MHA(x))</span>
+  <span class="line"><span class="lbl">x2</span> = <span class="hl">LayerNorm</span>(x1 + FFN(x1))</span>
+  <span class="line"><span class="cmt">// LN applied AFTER the residual add</span></span>
+</div>
+<p style="margin-top:8px"><span class="key">Problem:</span> the residual path passes through LN. This disrupts the clean gradient highway. At the start of training, when layers aren't yet useful, gradients still go through LN's normalization. Unstable; often needs careful warmup scheduling (linear warmup for thousands of steps) to not diverge.</p>
+</div>
+<div class="card green">
+<h3>Pre-LN (GPT-2, modern standard)</h3>
+<div class="math" style="font-size:.78em">
+  <span class="line"><span class="lbl">x1</span> = x + MHA(<span class="hl">LayerNorm</span>(x))</span>
+  <span class="line"><span class="lbl">x2</span> = x1 + FFN(<span class="hl">LayerNorm</span>(x1))</span>
+  <span class="line"><span class="cmt">// LN applied BEFORE the sublayer</span></span>
+</div>
+<p style="margin-top:8px"><span class="key">Benefit:</span> the residual path is completely clean — the raw signal x passes through unchanged. Gradients always have a direct path to early layers. Training is more stable and requires less warmup. Nearly all post-2019 models (GPT-2, GPT-3, Llama, Mistral) use Pre-LN.</p>
+</div>
+</div>
+
+<div class="card orange">
+<h3>Gradient flow comparison</h3>
+<div class="math">
+  <span class="line"><span class="cmt">// Gradient of output w.r.t. x (simplified):</span></span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// Post-LN:</span></span>
+  <span class="line"><span class="lbl">d(x2)/dx</span> = d(LN(x1+FFN(x1)))/dx</span>
+  <span class="line"><span class="cmt">// Gradient must pass through LN — can be scaled/distorted</span></span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// Pre-LN:</span></span>
+  <span class="line"><span class="lbl">d(x2)/dx</span> = 1 + d(FFN(LN(x1)))/dx</span>
+  <span class="line"><span class="cmt">// The "1" is a clean gradient path — always at least 1 ✓</span></span>
+</div>
+</div>
+
+<div class="card blue">
+<h3>One more variant: RMSNorm</h3>
+<p>Modern models (Llama, Gemma) often replace LayerNorm with <span class="key">RMSNorm</span> — normalizes by root-mean-square rather than mean-centered std. No mean subtraction needed.</p>
+<div class="math">
+  <span class="line"><span class="lbl">RMSNorm(x)</span> = x / sqrt(mean(x²) + ε) · γ</span>
+  <span class="line"><span class="cmt">// Faster (no mean computation), often same or better quality</span></span>
+  <span class="line"><span class="cmt">// Example: Llama-3, Mistral, Gemma all use RMSNorm</span></span>
+</div>
+</div>
+</div>
+
+<script>
+const pages=document.querySelectorAll('.page'),nav=document.getElementById('nav');
+pages.forEach((p,i)=>{const b=document.createElement('button');b.textContent=p.dataset.t;b.onclick=()=>go(i);if(i===0)b.classList.add('on');nav.appendChild(b);});
+function go(n){pages.forEach((p,i)=>p.classList.toggle('on',i===n));nav.querySelectorAll('button').forEach((b,i)=>{b.classList.remove('on');if(i<n)b.classList.add('done');else b.classList.remove('done');if(i===n)b.classList.add('on');});window.scrollTo({top:0,behavior:'smooth'});}
+</script>
+</body>
+</html>

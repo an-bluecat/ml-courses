@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Training Dynamics Ch4: Gradient Flow</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0a0a1a;color:#e0e0e0;padding:20px 20px 80px;line-height:1.7}
+h1{text-align:center;color:#fff;margin-bottom:4px;font-size:1.5em}
+.sub{text-align:center;color:#888;margin-bottom:24px;font-size:.88em}
+.nav{display:flex;justify-content:center;gap:6px;margin-bottom:20px;flex-wrap:wrap}
+.nav button{padding:7px 13px;border:2px solid #333;background:#111;color:#888;border-radius:8px;cursor:pointer;font-size:.78em;transition:.2s}
+.nav button:hover{border-color:#555;color:#ccc}
+.nav button.on{border-color:#4fc3f7;color:#4fc3f7;background:#0d2137}
+.nav button.done{border-color:#4caf50;color:#4caf50}
+.page{display:none;max-width:860px;margin:0 auto}
+.page.on{display:block}
+.page h2{color:#4fc3f7;margin-bottom:12px;font-size:1.2em}
+.card{background:#12122a;border:1px solid #2a2a4a;border-radius:12px;padding:18px;margin-bottom:14px}
+.card.blue{border-color:#4fc3f7;background:#0d1b2a}
+.card.green{border-color:#4caf50;background:#0a1a0a}
+.card.orange{border-color:#ff9800;background:#1a1400}
+.card.red{border-color:#ef5350;background:#1a0a0a}
+.card.purple{border-color:#ce93d8;background:#1a0a2a}
+.card h3{color:#ffb74d;margin-bottom:8px;font-size:1em}
+button.nx{padding:10px 24px;background:#4caf50;color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:.9em;margin-top:14px}
+button.nx:hover{background:#66bb6a}
+table{width:100%;border-collapse:collapse;margin:10px 0}
+th,td{padding:8px 12px;border:1px solid #333;text-align:center;font-size:.88em}
+th{background:#1a1a3a;color:#4fc3f7}
+td{text-align:left}
+.math{background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:14px;margin:10px 0;font-family:'Fira Code',Consolas,monospace;font-size:.85em;line-height:1.8}
+.math .line{margin:2px 0;display:block}
+.math .hl{background:#264f78;padding:2px 6px;border-radius:4px;display:inline-block}
+.math .cmt{color:#6a9955}
+.math .val{color:#b5cea8}
+.math .lbl{color:#9cdcfe}
+.key{color:#ffb74d;font-weight:600}
+.vs{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:10px 0}
+@media(max-width:650px){.vs{grid-template-columns:1fr}}
+/* layer diagram */
+.layer-stack{display:flex;flex-direction:column;gap:4px;margin:14px 0;align-items:center}
+.layer-box{border-radius:6px;padding:6px 18px;font-size:.78em;text-align:center;border:1px solid;width:200px}
+.layer-arrow{color:#555;font-size:.85em;text-align:center}
+</style>
+</head>
+<body>
+<a href="../index.html" style="position:fixed;top:10px;left:14px;font-size:.75em;color:#555;text-decoration:none;z-index:999;padding:4px 8px;background:#0a0a1a;border:1px solid #333;border-radius:6px;">&larr; index</a>
+
+<h1>Training Dynamics Ch4: Gradient Flow</h1>
+<p class="sub">Why deep networks are hard to train — and how residuals and normalization fix it</p>
+
+<div class="nav" id="nav"></div>
+
+<!-- PAGE 0 -->
+<div class="page on" data-t="0. Vanishing Grads">
+<h2>Vanishing Gradients — Layers That Stop Learning</h2>
+
+<div class="card blue">
+<h3>Backprop multiplies gradients through layers</h3>
+<p>To update layer 1 in a 10-layer network, the gradient flows backward through all 10 layers. At each layer, the gradient is multiplied by the Jacobian of that layer. If each Jacobian has spectral norm less than 1, the gradient shrinks exponentially.</p>
+<div class="math">
+<span class="line cmt">// Gradient at layer k = product of all Jacobians from output to layer k</span>
+<span class="line"><span class="lbl">grad_at_layer_1</span> = J₁₀ × J₉ × J₈ × ... × J₁ × grad_output</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// If each |Jₖ| ≈ 0.9 (slight shrinkage per layer):</span>
+<span class="line"><span class="lbl">|grad at layer 1|</span> ≈ 0.9^10 × |grad_output|</span>
+<span class="line">                   = <span class="val">0.349</span> × |grad_output|  <span class="cmt">// 65% lost</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// If each |Jₖ| ≈ 0.5 (more aggressive shrinkage):</span>
+<span class="line"><span class="lbl">|grad at layer 1|</span> ≈ 0.5^10 × |grad_output|</span>
+<span class="line">                   = <span class="val">0.001</span> × |grad_output|  <span class="cmt">// 99.9% lost!</span></span>
+</div>
+</div>
+
+<div class="card">
+<h3>Gradient shrinkage by depth — norm=0.9 vs norm=0.5</h3>
+<table>
+<tr><th>Layer from output</th><th>Grad (norm=0.9)</th><th>Grad (norm=0.5)</th><th>Update size</th></tr>
+<tr><td>Layer 10 (near output)</td><td>1.000</td><td>1.000</td><td>Normal</td></tr>
+<tr><td>Layer 8</td><td>0.9² = 0.810</td><td>0.5² = 0.250</td><td>Somewhat reduced</td></tr>
+<tr><td>Layer 5</td><td>0.9⁵ = 0.590</td><td>0.5⁵ = 0.031</td><td>Much reduced</td></tr>
+<tr><td>Layer 2</td><td>0.9⁸ = 0.430</td><td>0.5⁸ = 0.004</td><td>Tiny</td></tr>
+<tr><td>Layer 1 (input)</td><td>0.9¹⁰ = 0.349</td><td>0.5¹⁰ = 0.001</td><td style="color:#ef5350">Effectively zero</td></tr>
+</table>
+<p style="margin-top:8px">With norm=0.5 at 10 layers: layer 1 gets a gradient 1000× smaller than layer 10. At lr=0.001, layer 10 moves by 0.001 while layer 1 moves by 0.000001. The early layers barely change — they're frozen in place from initialization.</p>
+</div>
+
+<div class="card orange">
+<h3>Why sigmoid activations caused the original vanishing problem</h3>
+<div class="math">
+<span class="line cmt">// sigmoid(x) = 1 / (1 + exp(-x))</span>
+<span class="line cmt">// gradient of sigmoid: σ'(x) = σ(x) × (1 − σ(x))</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// At x=0 (best case):</span>
+<span class="line"><span class="lbl">σ'(0)</span> = 0.5 × 0.5 = <span class="val">0.25</span>   <span class="cmt">// max gradient is only 0.25!</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// At x=3 (saturated):</span>
+<span class="line"><span class="lbl">σ'(3)</span> = 0.95 × 0.05 = <span class="val">0.048</span>  <span class="cmt">// nearly zero</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// 10 sigmoid layers, all at x=0:</span>
+<span class="line"><span class="lbl">grad multiplied</span> = 0.25^10 = <span class="val">0.000001</span>  <span class="cmt">// vanished completely</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// ReLU: gradient is 1 for positive inputs → no shrinkage from activation</span>
+<span class="line cmt">// This is why ReLU replaced sigmoid in deep networks (2012, AlexNet)</span>
+</div>
+</div>
+
+<button class="nx" onclick="go(1)">Exploding gradients</button>
+</div>
+
+<!-- PAGE 1 -->
+<div class="page" data-t="1. Exploding Grads">
+<h2>Exploding Gradients — Too Much Signal</h2>
+
+<div class="card red">
+<h3>The flip side: Jacobian norm &gt; 1</h3>
+<div class="math">
+<span class="line cmt">// If each Jacobian has spectral norm 1.1:</span>
+<span class="line"><span class="lbl">|grad at layer 1|</span> = 1.1^10 × |grad_output|</span>
+<span class="line">                   = <span class="val">2.59</span> × |grad_output|  <span class="cmt">// 2.6× amplified</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// If each Jacobian has spectral norm 1.5:</span>
+<span class="line"><span class="lbl">|grad at layer 1|</span> = 1.5^10 × |grad_output|</span>
+<span class="line">                   = <span class="val">57.7</span> × |grad_output|  <span class="cmt">// 58× amplified!</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// 20-layer network with norm 1.5:</span>
+<span class="line"><span class="lbl">|grad at layer 1|</span> = 1.5^20 = <span class="val">3325</span> × |grad_output|  <span class="cmt">// catastrophic</span></span>
+</div>
+</div>
+
+<div class="card">
+<h3>What exploding gradients look like in practice</h3>
+<div class="math">
+<span class="line cmt">// Training step with gradient explosion:</span>
+<span class="line"><span class="lbl">loss_before</span> = 1.32</span>
+<span class="line"><span class="lbl">grad_norm</span>   = 847.5  <span class="cmt">// should be ~1.0 for healthy training</span></span>
+<span class="line"><span class="lbl">weight update</span>: w -= 0.001 × 847.5 = w − <span class="val">0.8475</span>  <span class="cmt">// massive jump</span></span>
+<span class="line"><span class="lbl">loss_after</span>  = 9.74   <span class="cmt">// jumped from 1.32 to 9.74 in one step</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Loss might recover, or the model might diverge to NaN</span>
+</div>
+</div>
+
+<div class="card green">
+<h3>Fix: Gradient clipping — the standard solution</h3>
+<div class="math">
+<span class="line cmt">// Global gradient norm clipping (PyTorch)</span>
+<span class="line">loss.backward()</span>
+<span class="line"><span class="hl">torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)</span></span>
+<span class="line">optimizer.step()</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Concrete: grad_norm = 847.5, max_norm = 1.0</span>
+<span class="line"><span class="lbl">scale</span> = min(1.0, max_norm / grad_norm)</span>
+<span class="line">      = min(1.0, 1.0 / 847.5) = <span class="val">0.00118</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// All gradients scaled by 0.00118:</span>
+<span class="line"><span class="lbl">new total grad norm</span> = 847.5 × 0.00118 = <span class="val">1.0</span>  <span class="cmt">// capped at max_norm</span></span>
+<span class="line"><span class="lbl">weight update</span> = 0.001 × 1.0 = <span class="val">0.001</span>  <span class="cmt">// safe</span></span>
+</div>
+</div>
+
+<div class="card orange">
+<h3>Monitoring grad norm as a diagnostic</h3>
+<div class="math">
+<span class="line cmt">// Log grad_norm every step. Healthy range: 0.5 – 2.0</span>
+<span class="line">&nbsp;</span>
+<span class="line"><span class="lbl">grad_norm = 0.8</span>  <span class="cmt">✓ healthy</span></span>
+<span class="line"><span class="lbl">grad_norm = 5.0</span>  <span class="cmt">⚠ watch it — might spike soon</span></span>
+<span class="line"><span class="lbl">grad_norm = 50.0</span> <span class="cmt">✗ exploding — check data, consider lower lr</span></span>
+<span class="line"><span class="lbl">grad_norm = 0.01</span> <span class="cmt">⚠ vanishing — check init, check dead neurons</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Compute it yourself:</span>
+<span class="line">total_norm = 0</span>
+<span class="line">for p in model.parameters():</span>
+<span class="line">    total_norm += p.grad.data.norm(2) ** 2</span>
+<span class="line">total_norm = total_norm ** 0.5</span>
+</div>
+</div>
+
+<button class="nx" onclick="go(2)">Residual connections</button>
+</div>
+
+<!-- PAGE 2 -->
+<div class="page" data-t="2. Residuals">
+<h2>Residual Connections — The Architectural Fix</h2>
+
+<div class="card blue">
+<h3>The residual block</h3>
+<div class="math">
+<span class="line cmt">// Standard layer: output = F(x)</span>
+<span class="line cmt">// Residual layer:  output = x + F(x)  ← add input back</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// The key insight: the gradient through a residual block</span>
+<span class="line"><span class="lbl">d(x + F(x))/dx</span> = 1 + dF(x)/dx</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// The +1 term means gradient is ALWAYS at least 1, regardless of F</span>
+<span class="line cmt">// Even if F learns nothing (dF/dx ≈ 0), gradient flows as:</span>
+<span class="line"><span class="lbl">grad_in</span> = grad_out × (1 + 0) = grad_out  <span class="cmt">// perfect passthrough</span></span>
+</div>
+</div>
+
+<div class="card green">
+<h3>50-layer network: with vs without residuals</h3>
+<div class="math">
+<span class="line cmt">// Without residuals: each layer has Jacobian norm 0.9</span>
+<span class="line"><span class="lbl">grad at layer 1</span> = 0.9^50 × grad_output</span>
+<span class="line">               = <span class="val">0.005</span> × grad_output  <span class="cmt">// 99.5% gone</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// With residuals: each block's gradient passes through the +1 highway</span>
+<span class="line">d(x + F(x))/dx ≥ 1  <span class="cmt">// at minimum</span></span>
+<span class="line"><span class="lbl">grad at layer 1</span> = grad_output × Π(1 + dF_k/dx)</span>
+<span class="line">               ≥ 1.0 × grad_output  <span class="cmt">// at minimum, never vanishes</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// This is why ResNets can be 152 layers (2015)</span>
+<span class="line cmt">// This is why Transformers (with residuals) can be 100+ layers</span>
+</div>
+</div>
+
+<div class="card">
+<h3>What residual blocks look like in a transformer</h3>
+<svg width="100%" viewBox="0 0 400 220" style="display:block;background:#0d0d1e;border:1px solid #2a2a4a;border-radius:8px;margin:10px 0">
+  <!-- input x -->
+  <text x="200" y="20" fill="#9cdcfe" font-size="11" text-anchor="middle">x (input)</text>
+  <line x1="200" y1="25" x2="200" y2="45" stroke="#555" stroke-width="1.5"/>
+  <!-- LayerNorm box -->
+  <rect x="130" y="45" width="140" height="30" rx="6" fill="#1a2a3a" stroke="#4fc3f7" stroke-width="1.5"/>
+  <text x="200" y="65" fill="#4fc3f7" font-size="11" text-anchor="middle">LayerNorm(x)</text>
+  <line x1="200" y1="75" x2="200" y2="95" stroke="#555" stroke-width="1.5"/>
+  <!-- Attention box -->
+  <rect x="110" y="95" width="180" height="30" rx="6" fill="#2a1a3a" stroke="#ce93d8" stroke-width="1.5"/>
+  <text x="200" y="115" fill="#ce93d8" font-size="11" text-anchor="middle">Multi-Head Attention</text>
+  <line x1="200" y1="125" x2="200" y2="155" stroke="#555" stroke-width="1.5"/>
+  <!-- addition circle -->
+  <circle cx="200" cy="165" r="12" fill="#0a1a0a" stroke="#4caf50" stroke-width="2"/>
+  <text x="200" y="170" fill="#4caf50" font-size="14" text-anchor="middle">+</text>
+  <!-- skip connection — bypass arrow -->
+  <path d="M 200 25 Q 330 25 330 165 L 212 165" fill="none" stroke="#4caf50" stroke-width="1.5" stroke-dasharray="4,2"/>
+  <text x="345" y="110" fill="#4caf50" font-size="9" text-anchor="middle">skip</text>
+  <text x="345" y="120" fill="#4caf50" font-size="9" text-anchor="middle">+1 in</text>
+  <text x="345" y="130" fill="#4caf50" font-size="9" text-anchor="middle">gradient</text>
+  <!-- output -->
+  <line x1="200" y1="177" x2="200" y2="205" stroke="#555" stroke-width="1.5"/>
+  <text x="200" y="218" fill="#9cdcfe" font-size="11" text-anchor="middle">x + Attention(LN(x))</text>
+</svg>
+</div>
+
+<div class="card orange">
+<h3>Residuals also improve the forward pass</h3>
+<div class="math">
+<span class="line cmt">// Early in training, F(x) is random noise.</span>
+<span class="line cmt">// Without residual: output = F(x) = random garbage</span>
+<span class="line cmt">// With residual:    output = x + F(x) = x + small_noise ≈ x</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// A 12-layer transformer at initialization outputs ≈ the input</span>
+<span class="line cmt">// (modulated by embeddings and positional encodings)</span>
+<span class="line cmt">// This is a reasonable starting point — not random garbage</span>
+<span class="line cmt">// Training then gradually builds up the F(x) terms</span>
+</div>
+</div>
+
+<button class="nx" onclick="go(3)">Weight initialization</button>
+</div>
+
+<!-- PAGE 3 -->
+<div class="page" data-t="3. Init">
+<h2>Weight Initialization — Starting in the Right Place</h2>
+
+<div class="card blue">
+<h3>Why initialization matters</h3>
+<p>Before seeing any data, a randomly initialized network should produce <strong>approximately unit-variance activations</strong> at every layer. Too large → activations explode. Too small → activations vanish. Both cause vanishing/exploding gradients from step 1.</p>
+<div class="math">
+<span class="line cmt">// Linear layer: y = Wx + b (no bias for this analysis)</span>
+<span class="line cmt">// x has n_in inputs, each with variance σ²_x</span>
+<span class="line"><span class="lbl">Var(y_j)</span> = n_in × Var(W_ij) × Var(x_i)  <span class="cmt">// each weight × input adds variance</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Want Var(y) = Var(x) = 1 (preserve variance)</span>
+<span class="line"><span class="lbl">n_in × Var(W)</span> = 1  →  Var(W) = 1/n_in  →  std(W) = 1/sqrt(n_in)</span>
+</div>
+</div>
+
+<div class="card green">
+<h3>Xavier / Glorot initialization</h3>
+<div class="math">
+<span class="line cmt">// For tanh and linear activations (symmetric)</span>
+<span class="line cmt">// Balance variance for both forward pass (fan_in) and backward pass (fan_out)</span>
+<span class="line"><span class="lbl">std</span> = sqrt(2 / (fan_in + fan_out))</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Example: Linear(512 → 512)</span>
+<span class="line"><span class="lbl">std</span> = sqrt(2 / (512 + 512)) = sqrt(2 / 1024) = sqrt(0.00195) = <span class="val">0.0442</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Example: Linear(768 → 3072) — typical transformer FFN expand layer</span>
+<span class="line"><span class="lbl">std</span> = sqrt(2 / (768 + 3072)) = sqrt(2 / 3840) = sqrt(0.000521) = <span class="val">0.0228</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Example: Linear(3072 → 768) — FFN contract layer</span>
+<span class="line"><span class="lbl">std</span> = sqrt(2 / (3072 + 768)) = sqrt(2 / 3840) = <span class="val">0.0228</span>  <span class="cmt">// same (symmetric)</span></span>
+</div>
+</div>
+
+<div class="card">
+<h3>Kaiming / He initialization — for ReLU networks</h3>
+<div class="math">
+<span class="line cmt">// ReLU zeros out half the activations → halves the variance</span>
+<span class="line cmt">// Need to double the initial variance to compensate</span>
+<span class="line"><span class="lbl">std</span> = sqrt(2 / fan_in)   <span class="cmt">// "He init" — note: 2, not 1</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Example: Conv layer with 64 input channels, 3×3 kernel</span>
+<span class="line"><span class="lbl">fan_in</span> = 64 × 3 × 3 = 576</span>
+<span class="line"><span class="lbl">std</span>    = sqrt(2 / 576) = sqrt(0.00347) = <span class="val">0.0589</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Without He init: Xavier std = sqrt(2 / (576+64)) = 0.0559</span>
+<span class="line cmt">// Similar but Xavier doesn't account for ReLU's variance halving</span>
+<span class="line cmt">// After 10 ReLU layers: Xavier → var × 0.5^10 = var × 0.001 (vanished)</span>
+<span class="line cmt">// After 10 ReLU layers: He    → var × 1.0^10 = var × 1.0   (preserved)</span>
+</div>
+</div>
+
+<div class="card orange">
+<h3>What bad initialization causes</h3>
+<div class="math">
+<span class="line cmt">// Too large: std=1.0 for Linear(512,512)</span>
+<span class="line cmt">// Expected output std after layer = sqrt(512) × 1.0 = 22.6</span>
+<span class="line cmt">// After 2 layers: 22.6² ≈ 511</span>
+<span class="line cmt">// After 4 layers: 511² ≈ 261,000  → NaN in forward pass</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Too small: std=0.001 for Linear(512,512)</span>
+<span class="line cmt">// Expected output std = sqrt(512) × 0.001 = 0.0226</span>
+<span class="line cmt">// After 2 layers: 0.0226² ≈ 0.0005</span>
+<span class="line cmt">// After 4 layers: vanished → all activations ≈ 0 → dead network</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// With Xavier: std = 0.0442 for Linear(512,512)</span>
+<span class="line cmt">// Output std after each layer ≈ 1.0 (by design)</span>
+<span class="line cmt">// Stable for any depth</span>
+</div>
+</div>
+
+<button class="nx" onclick="go(4)">Grad norm diagnostics</button>
+</div>
+
+<!-- PAGE 4 -->
+<div class="page" data-t="4. Grad Norm">
+<h2>Gradient Norm as a Training Diagnostic</h2>
+
+<div class="card blue">
+<h3>What healthy grad norms look like</h3>
+<p>Log the total gradient norm every step (before clipping). This single number tells you a lot about training health.</p>
+<div class="math">
+<span class="line cmt">// Compute total grad norm:</span>
+<span class="line">total_norm = sqrt(sum(p.grad.data.norm(2)**2 for p in model.parameters()))</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Healthy training: grad_norm between 0.5 and 2.0 most steps</span>
+<span class="line"><span class="lbl">step 100</span>:  grad_norm = <span class="val">1.24</span>  <span class="cmt">✓</span></span>
+<span class="line"><span class="lbl">step 500</span>:  grad_norm = <span class="val">0.87</span>  <span class="cmt">✓</span></span>
+<span class="line"><span class="lbl">step 1000</span>: grad_norm = <span class="val">1.43</span>  <span class="cmt">✓</span></span>
+<span class="line"><span class="lbl">step 2000</span>: grad_norm = <span class="val">0.65</span>  <span class="cmt">✓ decreasing is normal as loss drops</span></span>
+</div>
+</div>
+
+<div class="card">
+<h3>Reading the symptoms</h3>
+<table>
+<tr><th>Grad norm reading</th><th>Symptom</th><th>Action</th></tr>
+<tr><td>0.5 – 2.0 (stable)</td><td style="color:#4caf50">Healthy</td><td>Nothing</td></tr>
+<tr><td>Sudden spike &gt; 10</td><td style="color:#ff9800">Bad batch or LR too high</td><td>Check data; add clipping</td></tr>
+<tr><td>Consistently &gt; 5</td><td style="color:#ff9800">LR too high</td><td>Reduce lr by 3–10×</td></tr>
+<tr><td>Consistently &lt; 0.05</td><td style="color:#ef5350">Vanishing / LR too low</td><td>Check for dead ReLUs; try higher lr</td></tr>
+<tr><td>Exactly 0</td><td style="color:#ef5350">Dead neurons or bug</td><td>Check activations, loss computation</td></tr>
+<tr><td>Growing each step</td><td style="color:#ef5350">About to explode</td><td>Add gradient clipping immediately</td></tr>
+</table>
+</div>
+
+<div class="card green">
+<h3>Per-layer grad norms — finding which layers are broken</h3>
+<div class="math">
+<span class="line cmt">// Per-layer analysis reveals where the problem is</span>
+<span class="line">for name, param in model.named_parameters():</span>
+<span class="line">    if param.grad is not None:</span>
+<span class="line">        layer_norm = param.grad.data.norm(2).item()</span>
+<span class="line">        print(f"{name}: {layer_norm:.4f}")</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Example output revealing vanishing gradients:</span>
+<span class="line"><span class="lbl">transformer.layer11.attn.weight</span>: <span class="val">1.432</span>  <span class="cmt">// near output: normal</span></span>
+<span class="line"><span class="lbl">transformer.layer8.attn.weight</span>:  <span class="val">0.821</span>  <span class="cmt">// still ok</span></span>
+<span class="line"><span class="lbl">transformer.layer4.attn.weight</span>:  <span class="val">0.083</span>  <span class="cmt">// getting small</span></span>
+<span class="line"><span class="lbl">transformer.layer1.attn.weight</span>:  <span class="val">0.002</span>  <span class="cmt">✗ vanished — this layer barely learns</span></span>
+<span class="line"><span class="lbl">embedding.weight</span>:                 <span class="val">0.0001</span> <span class="cmt">✗ embedding layer frozen by vanishing</span></span>
+</div>
+</div>
+
+<div class="card purple">
+<h3>The full picture — what protects gradient flow in a modern LLM</h3>
+<table>
+<tr><th>Technique</th><th>Prevents</th><th>How</th></tr>
+<tr><td>Residual connections</td><td>Vanishing</td><td>+1 gradient highway at every layer</td></tr>
+<tr><td>LayerNorm</td><td>Exploding + Vanishing</td><td>Normalizes activations; stabilizes Jacobian</td></tr>
+<tr><td>Kaiming/Xavier init</td><td>Both</td><td>Unit variance forward and backward</td></tr>
+<tr><td>Grad clipping (1.0)</td><td>Exploding</td><td>Caps total gradient norm after explosion</td></tr>
+<tr><td>Warmup schedule</td><td>Early exploding</td><td>Small lr when Adam moments are noisy</td></tr>
+</table>
+<p style="margin-top:10px">All five work together. Remove any one and training a 12+ layer network becomes unreliable. This is why the transformer architecture (residuals + LayerNorm + good init + AdamW + warmup) has become the universal default.</p>
+</div>
+
+<button class="nx" onclick="go(5)">Summary</button>
+</div>
+
+<!-- PAGE 5 -->
+<div class="page" data-t="5. Summary">
+<h2>Chapter 4 Summary — Gradient Flow</h2>
+<div class="card blue">
+<table>
+<tr><th>Problem</th><th>Cause</th><th>Fix</th></tr>
+<tr><td>Vanishing grads</td><td>Jacobian norm &lt; 1 per layer (0.5^10 = 0.001)</td><td>Residuals, ReLU/GELU, Kaiming init</td></tr>
+<tr><td>Exploding grads</td><td>Jacobian norm &gt; 1 per layer (1.5^10 = 57)</td><td>Gradient clipping (max_norm=1.0)</td></tr>
+<tr><td>Bad init</td><td>std too large/small → NaN or dead from step 1</td><td>Xavier (tanh), Kaiming He (ReLU)</td></tr>
+<tr><td>Can't diagnose</td><td>No visibility into what's happening</td><td>Log grad_norm every step</td></tr>
+</table>
+</div>
+<div class="card green">
+<h3>The residual connection math — one line to remember</h3>
+<div class="math">
+<span class="line">d(x + F(x))/dx = <span class="hl">1</span> + dF(x)/dx</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// The "1" is the gradient highway.</span>
+<span class="line cmt">// It guarantees gradient ≥ 1 even if F learns nothing.</span>
+<span class="line cmt">// This single equation is why 100+ layer networks are trainable.</span>
+</div>
+</div>
+</div>
+
+<script>
+const pages=document.querySelectorAll('.page'),nav=document.getElementById('nav');
+pages.forEach((p,i)=>{const b=document.createElement('button');b.textContent=p.dataset.t;b.onclick=()=>go(i);if(i===0)b.classList.add('on');nav.appendChild(b);});
+function go(n){pages.forEach((p,i)=>p.classList.toggle('on',i===n));nav.querySelectorAll('button').forEach((b,i)=>{b.classList.remove('on');if(i<n)b.classList.add('done');else b.classList.remove('done');if(i===n)b.classList.add('on');});window.scrollTo({top:0,behavior:'smooth'});}
+</script>
+</body>
+</html>

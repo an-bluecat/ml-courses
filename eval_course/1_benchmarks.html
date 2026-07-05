@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LLM Eval Ch1: Benchmarks With Ground Truth</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0a0a1a;color:#e0e0e0;padding:20px 20px 80px;line-height:1.7}
+h1{text-align:center;color:#fff;margin-bottom:4px;font-size:1.5em}
+.sub{text-align:center;color:#888;margin-bottom:24px;font-size:.88em}
+.nav{display:flex;justify-content:center;gap:6px;margin-bottom:20px;flex-wrap:wrap}
+.nav button{padding:7px 13px;border:2px solid #333;background:#111;color:#888;border-radius:8px;cursor:pointer;font-size:.78em;transition:.2s}
+.nav button:hover{border-color:#555;color:#ccc}
+.nav button.on{border-color:#4fc3f7;color:#4fc3f7;background:#0d2137}
+.nav button.done{border-color:#4caf50;color:#4caf50}
+.page{display:none;max-width:880px;margin:0 auto}
+.page.on{display:block}
+.page h2{color:#4fc3f7;margin-bottom:12px;font-size:1.2em}
+.card{background:#12122a;border:1px solid #2a2a4a;border-radius:12px;padding:18px;margin-bottom:14px}
+.card.blue{border-color:#4fc3f7;background:#0d1b2a}
+.card.green{border-color:#4caf50;background:#0a1a0a}
+.card.orange{border-color:#ff9800;background:#1a1400}
+.card.red{border-color:#ef5350;background:#1a0a0a}
+.card.purple{border-color:#ce93d8;background:#1a0a2a}
+.card h3{color:#ffb74d;margin-bottom:8px;font-size:1em}
+button.nx{padding:10px 24px;background:#4caf50;color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:.9em;margin-top:14px}
+button.nx:hover{background:#66bb6a}
+table{width:100%;border-collapse:collapse;margin:10px 0}
+th,td{padding:8px 12px;border:1px solid #333;text-align:center;font-size:.86em}
+th{background:#1a1a3a;color:#4fc3f7}
+td{text-align:left}
+td.n{text-align:right;font-variant-numeric:tabular-nums}
+.math{background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:14px;margin:10px 0;font-family:'Fira Code',Consolas,monospace;font-size:.85em;line-height:1.8;overflow-x:auto}
+.math.out{border-color:#2e7d32;background:#0c1a0e}
+.math .line{margin:2px 0;display:block;white-space:pre}
+.math .hl{background:#264f78;padding:2px 6px;border-radius:4px;display:inline-block}
+.math .cmt{color:#6a9955}.math .val{color:#b5cea8}.math .lbl{color:#9cdcfe}.math .win{color:#4caf50;font-weight:700}
+.key{color:#ffb74d;font-weight:600}
+.src{color:#777;font-size:.78em;margin-top:6px}
+details.more{background:#0d0d20;border:1px solid #333;border-left:3px solid #ce93d8;border-radius:8px;padding:10px 14px;margin:12px 0}
+details.more summary{cursor:pointer;color:#ce93d8;font-size:.86em;font-weight:600;outline:none}
+details.more[open] summary{margin-bottom:10px}
+details.more p,details.more .math{font-size:.85em}
+.vs{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:10px 0}
+@media(max-width:650px){.vs{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<a href="../index.html" style="position:fixed;top:10px;left:14px;font-size:.75em;color:#555;text-decoration:none;z-index:999;padding:4px 8px;background:#0a0a1a;border:1px solid #333;border-radius:6px;">&larr; index</a>
+<h1>LLM Eval Ch1: Benchmarks With Ground Truth</h1>
+<p class="sub">How MMLU and HumanEval actually score a model — traced on real models, with the scoring code. Every number is a captured run or a cited paper.</p>
+<div class="nav" id="nav"></div>
+
+<!-- PAGE 0 -->
+<div class="page on" data-t="0. Three channels">
+<h2>The easiest case: the answer key is written down</h2>
+
+<div class="card blue">
+<h3>The course question</h3>
+<p><em>The model produced an answer — how do you turn that into a number you can trust?</em> This chapter covers the friendliest version: someone already wrote down the correct answer. Even here, "score the model" hides three genuinely different mechanisms, and the choice between them changes the number.</p>
+</div>
+
+<div class="card">
+<h3>The three scoring channels</h3>
+<table>
+<tr><th>Channel</th><th>How the score happens</th><th>Used by</th></tr>
+<tr><td><strong>1. Logprob comparison</strong></td><td>Never generate. Compute the probability the model assigns to each option; highest wins.</td><td>MMLU, HellaSwag, most multiple-choice</td></tr>
+<tr><td><strong>2. Generate + extract + match</strong></td><td>Let the model write; pull the answer out with a pattern; compare strings/numbers.</td><td>GSM8K, MMLU-generative</td></tr>
+<tr><td><strong>3. Generate + execute</strong></td><td>Let the model write code; run the unit tests; pass or fail.</td><td>HumanEval, SWE-bench</td></tr>
+</table>
+<p>Channel 3 is the most objective (the computer decides), channel 2 depends on the extraction pattern, channel 1 depends on <em>how you frame the options</em> — page 2 shows that dependency flipping a verdict on a real model.</p>
+</div>
+
+<div class="card green">
+<h3>Channel 2, concretely: GSM8K</h3>
+<p>GSM8K is 8.5K grade-school math word problems (7,473 train / 1,319 test — counts verified by downloading the repo files). Every reference solution ends with a marker line:</p>
+<div class="math">
+<span class="line"><span class="cmt">// real format, from openai/grade-school-math data:</span></span>
+<span class="line">…Janet sells the remaining 9 eggs for $2 each, 9 × $2 = $18</span>
+<span class="line"><span class="hl">#### 18</span></span>
+<span class="line"></span>
+<span class="line"><span class="lbl">def</span> <span class="val">grade</span>(model_output, reference):</span>
+<span class="line">    <span class="lbl">return</span> extract_final_number(model_output) == extract_after_hashes(reference)</span>
+</div>
+<p>The whole benchmark is that one comparison. All the chain-of-thought text is ungraded scaffolding — only the final number counts, which is what makes it cheap, objective, and blind to "right answer, broken reasoning."</p>
+<p class="src">Source: Cobbe et al. 2021, arXiv:2110.14168; github.com/openai/grade-school-math (raw jsonl).</p>
+</div>
+
+<button class="nx" onclick="go(1)">Next: MMLU under the hood &#x2192;</button>
+</div>
+
+<!-- PAGE 1 -->
+<div class="page" data-t="1. MMLU mechanics">
+<h2>MMLU under the hood</h2>
+
+<div class="card blue">
+<h3>What it is</h3>
+<p><span class="key">57 subjects</span> × 4-option multiple choice, <span class="key">14,042 test questions</span> in the released dataset (the paper says 14,079 — both numbers circulate; we counted the HuggingFace <code>cais/mmlu</code> release we actually use). Published September 2020. Human baselines from the paper: unspecialized crowdworkers <strong>34.5%</strong>, estimated experts <strong>~89.8%</strong>; random guessing 25%.</p>
+<p class="src">Source: Hendrycks et al., "Measuring Massive Multitask Language Understanding", arXiv:2009.03300.</p>
+</div>
+
+<div class="card">
+<h3>A real question, and the prompt the harness actually builds</h3>
+<p>Pulled verbatim from <code>cais/mmlu</code>, subject <code>high_school_geography</code>, test split (this exact question is used in our runs below):</p>
+<div class="math">
+<span class="line">The following are multiple choice questions (with answers) about</span>
+<span class="line">high school geography.</span>
+<span class="line"></span>
+<span class="line">The sacred book of the Hindu is called the</span>
+<span class="line">A. Talmud.</span>
+<span class="line">B. Bible.</span>
+<span class="line">C. Torah.</span>
+<span class="line">D. Veda.      <span class="cmt">// ← gold answer</span></span>
+<span class="line">Answer:</span>
+</div>
+<p>The model is <em>not asked to write anything</em>. The harness computes the probability of each possible continuation and takes the argmax:</p>
+<div class="math">
+<span class="line"><span class="lbl">def</span> <span class="val">choice_logprob</span>(prompt, cont):              <span class="cmt"># lm-eval-harness style</span></span>
+<span class="line">    full = tok(prompt + cont)</span>
+<span class="line">    <span class="lbl">return</span> sum(logP(full[i] | full[:i])          <span class="cmt"># only the cont tokens</span></span>
+<span class="line">               <span class="lbl">for</span> i <span class="lbl">in</span> cont_positions)</span>
+<span class="line"></span>
+<span class="line">pick = argmax over [" A", " B", " C", " D"]</span>
+</div>
+<p>That's the verified default: the harness MMLU task has <code>doc_to_choice: ["A","B","C","D"]</code> — it scores the <span class="key">letter only</span>, with the option texts visible in the prompt.</p>
+<p class="src">Source: EleutherAI lm-evaluation-harness, lm_eval/tasks/mmlu/default/_default_template_yaml.</p>
+</div>
+
+<div class="card green">
+<h3>GPT-2 takes the test (captured run)</h3>
+<div class="math out">
+<span class="line"><span class="cmt">// captured run — gpt2 (124M), .venv torch 2.8.0, CPU</span></span>
+<span class="line">logP(' A') = <span class="val">−4.0759</span>   ← argmax → picks A</span>
+<span class="line">logP(' B') = −6.0178</span>
+<span class="line">logP(' C') = −7.4760</span>
+<span class="line">logP(' D') = −7.0307      gold: D → <span class="lbl">WRONG</span></span>
+</div>
+<p>Note what "wrong" looks like from the inside: GPT-2 put the most mass on ' A' — likely because A is the most common token after "Answer:" in its training data, not because it weighed the options. Run over all 14,042 questions, a model guessing letter frequencies scores ≈25%: exactly what early GPT-2-class models scored. The benchmark is honest about that floor.</p>
+</div>
+
+<div class="card">
+<h3>The score arc that made MMLU famous</h3>
+<table>
+<tr><th>Model, year</th><th>MMLU</th><th>Source</th></tr>
+<tr><td>GPT-3 175B, few-shot (2020)</td><td class="n">43.9%</td><td>Hendrycks et al., arXiv:2009.03300</td></tr>
+<tr><td>GPT-3.5 (2022)</td><td class="n">70.0%</td><td>GPT-4 TR, Table 11</td></tr>
+<tr><td>GPT-4, 5-shot (2023)</td><td class="n">86.4%</td><td>GPT-4 TR, arXiv:2303.08774</td></tr>
+<tr><td>Expert humans (est.)</td><td class="n">~89.8%</td><td>Hendrycks et al.</td></tr>
+</table>
+<p>2020: the benchmark was hard (best model 44%, "just above chance" in many subjects). 2023: frontier models at expert level. Page 4 covers what happens after that.</p>
+</div>
+
+<button class="nx" onclick="go(2)">Next: the scoring rule changes the verdict &#x2192;</button>
+</div>
+
+<!-- PAGE 2 -->
+<div class="page" data-t="2. Scoring rules">
+<h2>Same model, same question, three verdicts</h2>
+
+<div class="card blue">
+<h3>The experiment</h3>
+<p>SmolLM2-135M (2024 base model) gets the same geography question, scored three ways that all exist as real MMLU variants in lm-eval-harness (<code>mmlu</code>, <code>mmlu_continuation</code>, <code>mmlu_generative</code>). All three below are one captured run.</p>
+</div>
+
+<div class="card green">
+<h3>Style 1 — letter logprob (the default)</h3>
+<div class="math out">
+<span class="line"><span class="cmt">// captured run — SmolLM2-135M</span></span>
+<span class="line">logP(' A') = <span class="val">−1.4413</span>   ← argmax → picks A     gold: D → <span class="lbl">WRONG</span></span>
+<span class="line">logP(' B') = −1.4713</span>
+<span class="line">logP(' C') = −1.6710</span>
+<span class="line">logP(' D') = −1.6722</span>
+</div>
+<p>Look how flat those are — the four letters are within 0.23 nats of each other. A 135M base model barely distinguishes them: it doesn't reliably map its knowledge <em>onto the letter format</em>.</p>
+</div>
+
+<div class="card green">
+<h3>Style 2 — full answer text logprob (continuation style)</h3>
+<div class="math out">
+<span class="line"><span class="cmt">// same run — score the answer TEXT instead of the letter</span></span>
+<span class="line">logP(' Talmud.') = −12.4375  (2 tok)   −6.2188 /tok</span>
+<span class="line">logP(' Bible.')  =  −9.8063  (2 tok)   −4.9031 /tok</span>
+<span class="line">logP(' Torah.')  = −12.5228  (2 tok)   −6.2614 /tok</span>
+<span class="line">logP(' Veda.')   =  <span class="win">−8.7866</span>  (3 tok)   <span class="win">−2.9289 /tok</span></span>
+<span class="line"></span>
+<span class="line">pick by sum: <span class="win">D</span>    pick length-normalized: <span class="win">D</span>    gold: D → <span class="win">CORRECT</span></span>
+</div>
+<p>The knowledge was in there all along — "Veda" is by far the most probable continuation. The letter format was hiding it. <span class="key">Same weights, same question: WRONG under one published scoring rule, CORRECT under another.</span></p>
+</div>
+
+<div class="card red">
+<h3>And GPT-2 shows why normalization exists at all</h3>
+<div class="math out">
+<span class="line"><span class="cmt">// captured run — gpt2, full-text scoring of the same options</span></span>
+<span class="line">by sum:            picks B  (' Bible.' −9.06 — shortest, cheapest)</span>
+<span class="line">by per-token norm: picks A  (' Talmud.' −3.24/tok)</span>
+</div>
+<p>Longer continuations accumulate more negative logprob just by being longer, biasing raw sums toward short options — that's the documented reason lm-eval-harness ships <code>acc</code> (raw sum) and <code>acc_norm</code> (normalized by continuation byte length) as separate metrics. Two leaderboard columns, one model, different rankings.</p>
+<p class="src">Source: EleutherAI blog, "Multiple Choice Normalization in LM Evaluation".</p>
+</div>
+
+<div class="card orange">
+<h3>Style 3 — just generate (what people imagine benchmarks do)</h3>
+<div class="math out">
+<span class="line"><span class="cmt">// captured run — greedy, 8 new tokens after "Answer:"</span></span>
+<span class="line">gpt2     → '\n\nThe sacred book of the Hindu'   <span class="cmt">// echoes the question, no letter</span></span>
+<span class="line">SmolLM2  → ' A\n\nThe ancient Indian civilization was'   <span class="cmt">// wrong letter, then rambles</span></span>
+</div>
+<p>Generative scoring needs an <em>extraction rule</em> (regex for a letter? first token? "final answer" pattern?), and base models often produce nothing extractable. Every choice there is a knob that moves the score. <span class="key">A benchmark number is a property of (model + prompt + scoring rule) — never of the model alone.</span> That's this chapter's version of the course refrain.</p>
+</div>
+
+<button class="nx" onclick="go(3)">Next: HumanEval &amp; pass@k &#x2192;</button>
+</div>
+
+<!-- PAGE 3 -->
+<div class="page" data-t="3. pass@k">
+<h2>HumanEval — let the computer grade</h2>
+
+<div class="card blue">
+<h3>What it is</h3>
+<p><span class="key">164 hand-written Python problems</span> (count verified by downloading and counting the dataset file). Each gives a signature + docstring; the model writes the body; hidden unit tests decide pass/fail. Problem #0, verbatim from the dataset:</p>
+<div class="math">
+<span class="line"><span class="lbl">def</span> <span class="val">has_close_elements</span>(numbers: List[float], threshold: float) -&gt; bool:</span>
+<span class="line">    <span class="cmt">""" Check if in given list of numbers, are any two numbers closer</span></span>
+<span class="line">    <span class="cmt">to each other than given threshold.</span></span>
+<span class="line">    <span class="cmt">&gt;&gt;&gt; has_close_elements([1.0, 2.0, 3.0], 0.5)              False</span></span>
+<span class="line">    <span class="cmt">&gt;&gt;&gt; has_close_elements([1.0, 2.8, 3.0, 4.0, 5.0, 2.0], 0.3)  True """</span></span>
+</div>
+<p class="src">Source: Chen et al. 2021, arXiv:2107.03374; github.com/openai/human-eval (HumanEval.jsonl).</p>
+</div>
+
+<div class="card">
+<h3>The metric problem pass@k solves</h3>
+<p>Code models are sampled at temperature — one problem, many tries. "Did it solve the problem?" becomes "<em>if I let it try k times, what's the chance at least one attempt passes?</em>" You estimate that from n sampled attempts of which c passed. The tempting shortcut and the honest answer disagree:</p>
+<div class="math out">
+<span class="line"><span class="cmt">// captured run — n=6 attempts, c=2 passed (attempts #2 and #5)</span></span>
+<span class="line"><span class="cmt">// brute force: enumerate every way to pick k of the 6 attempts,</span></span>
+<span class="line"><span class="cmt">// count subsets containing at least one passing attempt</span></span>
+<span class="line">k=1:  2/6  subsets contain a passer → 0.3333    formula: 0.3333</span>
+<span class="line">k=2:  9/15                          → 0.6000    formula: 0.6000</span>
+<span class="line">k=3: 16/20                          → 0.8000    formula: 0.8000</span>
+<span class="line">k=4: 14/15                          → 0.9333    formula: 0.9333</span>
+<span class="line">k=5:  6/6                           → 1.0000    formula: 1.0000</span>
+</div>
+<p>The formula reproducing the enumeration exactly is the Codex paper's unbiased estimator — "probability that a random k-subset of the n attempts contains no passer, subtracted from 1":</p>
+<div class="math">
+<span class="line"><span class="hl">pass@k = 1 − C(n−c, k) / C(n, k)</span></span>
+<span class="line"></span>
+<span class="line">k=3:  1 − C(4,3)/C(6,3) = 1 − 4/20 = <span class="val">0.8000</span>  ✓ matches the count above</span>
+</div>
+</div>
+
+<div class="card red">
+<h3>Why not the naive estimate?</h3>
+<div class="math">
+<span class="line"><span class="cmt">// naive: treat each of k draws as independent with rate c/n = 1/3</span></span>
+<span class="line">naive 1−(1−c/n)^k :  k=2 → 0.5556    k=3 → 0.7037</span>
+<span class="line">unbiased          :  k=2 → 0.6000    k=3 → 0.8000</span>
+</div>
+<p>The naive version samples <em>with</em> replacement — it can waste draws re-picking the same failed attempt, so it systematically underestimates. Published pass@k numbers use the unbiased formula (the paper sampled n=200 per problem to estimate up to k=100).</p>
+</div>
+
+<div class="card blue">
+<h3>Real numbers, and how the tests define "correct"</h3>
+<table>
+<tr><th>Result</th><th>Number</th><th>Source</th></tr>
+<tr><td>Codex-12B pass@1</td><td class="n">28.8%</td><td>Chen et al. 2021, abstract</td></tr>
+<tr><td>Codex-12B, 100 samples</td><td class="n">70.2%</td><td>Chen et al. 2021, abstract</td></tr>
+<tr><td>GPT-4 pass@1, original tests</td><td class="n">88.4%</td><td>EvalPlus, arXiv:2305.01210</td></tr>
+<tr><td>GPT-4 pass@1, HumanEval+ (80× more tests)</td><td class="n">76.2%</td><td>same paper</td></tr>
+</table>
+<p>The EvalPlus row is the deep one: <em>same model, same 164 problems, more thorough unit tests</em> → 12 points vanish, and some model rankings flip (WizardCoder overtakes ChatGPT on HumanEval+ but not HumanEval). "Passes the tests" only means "correct" up to the coverage of the tests. Channel 3 is objective — about whatever the tests actually check.</p>
+</div>
+
+<button class="nx" onclick="go(4)">Next: saturation &amp; contamination &#x2192;</button>
+</div>
+
+<!-- PAGE 4 -->
+<div class="page" data-t="4. Decay &amp; renewal">
+<h2>How ground-truth benchmarks die, and what replaced them</h2>
+
+<div class="card red">
+<h3>Contamination: check, don't vibe</h3>
+<p>The GPT-4 report describes its actual check: strip spaces/symbols from every eval example, sample three random 50-character substrings, flag a match if any appears verbatim in the training data. Findings worth knowing because they cut both ways:</p>
+<table>
+<tr><th>Benchmark</th><th>Flagged contaminated</th><th>Effect on GPT-4's score</th></tr>
+<tr><td>MMLU</td><td class="n">~0.6%</td><td>negligible</td></tr>
+<tr><td>HumanEval</td><td class="n">25%</td><td>67.0% → 65.6% on clean subset (−1.4pp)</td></tr>
+<tr><td>GSM8K</td><td class="n">~1%</td><td>but part of the GSM8K <em>train</em> set was deliberately in pretraining (disclosed, Appendix E)</td></tr>
+</table>
+<p>Contamination is real and mostly <em>didn't</em> move GPT-4's numbers much — but you only get to say that after running the check. A score without a contamination story is an unfinished measurement.</p>
+<p class="src">Source: GPT-4 Technical Report, arXiv:2303.08774, Appendices C–E, Table 11.</p>
+</div>
+
+<div class="card blue">
+<h3>Saturation: the arc every benchmark rides</h3>
+<p>MMLU went 43.9% (2020) → 86.4% (2023) → the Humanity's Last Exam paper now states it plainly: "LLMs now achieve over 90% accuracy on popular benchmarks like MMLU, limiting informed measurement." The response was a generation of successors, each fixing a specific failure:</p>
+<table>
+<tr><th>Successor</th><th>Design change</th><th>Frontier state (late 2025, sourced)</th></tr>
+<tr><td><strong>MMLU-Pro</strong> (2024)<br>12,032 Q</td><td>10 options instead of 4, harder distractors</td><td>GPT-4o dropped 88.7% → 72.6% on release; drops of 16–33pp across models</td></tr>
+<tr><td><strong>GPQA Diamond</strong> (2023)<br>198 Q</td><td>PhD-written; experts get 65–74%, skilled non-experts 34% <em>with web access</em> — "Google-proof"</td><td>Gemini 3 Pro 91.9%, Claude Opus 4.5 87.0%</td></tr>
+<tr><td><strong>HLE</strong> (2025)<br>2,500 Q</td><td>100+ subjects, frontier-hard by construction</td><td>Gemini 3 Pro 38.3%, GPT-5 25.3%</td></tr>
+<tr><td><strong>SWE-bench Verified</strong> (2024)<br>500 tasks</td><td>Real GitHub issues, human-screened; agent must produce a passing patch</td><td>GPT-4o 33.2% at release → Claude Opus 4.5 80.9%</td></tr>
+<tr><td><strong>LiveCodeBench</strong> (2024)</td><td>Only contest problems published <em>after</em> the model's cutoff — contamination-proof by time</td><td>rolling by design</td></tr>
+</table>
+<p class="src">Sources: arXiv:2406.01574 (MMLU-Pro); arXiv:2311.12022 (GPQA); arXiv:2501.14249 + agi.safe.ai (HLE); openai.com "Introducing SWE-bench Verified" + Anthropic Opus 4.5 system card + Google Gemini 3 blog; arXiv:2403.07974 (LiveCodeBench).</p>
+</div>
+
+<div class="card orange">
+<h3>One 2025 story that ties the whole chapter together</h3>
+<p>FrontierMath (research-level math, problems kept unpublished): frontier models solved <strong>&lt;2%</strong> at release in Nov 2024. A month later OpenAI announced o3 at <strong>25.2%</strong> — but Epoch AI's later independent run of o3 landed nearer <strong>~10%</strong>, the gap attributed to compute budgets and evaluation settings. Neither number is a lie; they're different (model + prompt + scoring + budget) tuples. By Nov 2025, Gemini 3 Pro reached 38% on tiers 1–3. <span class="key">Who runs the eval, and how, is part of the result</span> — remember that when you build your own in Ch5.</p>
+<p class="src">Sources: arXiv:2411.04872; Epoch AI FrontierMath hub + Epoch announcements (Nov 2025).</p>
+</div>
+
+<details class="more"><summary>Aside: "emergent abilities" — jump or mirage?</summary>
+<p>Wei et al. 2022 documented benchmark scores sitting at ~0 across orders of magnitude of scale, then jumping: 3-digit addition appears at ~13B for GPT-3 and ~68B for LaMDA. Schaeffer et al. 2023 countered that the jumps largely live in the <em>metric</em>: exact-match is all-or-nothing, so smoothly improving per-token accuracy looks like a phase transition; swap to a continuous metric (e.g. edit distance) and the curves smooth out. Both papers agree on the data — they disagree on what "ability" means. For an eval builder the lesson is practical: discontinuous metrics manufacture drama at thresholds.</p>
+<p class="src">Sources: arXiv:2206.07682; arXiv:2304.15004.</p>
+</details>
+
+<div class="card purple">
+<h3>Where this leaves you</h3>
+<p>With ground truth, scoring is mechanical — but the number still depends on the prompt, the scoring rule (letter vs text vs generate), the test coverage, and dataset hygiene. Next chapter removes the ground truth entirely: <a href="2_preference_eval.html" style="color:#ce93d8">someone has to judge</a>.</p>
+</div>
+
+<button class="nx" onclick="go(0)">Start over &#x21ba;</button>
+</div>
+
+<script>
+const pages=document.querySelectorAll('.page'),nav=document.getElementById('nav');
+pages.forEach((p,i)=>{const b=document.createElement('button');b.textContent=p.dataset.t;b.onclick=()=>go(i);if(i===0)b.classList.add('on');nav.appendChild(b);});
+function go(n){pages.forEach((p,i)=>p.classList.toggle('on',i===n));nav.querySelectorAll('button').forEach((b,i)=>{b.classList.remove('on');if(i<n)b.classList.add('done');else b.classList.remove('done');if(i===n)b.classList.add('on');});window.scrollTo({top:0,behavior:'smooth'});}
+</script>
+</body>
+</html>

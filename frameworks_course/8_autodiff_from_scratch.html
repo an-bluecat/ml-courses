@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Build autograd yourself — 45 lines</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0a0a1a;color:#e0e0e0;padding:20px 20px 80px;line-height:1.7}
+h1{text-align:center;color:#fff;margin-bottom:4px;font-size:1.5em}
+.sub{text-align:center;color:#888;margin-bottom:24px;font-size:.88em}
+.nav{display:flex;justify-content:center;gap:6px;margin-bottom:20px;flex-wrap:wrap}
+.nav button{padding:7px 13px;border:2px solid #333;background:#111;color:#888;border-radius:8px;cursor:pointer;font-size:.78em;transition:.2s}
+.nav button:hover{border-color:#555;color:#ccc}
+.nav button.on{border-color:#4fc3f7;color:#4fc3f7;background:#0d2137}
+.nav button.done{border-color:#4caf50;color:#4caf50}
+.page{display:none;max-width:880px;margin:0 auto}
+.page.on{display:block}
+.page h2{color:#4fc3f7;margin-bottom:12px;font-size:1.2em}
+.card{background:#12122a;border:1px solid #2a2a4a;border-radius:12px;padding:18px;margin-bottom:14px}
+.card.blue{border-color:#4fc3f7;background:#0d1b2a}
+.card.green{border-color:#4caf50;background:#0a1a0a}
+.card.orange{border-color:#ff9800;background:#1a1400}
+.card.red{border-color:#ef5350;background:#1a0a0a}
+.card.purple{border-color:#ce93d8;background:#1a0a2a}
+.card h3{color:#ffb74d;margin-bottom:8px;font-size:1em}
+button.nx{padding:10px 24px;background:#4caf50;color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:.9em;margin-top:14px}
+button.nx:hover{background:#66bb6a}
+a.nx{display:inline-block;padding:10px 24px;background:#4caf50;color:#000;border-radius:8px;font-weight:700;font-size:.9em;margin-top:14px;text-decoration:none}
+table{width:100%;border-collapse:collapse;margin:10px 0}
+th,td{padding:8px 10px;border:1px solid #333;text-align:left;font-size:.84em}
+th{background:#1a1a3a;color:#4fc3f7}
+.math{background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:14px;margin:10px 0;font-family:'Fira Code',Consolas,monospace;font-size:.84em;line-height:1.8;overflow-x:auto}
+.math .line{margin:2px 0;display:block;white-space:pre}
+.math .cmt{color:#6a9955}
+.math .val{color:#b5cea8}
+.math .lbl{color:#9cdcfe}
+.math .kw{color:#c586c0}
+.math .fn{color:#dcdcaa}
+.math .hl{background:#264f78;padding:2px 6px;border-radius:4px;display:inline-block}
+.math.out{border-left:3px solid #4caf50;background:#0d1a12}
+.outlabel{display:block;font-size:.72em;color:#4caf50;letter-spacing:.08em;text-transform:uppercase;margin-bottom:6px}
+.key{color:#ffb74d;font-weight:600}
+.inline{font-family:'Fira Code',Consolas,monospace;background:#1a1a2e;border:1px solid #333;border-radius:4px;padding:1px 6px;font-size:.86em;color:#9cdcfe}
+.faded{color:#888;font-size:.86em}
+ul{margin-left:20px;margin-top:6px}
+li{margin:4px 0}
+details{margin-top:12px}
+details summary{cursor:pointer;color:#888;font-size:.85em;padding:8px 12px;background:#12122a;border:1px solid #333;border-radius:8px}
+details summary:hover{color:#ccc;border-color:#555}
+details[open] summary{color:#4fc3f7;border-color:#4fc3f7}
+.fw{display:inline-block;font-weight:700;padding:1px 8px;border-radius:4px;font-size:.82em;border:1px solid}
+.fw.np{color:#4fc3f7;border-color:rgba(79,195,247,.4);background:rgba(79,195,247,.08)}
+.fw.tf{color:#ff9800;border-color:rgba(255,152,0,.4);background:rgba(255,152,0,.08)}
+.fw.pt{color:#ef5350;border-color:rgba(239,83,80,.4);background:rgba(239,83,80,.08)}
+.fw.jx{color:#ce93d8;border-color:rgba(206,147,216,.4);background:rgba(206,147,216,.08)}
+.pipeline{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:center;margin:14px 0}
+.pipe-box{border-radius:8px;padding:8px 12px;font-size:.8em;text-align:center;border:2px solid;min-width:70px}
+.pipe-box small{display:block;font-size:.78em;color:#999;font-weight:400}
+.pipe-box.leaf{border-color:#ffb74d;color:#ffb74d;background:#3a2a0a}
+.pipe-box.op{border-color:#4fc3f7;color:#4fc3f7;background:#0d2137}
+.pipe-box.outp{border-color:#4caf50;color:#4caf50;background:#0a2a0a}
+.pipe-arr{color:#666;font-size:1.2em}
+.pipe-arr.back{color:#ef5350}
+</style>
+</head>
+<body>
+<a href="../index.html" style="position:fixed;top:10px;left:14px;font-size:.75em;color:#555;text-decoration:none;z-index:999;padding:4px 8px;background:#0a0a1a;border:1px solid #333;border-radius:6px;">&larr; index</a>
+
+<h1><span style="font-size:.7em;vertical-align:middle;color:#4fc3f7;border:1px solid rgba(79,195,247,.4);border-radius:4px;padding:1px 8px;background:rgba(79,195,247,.08);font-weight:700">Part 3</span> Build autograd yourself — 45 lines</h1>
+<p class="sub">Reverse-mode autodiff is small enough to hold in your head. Build it, trace it by hand, then find every piece of it inside PyTorch and JAX.</p>
+
+<div class="nav" id="nav"></div>
+
+<!-- PAGE 0 -->
+<div class="page on" data-t="0. The idea">
+<h2>Two ingredients: local derivatives + a way to walk backwards</h2>
+
+<div class="card">
+<h3>First, the hand computation we're automating</h3>
+<p>The canonical example: <span class="inline">w=2, x=3, t=10</span>.</p>
+<div class="pipeline">
+<div class="pipe-box leaf">w = 2<small>leaf</small></div>
+<div class="pipe-arr">→</div>
+<div class="pipe-box op">pred = w·x<small>= 6</small></div>
+<div class="pipe-arr">→</div>
+<div class="pipe-box op">diff = pred−t<small>= −4</small></div>
+<div class="pipe-arr">→</div>
+<div class="pipe-box outp">loss = diff²<small>= 16</small></div>
+</div>
+<p>Chain rule, right to left — each step multiplies by one <span class="key">local</span> derivative:</p>
+<table>
+<tr><th>Step</th><th>Local derivative</th><th>Running gradient (∂loss/∂·)</th></tr>
+<tr><td>∂loss/∂loss</td><td>—</td><td><span class="key">1</span> (the seed)</td></tr>
+<tr><td>loss = diff² → ∂loss/∂diff</td><td>2·diff = −8</td><td>1 × (−8) = <span class="key">−8</span></td></tr>
+<tr><td>diff = pred − t → ∂loss/∂pred</td><td>1</td><td>−8 × 1 = <span class="key">−8</span></td></tr>
+<tr><td>pred = w·x → ∂loss/∂w</td><td>x = 3</td><td>−8 × 3 = <span class="key">−24</span></td></tr>
+<tr><td>pred = w·x → ∂loss/∂x</td><td>w = 2</td><td>−8 × 2 = <span class="key">−16</span></td></tr>
+</table>
+<p>Notice what you needed: (1) each operation's <span class="key">local derivative rule</span> — how its output responds to each input — and (2) the <span class="key">order</span> — outputs before inputs. That's the whole algorithm. Now we make Python do it.</p>
+</div>
+
+<div class="card blue">
+<h3>The design (identical to PyTorch's, minus 400,000 lines)</h3>
+<p>Wrap every number in a <span class="inline">Value</span> that remembers three things:</p>
+<ul>
+<li><span class="inline">data</span> — the number itself (forward pass answer)</li>
+<li><span class="inline">_parents</span> — which Values produced it (the graph edges)</li>
+<li><span class="inline">_backward_rule</span> — a tiny function that pushes gradient from this node into its parents (the local derivative, frozen as code)</li>
+</ul>
+<p>Every arithmetic operation computes its result <em>and</em> attaches these breadcrumbs. Sound familiar? It's <span class="inline">grad_fn</span> and <span class="inline">next_functions</span> from Chapter 3 — define-by-run, in miniature.</p>
+</div>
+<button class="nx" onclick="go(1)">Next: the code, complete</button>
+</div>
+
+<!-- PAGE 1 -->
+<div class="page" data-t="1. The engine">
+<h2>The whole engine — read every line, there aren't many</h2>
+
+<div class="card">
+<h3>Part A — a number that remembers</h3>
+<div class="math">
+<span class="line"><span class="kw">class</span> <span class="fn">Value</span>:</span>
+<span class="line">    <span class="val">"""One number that remembers how it was made."""</span></span>
+<span class="line">    <span class="kw">def</span> <span class="fn">__init__</span>(self, data, parents=(), backward_rule=<span class="kw">None</span>):</span>
+<span class="line">        self.data = data</span>
+<span class="line">        self.grad = <span class="val">0.0</span>                        <span class="cmt"># the mailbox, starts empty</span></span>
+<span class="line">        self._parents = parents                <span class="cmt"># graph edges (like next_functions)</span></span>
+<span class="line">        self._backward_rule = backward_rule <span class="kw">or</span> (<span class="kw">lambda</span>: <span class="kw">None</span>)</span>
+</div>
+</div>
+
+<div class="card blue">
+<h3>Part B — each op: compute forward, attach the local rule</h3>
+<div class="math">
+<span class="line">    <span class="kw">def</span> <span class="fn">__mul__</span>(self, other):</span>
+<span class="line">        other = other <span class="kw">if</span> <span class="fn">isinstance</span>(other, Value) <span class="kw">else</span> Value(other)</span>
+<span class="line">        out = Value(self.data * other.data, (self, other))</span>
+<span class="line">        <span class="kw">def</span> <span class="fn">rule</span>():                   <span class="cmt"># d(a·b)/da = b,  d(a·b)/db = a</span></span>
+<span class="line">            self.grad  += other.data * out.grad</span>
+<span class="line">            other.grad += self.data  * out.grad</span>
+<span class="line">        out._backward_rule = rule</span>
+<span class="line">        <span class="kw">return</span> out</span>
+<span class="line"></span>
+<span class="line">    <span class="kw">def</span> <span class="fn">__pow__</span>(self, n):             <span class="cmt"># d(aⁿ)/da = n·aⁿ⁻¹</span></span>
+<span class="line">        out = Value(self.data ** n, (self,))</span>
+<span class="line">        <span class="kw">def</span> <span class="fn">rule</span>(): self.grad += n * self.data**(n-<span class="val">1</span>) * out.grad</span>
+<span class="line">        out._backward_rule = rule</span>
+<span class="line">        <span class="kw">return</span> out</span>
+<span class="line"></span>
+<span class="line">    <span class="kw">def</span> <span class="fn">tanh</span>(self):                   <span class="cmt"># d tanh(a)/da = 1 − tanh²(a)</span></span>
+<span class="line">        t = math.<span class="fn">tanh</span>(self.data)</span>
+<span class="line">        out = Value(t, (self,))</span>
+<span class="line">        <span class="kw">def</span> <span class="fn">rule</span>(): self.grad += (<span class="val">1</span> - t*t) * out.grad</span>
+<span class="line">        out._backward_rule = rule</span>
+<span class="line">        <span class="kw">return</span> out</span>
+<span class="line">    <span class="cmt"># __add__ / __sub__: same pattern, local derivative = 1</span></span>
+</div>
+<p>Three things to notice, because they ARE PyTorch:</p>
+<ul>
+<li>The <span class="inline">rule</span> closure captures the forward values it needs (<span class="inline">other.data</span>, <span class="inline">t</span>). <span class="key">This is why training uses memory</span>: backward needs forward's intermediates, so they're kept alive. (Exactly what activation checkpointing trades away.)</li>
+<li><span class="inline">self.grad +=</span> — gradients <span class="key">accumulate</span>. A value used twice gets contributions from both uses. Correct chain rule — and the origin of "why must I zero_grad?"</li>
+<li>Adding an op = <span class="key">forward formula + local derivative</span>. Nothing else. PyTorch's are listed in a file called <span class="inline">derivatives.yaml</span>; JAX's are JVP rules per primitive.</li>
+</ul>
+</div>
+
+<div class="card green">
+<h3>Part C — backward: order the graph, seed with 1, fire the rules</h3>
+<div class="math">
+<span class="line">    <span class="kw">def</span> <span class="fn">backward</span>(self):</span>
+<span class="line">        order, seen = [], <span class="fn">set</span>()</span>
+<span class="line">        <span class="kw">def</span> <span class="fn">topo</span>(v):                          <span class="cmt"># children before parents</span></span>
+<span class="line">            <span class="kw">if</span> <span class="fn">id</span>(v) <span class="kw">not in</span> seen:</span>
+<span class="line">                seen.<span class="fn">add</span>(<span class="fn">id</span>(v))</span>
+<span class="line">                <span class="kw">for</span> p <span class="kw">in</span> v._parents: <span class="fn">topo</span>(p)</span>
+<span class="line">                order.<span class="fn">append</span>(v)</span>
+<span class="line">        <span class="fn">topo</span>(self)</span>
+<span class="line">        <span class="hl">self.grad = 1.0</span>                      <span class="cmt"># ∂loss/∂loss = 1 — the seed</span></span>
+<span class="line">        <span class="kw">for</span> v <span class="kw">in</span> <span class="fn">reversed</span>(order):</span>
+<span class="line">            v._backward_rule()</span>
+</div>
+<p>Topological sort guarantees every node's <span class="inline">out.grad</span> is complete before its rule pushes gradient further back. Seed the output with 1.0, run the rules in reverse — that's <span class="inline">loss.backward()</span>. The entire mystery of "how does backward reach into the model" is these 11 lines.</p>
+</div>
+<button class="nx" onclick="go(2)">Next: run it &amp; map it onto PyTorch</button>
+</div>
+
+<!-- PAGE 2 -->
+<div class="page" data-t="2. Run & map to torch">
+<h2>It reproduces the hand trace — then name every torch part</h2>
+
+<div class="card">
+<h3>The canonical example through OUR engine</h3>
+<div class="math">
+<span class="line">w = <span class="fn">Value</span>(<span class="val">2.0</span>); x = <span class="fn">Value</span>(<span class="val">3.0</span>)</span>
+<span class="line">pred = w * x</span>
+<span class="line">diff = pred - <span class="val">10.0</span></span>
+<span class="line">loss = diff ** <span class="val">2</span></span>
+<span class="line">loss.<span class="fn">backward</span>()</span>
+</div>
+<div class="math out"><span class="outlabel">output — real run</span>
+<span class="line">loss.data = 16.0</span>
+<span class="line">loss.grad = 1.0    (dL/dL)</span>
+<span class="line">diff.grad = -8.0   (2·diff = 2·−4)</span>
+<span class="line">pred.grad = -8.0</span>
+<span class="line">w.grad    = -24.0  (pred.grad · x = −8·3)</span>
+<span class="line">x.grad    = -16.0  (pred.grad · w = −8·2)</span>
+</div>
+<p>Every number matches page 0's hand table. You have a working autograd.</p>
+</div>
+
+<div class="card red">
+<h3>The Rosetta table — our engine ↔ PyTorch</h3>
+<table>
+<tr><th>Our 45 lines</th><th>PyTorch</th></tr>
+<tr><td><span class="inline">Value.data</span></td><td>the tensor's storage</td></tr>
+<tr><td><span class="inline">Value.grad</span>, starts 0, <span class="key">+=</span></td><td><span class="inline">tensor.grad</span> — same mailbox, same accumulation, same need to zero it</td></tr>
+<tr><td>the <span class="inline">rule</span> closure</td><td><span class="inline">grad_fn</span> (MulBackward0, PowBackward0…) — a C++ node holding saved tensors</td></tr>
+<tr><td><span class="inline">_parents</span></td><td><span class="inline">grad_fn.next_functions</span> — the chain you printed in Chapter 3</td></tr>
+<tr><td>values captured by the closure</td><td>"saved tensors" — the forward activations autograd keeps (your training memory bill)</td></tr>
+<tr><td><span class="inline">topo + reversed</span> walk</td><td>the autograd engine (multi-threaded, streams, hooks — but this walk)</td></tr>
+<tr><td><span class="inline">Value(3.0)</span> with no parents</td><td>a leaf tensor; <span class="inline">AccumulateGrad</span> is its "rule"</td></tr>
+<tr><td>wrapping numbers in Value</td><td><span class="inline">requires_grad=True</span> opting a tensor into recording</td></tr>
+</table>
+<p>Differences that remain are scale, not kind: PyTorch's Values are tensors, rules are vectorized kernels, and the graph is built in C++ for speed. <span class="key">Conceptually, you have now read PyTorch's autograd source.</span></p>
+</div>
+<button class="nx" onclick="go(3)">Next: verify against torch &amp; jax</button>
+</div>
+
+<!-- PAGE 3 -->
+<div class="page" data-t="3. Verify">
+<h2>Don't trust it — test it against both frameworks</h2>
+
+<div class="card">
+<h3>A gnarlier function (uses every op we built)</h3>
+<div class="math">
+<span class="line">f(w) = <span class="fn">tanh</span>(<span class="val">3</span>w - <span class="val">1</span>) · w + w²       <span class="cmt"># at w = 2.0</span></span>
+<span class="line"></span>
+<span class="line"><span class="cmt"># ours:  f_engine(Value(2.0)).backward()</span></span>
+<span class="line"><span class="cmt"># torch: torch.tanh(w*3-1)*w + w**2 ; .backward()</span></span>
+<span class="line"><span class="cmt"># jax:   jax.value_and_grad(lambda w: jnp.tanh(w*3-1)*w + w**2)(2.0)</span></span>
+</div>
+<div class="math out"><span class="outlabel">output — real run</span>
+<span class="line">our engine : 5.99981840852519    grad 5.000998703648258</span>
+<span class="line">torch      : 5.999818325042725   grad 5.000998497009277</span>
+<span class="line">jax        : 5.999818325042725   grad 5.000999450683594</span>
+</div>
+<p>Agreement to ~7 significant digits — the residue is float precision (our engine runs float64 Python floats; torch/jax defaulted to float32), plus tanh implementation details. Three independent implementations of the chain rule, one answer. <span class="key">This is also how you should test any custom op you ever write</span>: against a second autodiff and/or finite differences.</p>
+</div>
+
+<div class="card orange">
+<h3>What our engine can't do — and who fixes each gap</h3>
+<table>
+<tr><th>Missing</th><th>Who solves it, how</th></tr>
+<tr><td>tensors (we do scalars)</td><td>everyone: rules become vector-Jacobian products (VJPs) — same shape of idea</td></tr>
+<tr><td>speed (Python objects per number)</td><td>torch: C++ engine + kernels; JAX: compile the whole thing</td></tr>
+<tr><td>second derivatives</td><td>torch: build a graph <em>of the backward</em> (create_graph=True); JAX: next page</td></tr>
+<tr><td>memory control</td><td>checkpointing: drop saved values, recompute in backward</td></tr>
+<tr><td>in-place mutation safety</td><td>torch: per-tensor version counters that error if a saved tensor was overwritten</td></tr>
+</table>
+</div>
+<button class="nx" onclick="go(4)">Next: how JAX does it without a tape</button>
+</div>
+
+<!-- PAGE 4 -->
+<div class="page" data-t="4. The JAX way">
+<h2>JAX's twist: differentiate the <em>program</em>, not the run</h2>
+
+<div class="card purple">
+<h3>No runtime tape — transform the jaxpr</h3>
+<p>Our engine (and torch) records <em>while executing with real numbers</em> — a fresh graph every call. JAX already has the whole program as a jaxpr (Chapter 4), so differentiation becomes a <span class="key">source-to-source transformation</span>, once:</p>
+<div class="math">
+<span class="line"><span class="cmt"># our loss as a jaxpr:            its derivative program, mechanically derived:</span></span>
+<span class="line">d = mul a b                       <span class="cmt"># forward primal…</span></span>
+<span class="line">e = sub d c                       <span class="cmt"># …and for each primitive, apply its</span></span>
+<span class="line">f = integer_pow[y=2] e            <span class="cmt"># differentiation RULE to build a new jaxpr</span></span>
+<span class="line">                                  <span class="cmt"># that also computes: gf=1 → ge=2e·gf → gd=ge → ga=b·gd</span></span>
+</div>
+<ul>
+<li>Each primitive has a <span class="key">JVP rule</span> (forward-mode: how outputs wiggle per input wiggle). Reverse mode = JVP + a <span class="key">transpose</span> pass over the resulting linear program. You don't need the details — the point is it's <span class="key">jaxprs in, jaxprs out</span>.</li>
+<li>Because the output is <em>just another program</em>, you can feed it back in: <span class="inline">grad(grad(f))</span>, <span class="inline">vmap(grad(f))</span>, <span class="inline">jit(grad(f))</span> — the composability you saw in Chapter 4 is not a feature, it's a corollary.</li>
+<li>The cost: the program must BE capturable — the purity rules of Chapter 4. Our tape (and torch's) happily differentiates through prints and mutations; a program transformer can't see them.</li>
+</ul>
+<p class="faded">Want the full construction? JAX's own "autodidax" doc rebuilds JAX from scratch in a notebook, the same way this chapter rebuilt torch. Highly recommended as your next step after this course.</p>
+</div>
+
+<div class="card green">
+<h3>One last look at the family photo</h3>
+<table>
+<tr><th>Engine</th><th>Differentiates…</th><th>When the graph exists</th></tr>
+<tr><td>our 45 lines / <span class="fw pt">torch</span></td><td>the <em>run</em> (whatever executed)</td><td>built during forward, per call</td></tr>
+<tr><td><span class="fw tf">TF1</span> / <span class="fw jx">JAX</span></td><td>the <em>program</em> (graph/jaxpr)</td><td>built once, transformed offline</td></tr>
+<tr><td><span class="fw tf">TF2 GradientTape</span></td><td>the run (eager tape) — torch's approach wearing a with-statement</td><td>per call, inside the context</td></tr>
+</table>
+<p>Every autodiff system you will ever meet is one of these two, and you've now built one and read the other's blueprint.</p>
+</div>
+<a class="nx" href="9_one_model_four_ways.html">Next chapter: one model, four dialects →</a>
+</div>
+
+<script>
+const pages=document.querySelectorAll('.page'),nav=document.getElementById('nav');
+pages.forEach((p,i)=>{
+  const b=document.createElement('button');
+  b.textContent=p.dataset.t;
+  b.onclick=()=>go(i);
+  if(i===0)b.classList.add('on');
+  nav.appendChild(b);
+});
+function go(n){
+  pages.forEach((p,i)=>p.classList.toggle('on',i===n));
+  nav.querySelectorAll('button').forEach((b,i)=>{
+    b.classList.remove('on');
+    if(i<n)b.classList.add('done');
+    else b.classList.remove('done');
+    if(i===n)b.classList.add('on');
+  });
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+</script>
+</body>
+</html>

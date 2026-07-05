@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chapter 7: GRPO</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0a0a1a;color:#e0e0e0;padding:20px 20px 80px;line-height:1.7}
+h1{text-align:center;color:#fff;margin-bottom:4px;font-size:1.5em}
+.sub{text-align:center;color:#888;margin-bottom:24px;font-size:.88em}
+.nav{display:flex;justify-content:center;gap:6px;margin-bottom:20px;flex-wrap:wrap}
+.nav button{padding:7px 13px;border:2px solid #333;background:#111;color:#888;border-radius:8px;cursor:pointer;font-size:.78em;transition:.2s}
+.nav button:hover{border-color:#555;color:#ccc}
+.nav button.on{border-color:#4fc3f7;color:#4fc3f7;background:#0d2137}
+.nav button.done{border-color:#4caf50;color:#4caf50}
+.page{display:none;max-width:860px;margin:0 auto}
+.page.on{display:block}
+.page h2{color:#4fc3f7;margin-bottom:12px;font-size:1.2em}
+.card{background:#12122a;border:1px solid #2a2a4a;border-radius:12px;padding:18px;margin-bottom:14px}
+.card.blue{border-color:#4fc3f7;background:#0d1b2a}
+.card.green{border-color:#4caf50;background:#0a1a0a}
+.card.orange{border-color:#ff9800;background:#1a1400}
+.card.purple{border-color:#ce93d8;background:#1a0a2a}
+.card.red{border-color:#ef5350;background:#1a0a0a}
+.card h3{color:#ffb74d;margin-bottom:8px;font-size:1em}
+button.nx{padding:10px 24px;background:#4caf50;color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:.9em;margin-top:14px}
+button.nx:hover{background:#66bb6a}
+table{width:100%;border-collapse:collapse;margin:10px 0}
+th,td{padding:8px 12px;border:1px solid #333;text-align:center;font-size:.88em}
+th{background:#1a1a3a;color:#4fc3f7}
+.math{background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:14px;margin:10px 0;font-family:'Fira Code',monospace;font-size:.85em;line-height:1.8}
+.math .line{margin:2px 0}
+.math .hl{background:#264f78;padding:2px 6px;border-radius:4px;display:inline-block}
+.math .cmt{color:#6a9955}
+.math .val{color:#b5cea8}
+.math .lbl{color:#9cdcfe}
+.key{color:#ffb74d;font-weight:600}
+.vs{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:10px 0}
+@media(max-width:650px){.vs{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<a href="../index.html" style="position:fixed;top:10px;left:14px;font-size:.75em;color:#555;text-decoration:none;z-index:999;padding:4px 8px;background:#0a0a1a;border:1px solid #333;border-radius:6px;">&larr; index</a>
+<h1>Chapter 7: GRPO</h1>
+<p class="sub">Group Relative Policy Optimization — DeepSeek's trick to ditch the critic</p>
+<div class="nav" id="nav"></div>
+
+<!-- PAGE 0: PPO's BURDEN -->
+<div class="page on" data-t="0. PPO's Burden">
+<h2>The Problem: PPO Needs Two Networks</h2>
+
+<div class="card blue">
+<h3>Recall from Chapter 5: Actor-Critic architecture</h3>
+<div style="display:flex;gap:16px;justify-content:center;flex-wrap:wrap;margin:14px 0">
+  <div style="background:#1a3a5c;border:2px solid #4fc3f7;border-radius:10px;padding:12px 20px;text-align:center">
+    <div style="color:#4fc3f7;font-weight:700">Actor π(a|s)</div>
+    <div style="font-size:.82em;color:#aaa;margin-top:4px">picks actions<br>~7B parameters</div>
+  </div>
+  <div style="background:#2a0a3a;border:2px solid #ce93d8;border-radius:10px;padding:12px 20px;text-align:center">
+    <div style="color:#ce93d8;font-weight:700">Critic V(s)</div>
+    <div style="font-size:.82em;color:#aaa;margin-top:4px">estimates value<br>~7B parameters</div>
+  </div>
+</div>
+<p>The critic's job: predict "from this state, what reward do I expect?" Then advantage = actual − expected. This makes the learning signal less noisy.</p>
+</div>
+
+<div class="card red">
+<h3>The cost: twice the memory, twice the complexity</h3>
+<div class="math">
+<div class="line"><span class="cmt">// Training a 7B LLM with PPO:</span></div>
+<div class="line"><span class="lbl">actor</span> &nbsp;= 7B parameters × 4 bytes = <span class="val">28 GB</span></div>
+<div class="line"><span class="lbl">critic</span> = 7B parameters × 4 bytes = <span class="val">28 GB</span></div>
+<div class="line"><span class="lbl">total</span> &nbsp;= <span class="val" style="color:#ef5350">56 GB just to hold the models</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// Plus: the critic is hard to train well.</span></div>
+<div class="line"><span class="cmt">// If critic is inaccurate → advantage estimates are noisy → actor trains badly.</span></div>
+<div class="line"><span class="cmt">// Two failure modes instead of one.</span></div>
+</div>
+</div>
+
+<div class="card orange">
+<h3>The question GRPO answers</h3>
+<p>The critic is only there to answer: <strong>"was this reward good or bad for this situation?"</strong></p>
+<p style="margin-top:6px">Is there a cheaper way to get that same signal?</p>
+<p style="margin-top:6px"><span class="key">Yes. Ask the same question multiple times and compare.</span></p>
+</div>
+<button class="nx" onclick="go(1)">Next: The group idea &#x2192;</button>
+</div>
+
+<!-- PAGE 1: THE IDEA -->
+<div class="page" data-t="1. The Group Idea">
+<h2>GRPO's Trick: Compare Within a Group</h2>
+
+<div class="card orange">
+<h3>First: where does the reward come from? The actual code.</h3>
+<p>For DeepSeek-R1, the verifier is a <strong>Python function, not a neural network</strong>. Here's what it literally does:</p>
+<div class="math">
+<div class="line"><span class="cmt">// The verifier for a math problem:</span></div>
+<div class="line"><span class="kw">def</span> <span class="lbl">compute_reward</span>(response, correct_answer):</div>
+<div class="line">&nbsp;&nbsp;<span class="cmt">// Step 1: extract the final number from the response</span></div>
+<div class="line">&nbsp;&nbsp;<span class="lbl">extracted</span> = <span class="lbl">extract_last_number</span>(response)</div>
+<div class="line">&nbsp;&nbsp;<span class="cmt">// Step 2: is it correct?</span></div>
+<div class="line">&nbsp;&nbsp;<span class="kw">if</span> <span class="lbl">extracted</span> == <span class="lbl">correct_answer</span>:</div>
+<div class="line">&nbsp;&nbsp;&nbsp;&nbsp;<span class="kw">return</span> <span class="val" style="color:#4caf50">+1.0</span></div>
+<div class="line">&nbsp;&nbsp;<span class="kw">else</span>:</div>
+<div class="line">&nbsp;&nbsp;&nbsp;&nbsp;<span class="kw">return</span> <span class="val" style="color:#ef5350">0.0</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// That's it. Binary. Correct = 1.0. Wrong = 0.0.</span></div>
+<div class="line"><span class="cmt">// No partial credit, no sentiment analysis, no neural network.</span></div>
+</div>
+<p style="margin-top:8px">Let's run it on the same responses:</p>
+<div class="math">
+<div class="line"><span class="lbl">correct_answer</span> = 4</div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="lbl">response</span>: "4"</div>
+<div class="line"><span class="cmt">&nbsp;&nbsp;extract_last_number("4") → 4</span></div>
+<div class="line"><span class="cmt">&nbsp;&nbsp;4 == 4 → True</span></div>
+<div class="line"><span class="lbl">reward</span> = <span class="val" style="color:#4caf50">+1.0</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="lbl">response</span>: "The answer is 4."</div>
+<div class="line"><span class="cmt">&nbsp;&nbsp;extract_last_number("The answer is 4.") → 4</span></div>
+<div class="line"><span class="cmt">&nbsp;&nbsp;4 == 4 → True</span></div>
+<div class="line"><span class="lbl">reward</span> = <span class="val" style="color:#4caf50">+1.0</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="lbl">response</span>: "Let me think... it's 4."</div>
+<div class="line"><span class="cmt">&nbsp;&nbsp;extract_last_number("Let me think... it's 4.") → 4</span></div>
+<div class="line"><span class="cmt">&nbsp;&nbsp;4 == 4 → True</span></div>
+<div class="line"><span class="lbl">reward</span> = <span class="val" style="color:#4caf50">+1.0</span> <span class="cmt">// same as response 1. verbose doesn't matter to verifier.</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="lbl">response</span>: "4! And also maybe 5?"</div>
+<div class="line"><span class="cmt">&nbsp;&nbsp;extract_last_number("4! And also maybe 5?") → 5</span></div>
+<div class="line"><span class="cmt">&nbsp;&nbsp;5 == 4 → False</span></div>
+<div class="line"><span class="lbl">reward</span> = <span class="val" style="color:#ef5350">0.0</span> <span class="cmt">// the verifier picks the LAST number, which is 5. wrong.</span></div>
+</div>
+<p style="margin-top:8px">Notice: the rewards <code>+0.6</code> and <code>-0.2</code> I used earlier were <strong>wrong and misleading</strong>. The real DeepSeek verifier is strictly binary: 1 or 0. Partial credit scores like 0.6 come from <em>format rewards</em> (a second function that checks if the model used the right &lt;think&gt; tags), which DeepSeek adds on top. But the core correctness signal is just: did you get the number right?</p>
+</div>
+
+<div class="card">
+<h3>Why binary rewards are enough — and actually better</h3>
+<div class="math">
+<div class="line"><span class="cmt">// Training dataset: 100,000 math problems with known answers.</span></div>
+<div class="line"><span class="cmt">// For each problem, run the model 4 times, check each answer.</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="lbl">problem</span>: "23 × 47 = ?"   correct_answer = 1081</div>
+<div class="line"><span class="lbl">response 1</span>: "1081"       → verifier: 1081 == 1081 → reward = <span class="val" style="color:#4caf50">1.0</span></div>
+<div class="line"><span class="lbl">response 2</span>: "1091"       → verifier: 1091 == 1081 → reward = <span class="val" style="color:#ef5350">0.0</span></div>
+<div class="line"><span class="lbl">response 3</span>: "1081"       → verifier: 1081 == 1081 → reward = <span class="val" style="color:#4caf50">1.0</span></div>
+<div class="line"><span class="lbl">response 4</span>: "about 1000" → verifier: no number match → reward = <span class="val" style="color:#ef5350">0.0</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// Group mean = (1+0+1+0)/4 = 0.5</span></div>
+<div class="line"><span class="lbl">adv 1</span>: (1.0 - 0.5) / 0.5 = <span class="val" style="color:#4caf50">+1.0</span>  <span class="cmt">// reinforce whatever reasoning led to 1081</span></div>
+<div class="line"><span class="lbl">adv 2</span>: (0.0 - 0.5) / 0.5 = <span class="val" style="color:#ef5350">-1.0</span>  <span class="cmt">// discourage whatever reasoning led to 1091</span></div>
+<div class="line"><span class="lbl">adv 3</span>: (1.0 - 0.5) / 0.5 = <span class="val" style="color:#4caf50">+1.0</span></div>
+<div class="line"><span class="lbl">adv 4</span>: (0.0 - 0.5) / 0.5 = <span class="val" style="color:#ef5350">-1.0</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// The model learns: "when I write step-by-step arithmetic, I get 1.0.</span></div>
+<div class="line"><span class="cmt">//  When I guess, I get 0.0." → starts showing its work.</span></div>
+</div>
+<p style="margin-top:8px">The verifier never reads the reasoning. It only checks the final number. But because getting the right answer <em>requires</em> correct reasoning, the model is implicitly rewarded for reasoning well. The binary signal is clean, scalable, and impossible to game (you can't fool a calculator).</p>
+</div>
+
+<div class="card blue">
+<h3>Now the group example — with honest rewards</h3>
+<p>For the same prompt, run the model G=4 times. Verifier checks the final number:</p>
+<div class="math">
+<div class="line"><span class="lbl">prompt</span> = "What is 2 + 2?"   correct_answer = 4</div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="lbl">response 1</span>: "4"                     → last number = 4 = correct → reward = <span class="val" style="color:#4caf50">1.0</span></div>
+<div class="line"><span class="lbl">response 2</span>: "The answer is 4."      → last number = 4 = correct → reward = <span class="val" style="color:#4caf50">1.0</span></div>
+<div class="line"><span class="lbl">response 3</span>: "Let me think... it's 4."→ last number = 4 = correct → reward = <span class="val" style="color:#4caf50">1.0</span></div>
+<div class="line"><span class="lbl">response 4</span>: "4! And also maybe 5?" → last number = 5 ≠ correct → reward = <span class="val" style="color:#ef5350">0.0</span></div>
+</div>
+</div>
+
+<div class="card">
+<h3>Now you have a baseline for free: the group average</h3>
+<div class="math">
+<div class="line"><span class="lbl">rewards</span> = [1.0, 1.0, 0.6, −0.2]</div>
+<div class="line"><span class="lbl">mean</span> = (1.0 + 1.0 + 0.6 − 0.2) / 4 = <span class="val">0.60</span></div>
+<div class="line"><span class="lbl">std</span> &nbsp;= 0.49</div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// Advantage for each response = (reward - mean) / std</span></div>
+<div class="line"><span class="lbl">adv 1</span>: (1.0 − 0.60) / 0.49 = <span class="val" style="color:#4caf50">+0.82</span>  <span class="cmt">// above average</span></div>
+<div class="line"><span class="lbl">adv 2</span>: (1.0 − 0.60) / 0.49 = <span class="val" style="color:#4caf50">+0.82</span>  <span class="cmt">// above average</span></div>
+<div class="line"><span class="lbl">adv 3</span>: (0.6 − 0.60) / 0.49 = <span class="val" style="color:#888">0.00</span>   <span class="cmt">// exactly average — don't change</span></div>
+<div class="line"><span class="lbl">adv 4</span>: (−0.2 − 0.60) / 0.49 = <span class="val" style="color:#ef5350">−1.63</span> <span class="cmt">// well below average — push down</span></div>
+</div>
+</div>
+
+<div class="card green">
+<h3>That's the whole idea</h3>
+<p>"Was this response good?" is now answered by: <strong>was it better or worse than the other responses to the same prompt?</strong></p>
+<p style="margin-top:8px">No separate critic network. The group itself is the baseline. The average reward of the group plays the role V(s) played in Actor-Critic.</p>
+<div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin:12px 0">
+  <div style="background:#1a0a0a;border:2px solid #ef5350;border-radius:10px;padding:10px 16px;text-align:center;font-size:.85em">
+    <div style="color:#ef5350;font-weight:700">PPO baseline</div>
+    <div style="color:#aaa;margin-top:4px">V(s) from critic network<br>7B extra parameters</div>
+  </div>
+  <div style="align-self:center;color:#666;font-size:1.4em">→</div>
+  <div style="background:#0a1a0a;border:2px solid #4caf50;border-radius:10px;padding:10px 16px;text-align:center;font-size:.85em">
+    <div style="color:#4caf50;font-weight:700">GRPO baseline</div>
+    <div style="color:#aaa;margin-top:4px">mean(group rewards)<br>0 extra parameters</div>
+  </div>
+</div>
+</div>
+<button class="nx" onclick="go(2)">Next: Step-by-step update &#x2192;</button>
+</div>
+
+<!-- PAGE 2: STEP BY STEP -->
+<div class="page" data-t="2. One Step">
+<h2>One GRPO Update — Every Number</h2>
+
+<div class="card blue">
+<h3>Setup</h3>
+<div class="math">
+<div class="line"><span class="lbl">prompt</span> = "Solve: x + 3 = 7"</div>
+<div class="line"><span class="lbl">G</span> = 4 <span class="cmt">// group size</span></div>
+<div class="line"><span class="lbl">clip ε</span> = 0.2 <span class="cmt">// same as PPO</span></div>
+</div>
+</div>
+
+<div class="card">
+<h3>Step 1: Generate G responses, score each one</h3>
+<table>
+<tr><th>#</th><th>Response</th><th>Reward</th><th>Why</th></tr>
+<tr><td>1</td><td>"x = 4"</td><td style="color:#4caf50;font-weight:700">+1.0</td><td>Correct, concise</td></tr>
+<tr><td>2</td><td>"x = 4, because 7−3=4"</td><td style="color:#4caf50">+0.9</td><td>Correct with reasoning</td></tr>
+<tr><td>3</td><td>"x = 4 or x = 5"</td><td style="color:#ffb74d">+0.2</td><td>Correct answer but introduced wrong option</td></tr>
+<tr><td>4</td><td>"x = 3"</td><td style="color:#ef5350">−1.0</td><td>Wrong</td></tr>
+</table>
+</div>
+
+<div class="card">
+<h3>Step 2: Compute group mean and std</h3>
+<div class="math">
+<div class="line"><span class="lbl">rewards</span> = [1.0, 0.9, 0.2, −1.0]</div>
+<div class="line"><span class="lbl">mean</span> = (1.0 + 0.9 + 0.2 + (−1.0)) / 4 = 1.1/4 = <span class="val">0.275</span></div>
+<div class="line"><span class="lbl">std</span> &nbsp;= sqrt(mean of squared deviations)</div>
+<div class="line">&nbsp;&nbsp;&nbsp;&nbsp; = sqrt(((1.0−.275)² + (0.9−.275)² + (0.2−.275)² + (−1.0−.275)²) / 4)</div>
+<div class="line">&nbsp;&nbsp;&nbsp;&nbsp; = sqrt((0.526 + 0.390 + 0.006 + 1.626) / 4)</div>
+<div class="line">&nbsp;&nbsp;&nbsp;&nbsp; = sqrt(0.637) = <span class="val">0.798</span></div>
+</div>
+</div>
+
+<div class="card">
+<h3>Step 3: Compute advantage for each response</h3>
+<div class="math">
+<div class="line"><span class="cmt">// advantage = (reward − mean) / std</span></div>
+<div class="line"><span class="lbl">adv 1</span>: (1.0 − 0.275) / 0.798 = <span class="val" style="color:#4caf50">+0.91</span></div>
+<div class="line"><span class="lbl">adv 2</span>: (0.9 − 0.275) / 0.798 = <span class="val" style="color:#4caf50">+0.78</span></div>
+<div class="line"><span class="lbl">adv 3</span>: (0.2 − 0.275) / 0.798 = <span class="val" style="color:#888">−0.09</span> <span class="cmt">// barely below average</span></div>
+<div class="line"><span class="lbl">adv 4</span>: (−1.0 − 0.275) / 0.798 = <span class="val" style="color:#ef5350">−1.60</span> <span class="cmt">// well below</span></div>
+</div>
+</div>
+
+<div class="card green">
+<h3>Step 4: Update using PPO's clipped objective (same as Ch5)</h3>
+<div class="math">
+<div class="line"><span class="cmt">// For each response i:</span></div>
+<div class="line"><span class="lbl">ratio_i</span> = π_new(response_i) / π_old(response_i)</div>
+<div class="line"><span class="lbl">loss_i</span> &nbsp;= −min(ratio_i × adv_i, clip(ratio_i, 0.8, 1.2) × adv_i)</div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// Say ratio=1.1 for response 1 (policy became slightly more likely):</span></div>
+<div class="line"><span class="lbl">loss_1</span> = −min(1.1 × 0.91, clip(1.1, 0.8, 1.2) × 0.91)</div>
+<div class="line">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; = −min(1.0, 1.0) = <span class="val">−1.0</span> <span class="cmt">// push response 1 more likely</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// For response 4 (x=3, wrong answer), ratio=0.9:</span></div>
+<div class="line"><span class="lbl">loss_4</span> = −min(0.9 × (−1.60), clip(0.9) × (−1.60))</div>
+<div class="line">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; = −min(−1.44, −1.44) = <span class="val">+1.44</span> <span class="cmt">// push response 4 less likely</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// Total loss = average over all group members</span></div>
+<div class="line"><span class="hl"><span class="lbl">loss</span> = mean(loss_1, loss_2, loss_3, loss_4)</span></div>
+</div>
+</div>
+<button class="nx" onclick="go(3)">Next: GRPO vs PPO vs DPO &#x2192;</button>
+</div>
+
+<!-- PAGE 3: COMPARISON -->
+<div class="page" data-t="3. vs PPO vs DPO">
+<h2>GRPO vs PPO vs DPO</h2>
+
+<div class="card blue">
+<h3>All three compared</h3>
+<table>
+<tr><th></th><th>PPO (Ch5)</th><th>DPO (Ch6)</th><th>GRPO (Ch7)</th></tr>
+<tr><td>Needs reward model?</td><td>Yes</td><td>No</td><td>Yes</td></tr>
+<tr><td>Needs critic V(s)?</td><td style="color:#ef5350;font-weight:700">Yes (separate model)</td><td>No</td><td style="color:#4caf50;font-weight:700">No</td></tr>
+<tr><td>Input data format</td><td>Prompt → generate live</td><td>Pairwise (winner/loser)</td><td>Prompt → generate group</td></tr>
+<tr><td>Baseline</td><td>V(s) from critic</td><td>Reference model log-prob</td><td>Group mean reward</td></tr>
+<tr><td>Memory cost</td><td style="color:#ef5350">2× model size</td><td style="color:#4caf50">1× model size</td><td style="color:#4caf50">1× model size</td></tr>
+<tr><td>Explores live?</td><td>Yes</td><td>No (fixed dataset)</td><td>Yes</td></tr>
+<tr><td>Used in</td><td>GPT-4, Claude early</td><td>Llama 3, Mistral</td><td>DeepSeek-R1</td></tr>
+</table>
+</div>
+
+<div class="card">
+<h3>The intuition for each baseline</h3>
+<div class="math">
+<div class="line"><span class="cmt">// PPO: ask a trained critic "what's this state worth?"</span></div>
+<div class="line"><span class="lbl">advantage</span> = reward − <span style="color:#ce93d8">V(s)</span></div>
+<div class="line"><span class="cmt">//             "was this better than what critic expected?"</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// DPO: compare to a frozen reference model's probabilities</span></div>
+<div class="line"><span class="lbl">signal</span> = log_ratio_winner − log_ratio_loser</div>
+<div class="line"><span class="cmt">//         "did I move toward the winner vs the loser?"</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// GRPO: ask the group "what's normal for this prompt?"</span></div>
+<div class="line"><span class="hl"><span class="lbl">advantage</span> = (reward − <span style="color:#4fc3f7">mean(group)</span>) / std(group)</span></div>
+<div class="line"><span class="cmt">//             "was this better than my other attempts at the same prompt?"</span></div>
+</div>
+</div>
+
+<div class="card orange">
+<h3>When GRPO wins over PPO</h3>
+<p><strong>Math/reasoning tasks with verifiable rewards.</strong> The reward is binary: answer is correct (+1) or wrong (−1). No need for a learned reward model or a complex V(s). Just:</p>
+<ol style="margin-left:18px;margin-top:6px">
+<li>Generate 4 solutions</li>
+<li>Check each with a calculator/code executor</li>
+<li>Compute group-relative advantage</li>
+<li>Update with PPO clip</li>
+</ol>
+<p style="margin-top:8px">This is exactly how DeepSeek-R1 trains — rewards from a math verifier, not a human preference model.</p>
+</div>
+
+<div class="card" style="border-color:#555">
+<h3>When GRPO is worse</h3>
+<p><strong>Tasks with sparse or noisy rewards.</strong> If all 4 responses in the group get the same reward (or nearly same), the group std ≈ 0, advantage ≈ 0 for everyone, and nothing gets updated. The group comparison only works when there's meaningful variation within the group.</p>
+<p style="margin-top:6px">PPO's critic can still estimate V(s) even when rewards are sparse — it builds up a picture over many updates. GRPO can't do that.</p>
+</div>
+<button class="nx" onclick="go(4)">Next: DeepSeek-R1 — the full story &#x2192;</button>
+</div>
+
+<!-- PAGE 4: DEEPSEEK-R1 -->
+<div class="page" data-t="4. DeepSeek-R1">
+<h2>DeepSeek-R1: What GRPO Actually Did</h2>
+
+<div class="card blue">
+<h3>The surprising finding</h3>
+<p>DeepSeek-R1 showed that an LLM can develop chain-of-thought reasoning — thinking step by step before answering — <strong>purely through RL</strong>, with no human demonstrations of reasoning.</p>
+<div class="math">
+<div class="line"><span class="cmt">// Previous approach (GPT-4, o1 style):</span></div>
+<div class="line"><span class="cmt">// 1. Hire humans to write reasoning traces</span></div>
+<div class="line"><span class="cmt">// 2. Fine-tune model to imitate those traces</span></div>
+<div class="line"><span class="cmt">// 3. Then do RL</span></div>
+<div class="line"><span class="cmt">// Expensive. Humans needed to reason explicitly.</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// DeepSeek-R1 approach:</span></div>
+<div class="line"><span class="cmt">// 1. Start with base LLM (no reasoning traces)</span></div>
+<div class="line"><span class="cmt">// 2. GRPO: generate 4 solutions, check math verifier, update</span></div>
+<div class="line"><span class="cmt">// 3. Model spontaneously learns to think step-by-step!</span></div>
+<div class="line"><span class="cmt">// Reward was ONLY correctness — never told it to "think".</span></div>
+</div>
+</div>
+
+<div class="card">
+<h3>Why GRPO made this possible — concrete example</h3>
+<div class="math">
+<div class="line"><span class="lbl">prompt</span> = "What is 17 × 23?"</div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// Early training, 4 responses:</span></div>
+<div class="line"><span class="lbl">resp 1</span>: "391"                              → <span style="color:#ef5350">WRONG</span>  reward = −1</div>
+<div class="line"><span class="lbl">resp 2</span>: "I'll compute: 17×20=340, 17×3=51, total=391" → <span style="color:#ef5350">WRONG</span>  reward = −1</div>
+<div class="line"><span class="lbl">resp 3</span>: "17×20=340, 17×3=51, 340+51=391" → <span style="color:#ef5350">WRONG</span>  reward = −1</div>
+<div class="line"><span class="lbl">resp 4</span>: "17×23 = 17×20 + 17×3 = 340+51 = 391" → <span style="color:#ef5350">WRONG</span>  reward = −1</div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// All wrong (391 is wrong, answer is 391... ok bad example)</span></div>
+<div class="line"><span class="cmt">// Better: prompt = "What is 23 × 47?"</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="lbl">resp 1</span>: "1081"                             → <span style="color:#ef5350">WRONG</span>  reward = −1</div>
+<div class="line"><span class="lbl">resp 2</span>: "around 1100"                      → <span style="color:#ef5350">WRONG</span>  reward = −1</div>
+<div class="line"><span class="lbl">resp 3</span>: "23×47=23×40+23×7=920+161=1081"   → <span style="color:#ef5350">WRONG</span>  reward = −1</div>
+<div class="line"><span class="lbl">resp 4</span>: "23×40=920, 23×7=161, 920+161=1081" → <span style="color:#ef5350">WRONG</span>  reward = −1</div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// All same reward → std=0 → advantage=0 → no update (yet)</span></div>
+<div class="line"><span class="cmt">// But occasionally one response is correct:</span></div>
+<div class="line"><span class="lbl">resp 4</span>: "23×47: 23×40=920, 23×7=161, 920+161=1081" → <span style="color:#4caf50">CORRECT</span> reward = +1</div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// Group: [−1, −1, −1, +1], mean=−0.5, std=1.0</span></div>
+<div class="line"><span class="lbl">adv 4</span> = (+1 − (−0.5)) / 1.0 = <span class="val" style="color:#4caf50">+1.5</span></div>
+<div class="line"><span class="cmt">// "Response 4 was WAY better than average. Do MORE of that."</span></div>
+<div class="line"><span class="cmt">// Response 4 showed step-by-step reasoning. Model learns to reason.</span></div>
+</div>
+</div>
+
+<div class="card green">
+<h3>The emergent behavior</h3>
+<p>After thousands of updates like this, the model learns:</p>
+<ul style="margin-left:18px;margin-top:6px;line-height:2">
+  <li>Step-by-step reasoning → more likely to be correct → higher reward</li>
+  <li>Step-by-step → high advantage vs other responses → gets reinforced</li>
+  <li>Model spontaneously develops a "thinking" style — "<code>&lt;think&gt;...&lt;/think&gt;</code> let me work through this"</li>
+</ul>
+<p style="margin-top:8px">Nobody wrote reasoning traces. Nobody said "think step by step." The model discovered it on its own because the group comparison rewarded it.</p>
+</div>
+<button class="nx" onclick="go(5)">Why not just SFT? &#x2192;</button>
+</div>
+
+<!-- PAGE 5: WHY NOT JUST SFT -->
+<div class="page" data-t="5. Why Not Just SFT?">
+<h2>Why Not Just Take the Good Outputs and SFT on Them?</h2>
+
+<div class="card blue">
+<h3>The question</h3>
+<p>GRPO generates 4 responses, scores them, and uses the advantage to update. But if you already know which responses are good... why not just take the good ones and do plain SFT (teacher forcing) on them? Skip the RL entirely.</p>
+<p style="margin-top:8px">This is called <strong>rejection sampling + SFT</strong>. And it actually works. But it hits a ceiling that RL doesn't.</p>
+</div>
+
+<div class="card">
+<h3>Rejection sampling — the actual procedure</h3>
+<div class="math">
+<div class="line"><span class="cmt">// Step 1: generate many responses from the current model</span></div>
+<div class="line"><span class="lbl">prompt</span> = "What is 247 × 83?"</div>
+<div class="line"><span class="lbl">correct_answer</span> = 20501</div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// Generate 8 responses:</span></div>
+<div class="line">"20501"         → verifier: 20501 == 20501 → <span class="val" style="color:#4caf50">KEEP</span></div>
+<div class="line">"20491"         → verifier: 20491 ≠ 20501 → <span class="val" style="color:#ef5350">REJECT</span></div>
+<div class="line">"About 20000"   → verifier: no match      → <span class="val" style="color:#ef5350">REJECT</span></div>
+<div class="line">"20501"         → verifier: correct        → <span class="val" style="color:#4caf50">KEEP</span></div>
+<div class="line">"I think 20501" → verifier: correct        → <span class="val" style="color:#4caf50">KEEP</span></div>
+<div class="line">"20601"         → verifier: wrong          → <span class="val" style="color:#ef5350">REJECT</span></div>
+<div class="line">"247×83=20501"  → verifier: correct        → <span class="val" style="color:#4caf50">KEEP</span></div>
+<div class="line">"20401"         → verifier: wrong          → <span class="val" style="color:#ef5350">REJECT</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// Step 2: SFT (teacher forcing) on the 4 kept responses</span></div>
+<div class="line"><span class="cmt">// loss = -log P("20501" | prompt) ← standard cross-entropy</span></div>
+<div class="line"><span class="cmt">// Same as any fine-tuning. No RL, no advantage, no clipping.</span></div>
+</div>
+</div>
+
+<div class="card orange">
+<h3>The problem: on-policy vs off-policy</h3>
+<div class="math">
+<div class="line"><span class="cmt">// Rejection sampling:</span></div>
+<div class="line"><span class="cmt">// 1. Model v1 generates 1000 responses</span></div>
+<div class="line"><span class="cmt">// 2. Keep 200 good ones</span></div>
+<div class="line"><span class="cmt">// 3. SFT on them → model is now v2</span></div>
+<div class="line"><span class="cmt">// 4. But the training data came from v1!</span></div>
+<div class="line"><span class="cmt">//    v2 makes DIFFERENT mistakes than v1 did.</span></div>
+<div class="line"><span class="cmt">//    The filtered data doesn't teach v2 about v2's mistakes.</span></div>
+<div class="line"><span class="cmt">//    → data is immediately stale</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// RL (GRPO):</span></div>
+<div class="line"><span class="cmt">// 1. Model v1 generates 4 responses → scores → updates → now v1.1</span></div>
+<div class="line"><span class="cmt">// 2. Model v1.1 generates 4 responses → scores → updates → v1.2</span></div>
+<div class="line"><span class="cmt">// 3. Model v1.2 generates 4 responses → scores → updates → v1.3</span></div>
+<div class="line"><span class="cmt">//    Each step, feedback matches the model's CURRENT behavior.</span></div>
+<div class="line"><span class="cmt">//    The model learns from its own current mistakes, not old ones.</span></div>
+</div>
+</div>
+
+<div class="card">
+<h3>Concrete example: why stale data fails</h3>
+<div class="math">
+<div class="line"><span class="cmt">// Model v1 makes this mistake often:</span></div>
+<div class="line"><span class="cmt">//   "247×83 = 247×80 + 247×3 = 19760 + 731 = 20491"  (731 should be 741)</span></div>
+<div class="line"><span class="cmt">//</span></div>
+<div class="line"><span class="cmt">// Rejection sampling: REJECT this. SFT on correct ones only.</span></div>
+<div class="line"><span class="cmt">// Model v2 never sees the 731→741 error explicitly.</span></div>
+<div class="line"><span class="cmt">// It just sees correct examples. Maybe v2 still writes 731 sometimes</span></div>
+<div class="line"><span class="cmt">// because SFT didn't specifically push 731 DOWN.</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// GRPO: response with 731 gets advantage = -1.0</span></div>
+<div class="line"><span class="cmt">//        response with 741 gets advantage = +1.0</span></div>
+<div class="line"><span class="cmt">// The gradient directly contrasts 731 vs 741.</span></div>
+<div class="line"><span class="cmt">// Token "731" probability goes DOWN. Token "741" goes UP.</span></div>
+<div class="line"><span class="cmt">// The model learns exactly where its mistake was.</span></div>
+</div>
+</div>
+
+<div class="card green">
+<h3>What DeepSeek-R1 actually did (from the paper)</h3>
+<div class="math">
+<div class="line"><span class="cmt">// They used BOTH — in this exact order:</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="lbl">Stage 1</span>: SFT on human-written thinking examples <span class="cmt">// cold start</span></div>
+<div class="line"><span class="lbl">Stage 2</span>: GRPO with math verifier             <span class="cmt">// ← RL discovers reasoning</span></div>
+<div class="line"><span class="lbl">Stage 3</span>: Rejection sampling + SFT              <span class="cmt">// ← distill RL into clean data</span></div>
+<div class="line"><span class="lbl">Stage 4</span>: GRPO again for helpfulness/safety     <span class="cmt">// ← more RL</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// RL (Stage 2) is where chain-of-thought reasoning EMERGES.</span></div>
+<div class="line"><span class="cmt">// Rejection sampling (Stage 3) DISTILLS what RL discovered</span></div>
+<div class="line"><span class="cmt">// into a clean SFT dataset — including for smaller models.</span></div>
+<div class="line"><span class="cmt">//</span></div>
+<div class="line"><span class="cmt">// RL = discover capabilities. Rejection sampling = bake them in cheaply.</span></div>
+<div class="line"><span class="cmt">// You need RL to FIND the behavior. Then rejection sampling to SPREAD it.</span></div>
+</div>
+</div>
+
+<div class="card">
+<h3>When to use which</h3>
+<table>
+<tr><th></th><th>Rejection sampling + SFT</th><th>RL (PPO/GRPO)</th></tr>
+<tr><td>What it does</td><td>Imitate the best outputs from a frozen model</td><td>Continuously improve from current model's outputs</td></tr>
+<tr><td>Uses bad outputs?</td><td style="color:#ef5350">No — throws them away</td><td style="color:#4caf50">Yes — pushes them down (negative advantage)</td></tr>
+<tr><td>Data freshness</td><td style="color:#ef5350">Stale after one update (off-policy)</td><td style="color:#4caf50">Always fresh (on-policy)</td></tr>
+<tr><td>Can discover new strategies?</td><td style="color:#ef5350">No — limited to what the frozen model already generates</td><td style="color:#4caf50">Yes — explores via sampling from current policy</td></tr>
+<tr><td>Complexity</td><td style="color:#4caf50">Simple (just SFT)</td><td style="color:#ef5350">Complex (advantage, clipping, etc.)</td></tr>
+<tr><td>Best for</td><td>Distilling RL results into smaller models, format control, data augmentation</td><td>Developing new capabilities (reasoning, math)</td></tr>
+<tr><td>Quality ceiling</td><td>~80-90% of RL quality (Llama-2 finding)</td><td>Higher — keeps improving as model changes</td></tr>
+<tr><td>Used by</td><td>DeepSeek-R1 Stage 3, Llama-2 early iterations</td><td>DeepSeek-R1 Stage 2+4, GPT-4, Claude</td></tr>
+</table>
+</div>
+
+<div class="card">
+<h3>When is rejection sampling actually used?</h3>
+<div class="math">
+<div class="line"><span class="cmt">// Use case 1: DISTILLATION (most common)</span></div>
+<div class="line"><span class="cmt">// Big RL-trained model generates outputs → keep good ones → SFT smaller model</span></div>
+<div class="line"><span class="lbl">DeepSeek-R1 (671B)</span> → rejection sample → SFT → <span class="lbl">DeepSeek-R1-Distill (7B)</span></div>
+<div class="line"><span class="cmt">// The 7B model can't do RL itself (too small to explore well)</span></div>
+<div class="line"><span class="cmt">// But it can imitate the 671B model's best outputs via SFT.</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// Use case 2: DATA AUGMENTATION</span></div>
+<div class="line"><span class="cmt">// Model already gets 30% of math problems right.</span></div>
+<div class="line"><span class="cmt">// Generate 10 responses per problem, keep correct ones → more training data.</span></div>
+<div class="line"><span class="lbl">RFT paper</span>: LLaMA-7B on GSM8K: 35.9% → <span class="val" style="color:#4caf50">49.3%</span> just from this.</div>
+<div class="line"><span class="cmt">// No RL needed. Just more correct examples to train on.</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// Use case 3: FORMAT/STYLE CONTROL</span></div>
+<div class="line"><span class="cmt">// You want the model to always output valid JSON.</span></div>
+<div class="line"><span class="lbl">filter</span> = try: json.loads(response); return True; except: return False</div>
+<div class="line"><span class="cmt">// Generate 10 responses, keep the ones that parse as valid JSON.</span></div>
+<div class="line"><span class="cmt">// SFT on those. The "reward" is just a string check — no neural network.</span></div>
+</div>
+<p style="margin-top:8px">The common thread: rejection sampling works when the model <strong>already can</strong> do the thing some of the time — you're just filtering for consistency. It breaks when success rate is 0% — nothing to keep, nothing to learn from. That's where RL is needed.</p>
+</div>
+
+<button class="nx" onclick="go(6)">Full picture &#x2192;</button>
+</div>
+
+<!-- PAGE 6: FULL PICTURE -->
+<div class="page" data-t="6. Full Picture">
+<h2>The Complete RL Journey</h2>
+
+<div class="card blue">
+<table>
+<tr><th>Ch.</th><th>Algorithm</th><th>One new thing</th><th>Problem solved</th></tr>
+<tr><td>0</td><td>Policy gradient</td><td>gradient × reward</td><td>Learning without labels</td></tr>
+<tr><td>1</td><td>Bandit</td><td>Explore vs exploit</td><td>Finding the best action</td></tr>
+<tr><td>2</td><td>Q-learning</td><td>States + Q-table</td><td>Different situations need different actions</td></tr>
+<tr><td>3</td><td>REINFORCE</td><td>Neural network policy</td><td>Scaling to large/continuous states</td></tr>
+<tr><td>4</td><td>Actor-Critic</td><td>Baseline V(s)</td><td>Too much noise in the learning signal</td></tr>
+<tr><td>5</td><td>PPO</td><td>Ratio clipping</td><td>One bad update destroys everything</td></tr>
+<tr><td>—</td><td>RLHF</td><td>Learned reward model</td><td>Use human preferences as the reward</td></tr>
+<tr><td>6</td><td>DPO</td><td>Direct preference loss</td><td>Skip the reward model entirely</td></tr>
+<tr><td style="color:#4fc3f7;font-weight:700">7</td><td style="color:#4fc3f7;font-weight:700">GRPO</td><td style="color:#4fc3f7;font-weight:700">Group mean as baseline</td><td style="color:#4fc3f7;font-weight:700">Skip the critic, keep exploration</td></tr>
+</table>
+</div>
+
+<div class="card green">
+<h3>Three ways to ditch complexity</h3>
+<div class="math">
+<div class="line"><span class="cmt">// PPO: full actor-critic, learned reward model</span></div>
+<div class="line"><span class="cmt">// Expensive but most general.</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// DPO: no reward model, no critic, no live sampling</span></div>
+<div class="line"><span class="cmt">// Cheapest. Only works with pairwise preference data.</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// GRPO: no critic, keeps live sampling and reward model</span></div>
+<div class="line"><span class="cmt">// Middle ground. Works when reward is verifiable.</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// State of the art (2025):</span></div>
+<div class="line"><span class="cmt">// Math/reasoning → GRPO (DeepSeek-R1, QwQ-32B)</span></div>
+<div class="line"><span class="cmt">// Chat/helpfulness → DPO or PPO (Llama 3, GPT-4)</span></div>
+<div class="line"><span class="cmt">// Hybrid → GRPO for reasoning + DPO for alignment</span></div>
+</div>
+</div>
+</div>
+
+<script>
+const pages=document.querySelectorAll('.page');const nav=document.getElementById('nav');
+pages.forEach((p,i)=>{const b=document.createElement('button');b.textContent=p.dataset.t;b.onclick=()=>go(i);if(i===0)b.classList.add('on');nav.appendChild(b);});
+function go(n){pages.forEach((p,i)=>p.classList.toggle('on',i===n));nav.querySelectorAll('button').forEach((b,i)=>{b.classList.remove('on');if(i<n)b.classList.add('done');else b.classList.remove('done');if(i===n)b.classList.add('on');});window.scrollTo({top:0,behavior:'smooth'});}
+</script>
+</body>
+</html>

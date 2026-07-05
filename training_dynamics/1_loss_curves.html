@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Training Dynamics Ch1: Reading Loss Curves</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0a0a1a;color:#e0e0e0;padding:20px 20px 80px;line-height:1.7}
+h1{text-align:center;color:#fff;margin-bottom:4px;font-size:1.5em}
+.sub{text-align:center;color:#888;margin-bottom:24px;font-size:.88em}
+.nav{display:flex;justify-content:center;gap:6px;margin-bottom:20px;flex-wrap:wrap}
+.nav button{padding:7px 13px;border:2px solid #333;background:#111;color:#888;border-radius:8px;cursor:pointer;font-size:.78em;transition:.2s}
+.nav button:hover{border-color:#555;color:#ccc}
+.nav button.on{border-color:#4fc3f7;color:#4fc3f7;background:#0d2137}
+.nav button.done{border-color:#4caf50;color:#4caf50}
+.page{display:none;max-width:860px;margin:0 auto}
+.page.on{display:block}
+.page h2{color:#4fc3f7;margin-bottom:12px;font-size:1.2em}
+.card{background:#12122a;border:1px solid #2a2a4a;border-radius:12px;padding:18px;margin-bottom:14px}
+.card.blue{border-color:#4fc3f7;background:#0d1b2a}
+.card.green{border-color:#4caf50;background:#0a1a0a}
+.card.orange{border-color:#ff9800;background:#1a1400}
+.card.red{border-color:#ef5350;background:#1a0a0a}
+.card.purple{border-color:#ce93d8;background:#1a0a2a}
+.card h3{color:#ffb74d;margin-bottom:8px;font-size:1em}
+button.nx{padding:10px 24px;background:#4caf50;color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:.9em;margin-top:14px}
+button.nx:hover{background:#66bb6a}
+table{width:100%;border-collapse:collapse;margin:10px 0}
+th,td{padding:8px 12px;border:1px solid #333;text-align:center;font-size:.88em}
+th{background:#1a1a3a;color:#4fc3f7}
+td{text-align:left}
+.math{background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:14px;margin:10px 0;font-family:'Fira Code',Consolas,monospace;font-size:.85em;line-height:1.8}
+.math .line{margin:2px 0;display:block}
+.math .hl{background:#264f78;padding:2px 6px;border-radius:4px;display:inline-block}
+.math .cmt{color:#6a9955}
+.math .val{color:#b5cea8}
+.math .lbl{color:#9cdcfe}
+.key{color:#ffb74d;font-weight:600}
+.vs{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:10px 0}
+@media(max-width:650px){.vs{grid-template-columns:1fr}}
+/* chart */
+.chart-wrap{position:relative;height:180px;margin:16px 0;background:#0d0d1e;border:1px solid #2a2a4a;border-radius:8px;overflow:hidden;padding:10px 40px 30px 50px}
+.chart-line{position:absolute;stroke-width:2;fill:none}
+.chart-ylabel{position:absolute;left:6px;top:50%;transform:translateY(-50%) rotate(-90deg);font-size:.65em;color:#666;white-space:nowrap}
+.chart-xlabel{position:absolute;bottom:4px;left:50%;transform:translateX(-50%);font-size:.65em;color:#666}
+.chart-legend{display:flex;gap:16px;margin-top:6px;flex-wrap:wrap}
+.legend-item{display:flex;align-items:center;gap:6px;font-size:.75em}
+.legend-dot{width:20px;height:3px;border-radius:2px}
+/* bar chart */
+.bar-chart{display:flex;align-items:flex-end;gap:8px;height:120px;margin:14px 0;padding:0 4px}
+.bar{flex:1;border-radius:4px 4px 0 0;position:relative;min-width:30px}
+.bar-label{position:absolute;bottom:-20px;left:50%;transform:translateX(-50%);font-size:.65em;color:#888;white-space:nowrap}
+.bar-val{position:absolute;top:-18px;left:50%;transform:translateX(-50%);font-size:.65em;white-space:nowrap}
+details{margin-top:12px}
+details summary{cursor:pointer;color:#888;font-size:.85em;padding:8px 12px;background:#12122a;border:1px solid #333;border-radius:8px}
+details summary:hover{color:#ccc;border-color:#555}
+details[open] summary{color:#4fc3f7;border-color:#4fc3f7}
+</style>
+</head>
+<body>
+<a href="../index.html" style="position:fixed;top:10px;left:14px;font-size:.75em;color:#555;text-decoration:none;z-index:999;padding:4px 8px;background:#0a0a1a;border:1px solid #333;border-radius:6px;">&larr; index</a>
+
+<h1>Training Dynamics Ch1: Reading Loss Curves</h1>
+<p class="sub">What your loss curve is telling you — and what to do about it</p>
+
+<div class="nav" id="nav"></div>
+
+<!-- PAGE 0 -->
+<div class="page on" data-t="0. Healthy Training">
+<h2>What Healthy Training Looks Like</h2>
+
+<div class="card blue">
+<h3>Where does training start? The baseline loss</h3>
+<p>Before seeing any data, a model predicts random outputs. For a language model with vocabulary size 50,000, the initial cross-entropy loss is:</p>
+<div class="math">
+<span class="line cmt">// Random model: each token gets probability 1/vocab_size</span>
+<span class="line"><span class="lbl">initial_loss</span> = −log(1/vocab_size) = log(vocab_size)</span>
+<span class="line">             = log(50,000) = <span class="hl val">10.82</span>  <span class="cmt">// nats (base-e log)</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// For a 10-class classifier:</span>
+<span class="line"><span class="lbl">initial_loss</span> = log(10) = <span class="val">2.30</span></span>
+<span class="line cmt">// For binary classifier (2 classes):</span>
+<span class="line"><span class="lbl">initial_loss</span> = log(2) = <span class="val">0.693</span></span>
+</div>
+<p>If your model starts <em>above</em> this value, something is wrong with initialization. If it starts <em>well below</em>, your initial weights have magically learned something — also suspicious.</p>
+
+<details>
+<summary>Why does it start at exactly log(num_classes)? Where does that come from?</summary>
+<div style="padding:14px 0 4px">
+<div class="math">
+<span class="line cmt">// Cross-entropy loss for ONE sample:</span>
+<span class="line">loss = −log(predicted probability of the correct class)</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// If the model is 100% confident and correct:</span>
+<span class="line">loss = −log(1.0) = <span class="val">0</span>         <span class="cmt">// perfect</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// If the model is 100% confident but WRONG:</span>
+<span class="line">loss = −log(0.0001) = <span class="val">9.2</span>    <span class="cmt">// terrible (→ ∞ in the limit)</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// So for one sample: loss is anywhere from 0 to infinity.</span>
+</div>
+<p style="margin-top:10px">Now, at initialization:</p>
+<div class="math">
+<span class="line cmt">// PyTorch initializes Linear weights to small random values (Kaiming/Xavier)</span>
+<span class="line cmt">// → pre-softmax logits are small, roughly similar numbers</span>
+<span class="line cmt">// → softmax of roughly-equal small numbers ≈ uniform distribution</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Example: 6 classes, logits = [0.01, -0.03, 0.02, -0.01, 0.04, -0.02]</span>
+<span class="line">softmax → [0.167, 0.162, 0.170, 0.165, 0.174, 0.163]  <span class="cmt">// ≈ 1/6 each</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// The model gives roughly 1/num_classes probability to the correct answer:</span>
+<span class="line">loss = −log(1/6) = log(6) = <span class="val">1.79</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Averaged over many samples: still ≈ log(num_classes)</span>
+<span class="line cmt">// because every sample gets roughly uniform prediction</span>
+</div>
+<p style="margin-top:10px"><span class="key">Summary:</span> small init weights → softmax spreads probability evenly → each class gets ~1/N → loss = −log(1/N) = log(N). You don't set this up — it falls out of normal weight initialization. If loss starts much higher, logits are too big (confidently wrong). If lower, something leaked information.</p>
+</div>
+</details>
+</div>
+
+<div class="card green">
+<h3>Healthy loss curve — three phases</h3>
+<svg width="100%" viewBox="0 0 500 160" style="display:block;background:#0d0d1e;border:1px solid #2a2a4a;border-radius:8px;margin:10px 0">
+  <!-- axes -->
+  <line x1="50" y1="130" x2="490" y2="130" stroke="#333" stroke-width="1"/>
+  <line x1="50" y1="10" x2="50" y2="130" stroke="#333" stroke-width="1"/>
+  <!-- y labels -->
+  <text x="44" y="20" fill="#555" font-size="10" text-anchor="end">10.8</text>
+  <text x="44" y="60" fill="#555" font-size="10" text-anchor="end">4.0</text>
+  <text x="44" y="95" fill="#555" font-size="10" text-anchor="end">1.5</text>
+  <text x="44" y="127" fill="#555" font-size="10" text-anchor="end">0.8</text>
+  <!-- phase bands -->
+  <rect x="50" y="10" width="130" height="120" fill="#1a3a1a" opacity="0.3"/>
+  <rect x="180" y="10" width="180" height="120" fill="#1a2a3a" opacity="0.3"/>
+  <rect x="360" y="10" width="130" height="120" fill="#1a1a3a" opacity="0.3"/>
+  <text x="115" y="25" fill="#4caf50" font-size="9" text-anchor="middle">Fast drop</text>
+  <text x="270" y="25" fill="#4fc3f7" font-size="9" text-anchor="middle">Steady descent</text>
+  <text x="425" y="25" fill="#888" font-size="9" text-anchor="middle">Fine-tuning</text>
+  <!-- train loss curve -->
+  <polyline points="50,15 80,35 120,65 160,85 200,95 250,103 300,108 350,112 390,118 440,121 490,123"
+    stroke="#4fc3f7" stroke-width="2" fill="none"/>
+  <!-- val loss curve -->
+  <polyline points="50,15 80,37 120,68 160,88 200,99 250,107 300,112 350,116 390,122 440,124 490,125"
+    stroke="#ff9800" stroke-width="2" fill="none" stroke-dasharray="4,3"/>
+  <!-- labels -->
+  <text x="460" y="120" fill="#4fc3f7" font-size="9">train</text>
+  <text x="460" y="132" fill="#ff9800" font-size="9">val</text>
+  <!-- x label -->
+  <text x="270" y="148" fill="#666" font-size="10" text-anchor="middle">Training steps →</text>
+</svg>
+
+<div class="chart-legend">
+  <div class="legend-item"><div class="legend-dot" style="background:#4fc3f7"></div> Train loss</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#ff9800;border-top:1px dashed #ff9800"></div> Val loss</div>
+</div>
+</div>
+
+<div class="card">
+<h3>What each phase means — concrete numbers</h3>
+<table>
+<tr><th>Phase</th><th>Steps</th><th>Train Loss</th><th>Val Loss</th><th>What's happening</th></tr>
+<tr><td>Fast drop</td><td>0–500</td><td>10.8 → 4.0</td><td>10.8 → 4.2</td><td>Model learns obvious patterns — common words, basic syntax</td></tr>
+<tr><td>Steady</td><td>500–3000</td><td>4.0 → 1.5</td><td>4.2 → 1.6</td><td>Gradual improvement, both curves close together (gap &lt; 0.15)</td></tr>
+<tr><td>Fine-tuning</td><td>3000–5000</td><td>1.5 → 0.9</td><td>1.6 → 0.95</td><td>Diminishing returns, val loss slightly above train (normal)</td></tr>
+</table>
+<p style="margin-top:8px">Key signal of health: <span class="key">train and val loss stay close throughout</span>. A gap of 0.05–0.15 is normal (val is always slightly worse). Gap above 0.5 means trouble.</p>
+</div>
+
+<div class="card green">
+<h3>Quick sanity checklist before training</h3>
+<div class="math">
+<span class="line cmt">// Run 1 batch, check loss matches expected random baseline:</span>
+<span class="line"><span class="lbl">expected</span> = log(num_classes)  <span class="cmt">// cross-entropy classification</span></span>
+<span class="line"><span class="lbl">expected</span> = log(vocab_size)    <span class="cmt">// language model</span></span>
+<span class="line"><span class="lbl">expected</span> = var(targets)        <span class="cmt">// MSE regression (predicting mean)</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Overfit 1 batch to verify the network can learn at all:</span>
+<span class="line">train on same 32 samples for 100 steps</span>
+<span class="line">if loss doesn't reach ~0: bug in model or loss function</span>
+</div>
+</div>
+
+<button class="nx" onclick="go(1)">When things go wrong: overfitting</button>
+</div>
+
+<!-- PAGE 1 -->
+<div class="page" data-t="1. Overfitting">
+<h2>Overfitting — Train Loss Drops, Val Loss Rises</h2>
+
+<div class="card red">
+<h3>The classic overfitting signature</h3>
+<svg width="100%" viewBox="0 0 500 160" style="display:block;background:#0d0d1e;border:1px solid #2a2a4a;border-radius:8px;margin:10px 0">
+  <line x1="50" y1="130" x2="490" y2="130" stroke="#333" stroke-width="1"/>
+  <line x1="50" y1="10" x2="50" y2="130" stroke="#333" stroke-width="1"/>
+  <text x="44" y="20" fill="#555" font-size="10" text-anchor="end">3.0</text>
+  <text x="44" y="70" fill="#555" font-size="10" text-anchor="end">1.8</text>
+  <text x="44" y="105" fill="#555" font-size="10" text-anchor="end">0.9</text>
+  <text x="44" y="127" fill="#555" font-size="10" text-anchor="end">0.3</text>
+  <!-- epoch 3 marker -->
+  <line x1="230" y1="10" x2="230" y2="130" stroke="#ef5350" stroke-width="1" stroke-dasharray="3,3"/>
+  <text x="232" y="22" fill="#ef5350" font-size="9">epoch 3</text>
+  <text x="232" y="32" fill="#ef5350" font-size="9">val starts rising</text>
+  <!-- train keeps dropping -->
+  <polyline points="50,20 100,40 150,60 200,75 230,85 280,95 330,105 390,115 440,120 490,124"
+    stroke="#4fc3f7" stroke-width="2" fill="none"/>
+  <!-- val drops then rises -->
+  <polyline points="50,20 100,42 150,63 200,79 230,87 280,92 330,97 390,105 440,115 490,125"
+    stroke="#ff9800" stroke-width="2" fill="none" stroke-dasharray="4,3"/>
+  <text x="460" y="120" fill="#4fc3f7" font-size="9">train</text>
+  <text x="460" y="132" fill="#ff9800" font-size="9">val</text>
+  <text x="270" y="148" fill="#666" font-size="10" text-anchor="middle">Epochs →</text>
+</svg>
+</div>
+
+<div class="card">
+<h3>Measuring the gap — what's normal vs alarming</h3>
+<div class="math">
+<span class="line"><span class="lbl">gap</span> = val_loss − train_loss</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Example readings at epoch 10:</span>
+<span class="line"><span class="lbl">Model A</span>: train=0.82, val=0.85 → gap = <span class="val">0.03</span>  <span class="cmt">✓ healthy</span></span>
+<span class="line"><span class="lbl">Model B</span>: train=0.35, val=0.52 → gap = <span class="val">0.17</span>  <span class="cmt">⚠ watch it</span></span>
+<span class="line"><span class="lbl">Model C</span>: train=0.21, val=0.78 → gap = <span class="val">0.57</span>  <span class="cmt">✗ severe overfit</span></span>
+</div>
+<table>
+<tr><th>Gap</th><th>Verdict</th><th>Action</th></tr>
+<tr><td>&lt; 0.10</td><td style="color:#4caf50">Healthy</td><td>Continue training</td></tr>
+<tr><td>0.10 – 0.30</td><td style="color:#ff9800">Mild overfit</td><td>Add small weight decay (λ=1e-4)</td></tr>
+<tr><td>0.30 – 0.50</td><td style="color:#ff9800">Moderate</td><td>Add dropout (p=0.1), increase weight decay</td></tr>
+<tr><td>&gt; 0.50</td><td style="color:#ef5350">Severe overfit</td><td>Need more data or smaller model</td></tr>
+</table>
+</div>
+
+<div class="card orange">
+<h3>Four fixes — in order of least to most disruptive</h3>
+<div class="math">
+<span class="line cmt">// 1. Weight decay — penalize large weights</span>
+<span class="line"><span class="lbl">loss_total</span> = cross_entropy_loss + λ × Σ(w²)</span>
+<span class="line"><span class="lbl">λ</span> = 1e-4  <span class="cmt">// typical starting value for transformers</span></span>
+<span class="line"><span class="lbl">λ</span> = 1e-2  <span class="cmt">// aggressive — use when overfit is severe</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// 2. Dropout — randomly zero out activations during training</span>
+<span class="line">nn.Dropout(p=0.1)  <span class="cmt">// 10% of neurons zeroed each step</span></span>
+<span class="line">nn.Dropout(p=0.3)  <span class="cmt">// 30% — more aggressive</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// 3. Smaller model</span>
+<span class="line">Reduce layers: 12 → 6, hidden: 768 → 384</span>
+<span class="line"><span class="cmt">// Fewer parameters = less capacity to memorize</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// 4. More data (best fix, hardest to get)</span>
+<span class="line">10× more data typically eliminates overfit entirely</span>
+</div>
+</div>
+
+<div class="card purple">
+<h3>The early stopping heuristic</h3>
+<p>Save a checkpoint every N steps. Keep the checkpoint where <strong>val loss is lowest</strong>. Stop training if val loss hasn't improved for K steps (patience).</p>
+<div class="math">
+<span class="line cmt">// Concrete: patience = 3 epochs</span>
+<span class="line"><span class="lbl">epoch 5</span>: val=1.21 → new best, save</span>
+<span class="line"><span class="lbl">epoch 6</span>: val=1.24 → worse (1 strike)</span>
+<span class="line"><span class="lbl">epoch 7</span>: val=1.26 → worse (2 strikes)</span>
+<span class="line"><span class="lbl">epoch 8</span>: val=1.28 → worse (3 strikes) → <span class="hl">STOP. Use epoch 5 model.</span></span>
+</div>
+</div>
+
+<button class="nx" onclick="go(2)">Loss spikes</button>
+</div>
+
+<!-- PAGE 2 -->
+<div class="page" data-t="2. Loss Spikes">
+<h2>Loss Spikes — Sudden Jumps Mid-Training</h2>
+
+<div class="card red">
+<h3>What a spike looks like</h3>
+<svg width="100%" viewBox="0 0 500 160" style="display:block;background:#0d0d1e;border:1px solid #2a2a4a;border-radius:8px;margin:10px 0">
+  <line x1="50" y1="130" x2="490" y2="130" stroke="#333" stroke-width="1"/>
+  <line x1="50" y1="10" x2="50" y2="130" stroke="#333" stroke-width="1"/>
+  <text x="44" y="20" fill="#555" font-size="10" text-anchor="end">8.0</text>
+  <text x="44" y="75" fill="#555" font-size="10" text-anchor="end">2.5</text>
+  <text x="44" y="127" fill="#555" font-size="10" text-anchor="end">0.8</text>
+  <!-- smooth train, then spike, then recovery -->
+  <polyline points="50,100 100,90 150,82 200,76 250,72 260,71 270,15 280,50 300,68 350,72 400,73 450,74 490,74"
+    stroke="#ef5350" stroke-width="2" fill="none"/>
+  <!-- spike annotation -->
+  <line x1="270" y1="15" x2="270" y2="130" stroke="#ef5350" stroke-width="1" stroke-dasharray="2,2"/>
+  <text x="275" y="22" fill="#ef5350" font-size="9">spike!</text>
+  <text x="275" y="32" fill="#ef5350" font-size="9">step 2700</text>
+  <text x="270" y="148" fill="#666" font-size="10" text-anchor="middle">Steps →</text>
+</svg>
+</div>
+
+<div class="card">
+<h3>Three causes of spikes</h3>
+<div class="vs">
+  <div class="card orange" style="margin:0">
+    <h3>1. Bad batch</h3>
+    <p>A single batch with corrupted or extreme values. Common in web-scraped data. Model encounters a document with 100,000 rare tokens → loss on that batch = 15.0 → gradients blow up.</p>
+  </div>
+  <div class="card orange" style="margin:0">
+    <h3>2. LR too high</h3>
+    <p>Learning rate step overshoots the loss valley. Loss was 1.2, update moves weights far past minimum, loss jumps to 4.5. Common mid-training when loss landscape gets sharper.</p>
+  </div>
+</div>
+<div class="card red" style="margin-top:10px">
+  <h3>3. Gradient explosion — the most dangerous</h3>
+  <div class="math">
+  <span class="line cmt">// Deep network: gradients multiply across layers</span>
+  <span class="line"><span class="lbl">Without clipping</span>:</span>
+  <span class="line">  layer10 grad norm = 1.5</span>
+  <span class="line">  layer9  grad norm = 2.3</span>
+  <span class="line">  layer1  grad norm = <span class="hl val">150.0</span>  <span class="cmt">// exploded!</span></span>
+  <span class="line">  weight update: w -= 0.001 × 150.0 = w − 0.15  <span class="cmt">// enormous step</span></span>
+  <span class="line">  result: loss spikes from 1.4 → 9.2</span>
+  </div>
+</div>
+</div>
+
+<div class="card green">
+<h3>Fix: Gradient Clipping — one line of code</h3>
+<div class="math">
+<span class="line cmt">// PyTorch — add this between loss.backward() and optimizer.step()</span>
+<span class="line">loss.backward()</span>
+<span class="line"><span class="hl">torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)</span></span>
+<span class="line">optimizer.step()</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// What this does:</span>
+<span class="line">total_grad_norm = sqrt(sum of all parameter grad² values)</span>
+<span class="line">if total_grad_norm &gt; max_norm:</span>
+<span class="line">    scale = max_norm / total_grad_norm</span>
+<span class="line">    for each param: param.grad *= scale</span>
+</div>
+<div class="math">
+<span class="line cmt">// Concrete example:</span>
+<span class="line"><span class="lbl">Before clip</span>: total_grad_norm = <span class="val">150.0</span>, max_norm = 1.0</span>
+<span class="line"><span class="lbl">scale</span> = 1.0 / 150.0 = <span class="val">0.00667</span></span>
+<span class="line"><span class="lbl">layer1_grad</span>: 150.0 × 0.00667 = <span class="val">1.0</span>  <span class="cmt">// capped</span></span>
+<span class="line"><span class="lbl">layer10_grad</span>: 1.5 × 0.00667 = <span class="val">0.01</span>   <span class="cmt">// also scaled proportionally</span></span>
+<span class="line"><span class="lbl">After clip</span>: total_grad_norm = <span class="val">1.0</span>, training stable</span>
+</div>
+</div>
+
+<div class="card blue">
+<h3>Spike recovery — what to expect</h3>
+<p>With gradient clipping in place, occasional spikes still happen (bad batches) but the model <strong>recovers within a few hundred steps</strong> because the spike is capped and doesn't completely destroy the weights.</p>
+<div class="math">
+<span class="line cmt">// With clipping (max_norm=1.0):</span>
+<span class="line"><span class="lbl">step 2698</span>: loss = 1.18</span>
+<span class="line"><span class="lbl">step 2699</span>: bad batch → loss = 3.40  <span class="cmt">// spike capped by clipping</span></span>
+<span class="line"><span class="lbl">step 2700</span>: loss = 1.95  <span class="cmt">// recovering</span></span>
+<span class="line"><span class="lbl">step 2710</span>: loss = 1.22  <span class="cmt">// back to normal</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Without clipping:</span>
+<span class="line"><span class="lbl">step 2699</span>: bad batch → loss = 9.20  <span class="cmt">// weights destroyed</span></span>
+<span class="line"><span class="lbl">step 2720</span>: loss = 4.50  <span class="cmt">// never recovers properly</span></span>
+</div>
+</div>
+
+<button class="nx" onclick="go(3)">Not learning at all</button>
+</div>
+
+<!-- PAGE 3 -->
+<div class="page" data-t="3. Not Learning">
+<h2>Not Learning — Loss Plateaus Near Initial Value</h2>
+
+<div class="card red">
+<h3>The flatline signature</h3>
+<svg width="100%" viewBox="0 0 500 160" style="display:block;background:#0d0d1e;border:1px solid #2a2a4a;border-radius:8px;margin:10px 0">
+  <line x1="50" y1="130" x2="490" y2="130" stroke="#333" stroke-width="1"/>
+  <line x1="50" y1="10" x2="50" y2="130" stroke="#333" stroke-width="1"/>
+  <text x="44" y="30" fill="#555" font-size="10" text-anchor="end">10.8</text>
+  <text x="44" y="100" fill="#555" font-size="10" text-anchor="end">10.0</text>
+  <!-- flat red line — barely moves -->
+  <polyline points="50,28 100,29 150,29 200,30 250,30 300,30 350,31 400,31 450,31 490,31"
+    stroke="#ef5350" stroke-width="2" fill="none"/>
+  <!-- label -->
+  <text x="300" y="22" fill="#ef5350" font-size="9">lr=1e-6: flat — not learning</text>
+  <!-- good line for comparison -->
+  <polyline points="50,28 100,50 150,75 200,95 250,107 300,115 350,119 400,122 450,124 490,125"
+    stroke="#4caf50" stroke-width="2" fill="none" stroke-dasharray="4,3"/>
+  <text x="300" y="128" fill="#4caf50" font-size="9">lr=3e-4: drops fast ✓</text>
+  <text x="270" y="148" fill="#666" font-size="10" text-anchor="middle">Steps →</text>
+</svg>
+</div>
+
+<div class="card">
+<h3>Four causes of no learning</h3>
+<table>
+<tr><th>Cause</th><th>Diagnosis</th><th>Fix</th></tr>
+<tr><td>LR too low</td><td>Loss barely moves from step 1</td><td>Use LR finder (next chapter)</td></tr>
+<tr><td>Dead ReLUs</td><td>Grad norm = 0 for some layers</td><td>Use LeakyReLU or GELU, better init</td></tr>
+<tr><td>Bad init</td><td>Loss starts at wrong baseline</td><td>Xavier/He initialization</td></tr>
+<tr><td>Wrong loss</td><td>Loss decreases but accuracy flat</td><td>Check label encoding, sigmoid vs softmax</td></tr>
+</table>
+</div>
+
+<div class="card orange">
+<h3>Learning rate effect — same model, same data, different lr</h3>
+<div class="math">
+<span class="line cmt">// Same 10-class classifier, 1000 steps:</span>
+<span class="line">&nbsp;</span>
+<span class="line"><span class="lbl">lr = 1e-6</span>:  loss 2.30 → 2.28  <span class="cmt">// barely moved (stuck)</span></span>
+<span class="line"><span class="lbl">lr = 1e-5</span>:  loss 2.30 → 1.95  <span class="cmt">// slow improvement</span></span>
+<span class="line"><span class="lbl">lr = 3e-4</span>:  loss 2.30 → 0.91  <span class="cmt">// ✓ good learning</span></span>
+<span class="line"><span class="lbl">lr = 1e-2</span>:  loss 2.30 → 8.50  <span class="cmt">// exploded (lr too high)</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// The difference between 1e-6 and 3e-4 is 300×</span>
+<span class="line cmt">// That's why picking the right lr matters so much</span>
+</div>
+</div>
+
+<div class="card blue">
+<h3>Dead ReLU — a silent killer</h3>
+<div class="math">
+<span class="line cmt">// ReLU(x) = max(0, x) — negative inputs give ZERO output AND zero gradient</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// If weights initialize too negative, a ReLU neuron can get stuck:</span>
+<span class="line"><span class="lbl">pre-activation</span> = w·x + b = −3.5  <span class="cmt">// always negative for all inputs</span></span>
+<span class="line"><span class="lbl">ReLU output</span> = 0.0</span>
+<span class="line"><span class="lbl">gradient</span> = 0.0  <span class="cmt">// dead — no signal flows back</span></span>
+<span class="line"><span class="lbl">weight update</span> = 0.0  <span class="cmt">// neuron never recovers</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Fix — LeakyReLU: negative side has small slope instead of 0</span>
+<span class="line">LeakyReLU(x) = x if x &gt; 0, else 0.01*x</span>
+<span class="line">gradient always non-zero → neuron can recover</span>
+</div>
+</div>
+
+<button class="nx" onclick="go(4)">The learning rate finder</button>
+</div>
+
+<!-- PAGE 4 -->
+<div class="page" data-t="4. LR Finder">
+<h2>The Learning Rate Finder</h2>
+
+<div class="card blue">
+<h3>The idea — sweep lr, watch loss</h3>
+<p>Proposed by Leslie Smith (2015). Run training for ~100 steps while <strong>exponentially increasing the learning rate</strong> from a tiny value (1e-7) to a large value (10). Record the loss at each step. Plot loss vs lr. Pick the lr where the loss is <strong>decreasing fastest</strong>.</p>
+<div class="math">
+<span class="line cmt">// lr increases exponentially each step:</span>
+<span class="line"><span class="lbl">lr[step]</span> = lr_start × (lr_end / lr_start) ^ (step / num_steps)</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Concrete: lr_start=1e-7, lr_end=10, num_steps=100</span>
+<span class="line"><span class="lbl">step 0</span>:  lr = 1e-7</span>
+<span class="line"><span class="lbl">step 25</span>: lr = 1e-7 × (10/1e-7)^0.25 = 1e-7 × 10^(0.25×8) = <span class="val">1e-5</span></span>
+<span class="line"><span class="lbl">step 50</span>: lr = 1e-7 × (10/1e-7)^0.50 = <span class="val">1e-3</span></span>
+<span class="line"><span class="lbl">step 75</span>: lr = 1e-7 × (10/1e-7)^0.75 = <span class="val">0.1</span></span>
+<span class="line"><span class="lbl">step 100</span>: lr = 10.0</span>
+</div>
+</div>
+
+<div class="card">
+<h3>The characteristic loss-vs-lr curve</h3>
+<svg width="100%" viewBox="0 0 500 180" style="display:block;background:#0d0d1e;border:1px solid #2a2a4a;border-radius:8px;margin:10px 0">
+  <line x1="60" y1="150" x2="490" y2="150" stroke="#333" stroke-width="1"/>
+  <line x1="60" y1="10" x2="60" y2="150" stroke="#333" stroke-width="1"/>
+  <!-- x axis labels -->
+  <text x="80" y="165" fill="#555" font-size="9" text-anchor="middle">1e-7</text>
+  <text x="150" y="165" fill="#555" font-size="9" text-anchor="middle">1e-5</text>
+  <text x="230" y="165" fill="#555" font-size="9" text-anchor="middle">1e-3</text>
+  <text x="330" y="165" fill="#555" font-size="9" text-anchor="middle">0.01</text>
+  <text x="410" y="165" fill="#555" font-size="9" text-anchor="middle">0.1</text>
+  <text x="480" y="165" fill="#555" font-size="9" text-anchor="middle">10</text>
+  <!-- y labels -->
+  <text x="54" y="20" fill="#555" font-size="9" text-anchor="end">3.0</text>
+  <text x="54" y="80" fill="#555" font-size="9" text-anchor="end">1.5</text>
+  <text x="54" y="150" fill="#555" font-size="9" text-anchor="end">0.5</text>
+  <!-- loss curve: flat, then drops, then minimum, then spikes -->
+  <polyline points="80,80 150,80 200,75 230,60 260,42 280,30 300,25 320,28 340,45 360,70 390,110 430,145 480,155"
+    stroke="#4fc3f7" stroke-width="2" fill="none"/>
+  <!-- minimum marker -->
+  <line x1="300" y1="15" x2="300" y2="150" stroke="#ff9800" stroke-width="1" stroke-dasharray="3,2"/>
+  <text x="303" y="40" fill="#ff9800" font-size="9">min loss</text>
+  <text x="303" y="50" fill="#ff9800" font-size="9">lr≈2e-3</text>
+  <!-- optimal zone -->
+  <line x1="240" y1="15" x2="240" y2="150" stroke="#4caf50" stroke-width="1" stroke-dasharray="3,2"/>
+  <text x="180" y="22" fill="#4caf50" font-size="9">optimal zone</text>
+  <text x="180" y="32" fill="#4caf50" font-size="9">lr ≈ 2e-4 (10× less)</text>
+  <!-- x axis title -->
+  <text x="270" y="178" fill="#666" font-size="10" text-anchor="middle">Learning rate (log scale) →</text>
+</svg>
+</div>
+
+<div class="card green">
+<h3>How to pick the lr from the plot</h3>
+<div class="math">
+<span class="line cmt">// Rule: use 10× less than the lr at minimum loss</span>
+<span class="line">&nbsp;</span>
+<span class="line"><span class="lbl">min_loss_lr</span>  = 2e-3  <span class="cmt">// where loss is lowest on the plot</span></span>
+<span class="line"><span class="lbl">chosen_lr</span>    = 2e-4  <span class="cmt">// 10× less — the "optimal" lr</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Why 10× less?</span>
+<span class="line cmt">// At minimum loss lr, you're already overshooting slightly.</span>
+<span class="line cmt">// 10× less puts you in the steep-descent region where</span>
+<span class="line cmt">// loss drops fast AND training stays stable long-term.</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Alternative rule: pick lr where loss drops steepest</span>
+<span class="line cmt">// (steepest negative gradient on the loss-vs-lr curve)</span>
+<span class="line cmt">// Usually gives similar answer to the 10× rule.</span>
+</div>
+</div>
+
+<div class="card orange">
+<h3>Practical notes</h3>
+<div class="math">
+<span class="line cmt">// The LR finder uses only ~100 steps = fast (minutes, not hours)</span>
+<span class="line cmt">// Throw away those weights — don't train on top of them</span>
+<span class="line cmt">// Reset model weights to initialization before real training</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Common good learning rates (as reference):</span>
+<span class="line"><span class="lbl">Small CNN</span>:        lr = 1e-3</span>
+<span class="line"><span class="lbl">ResNet finetune</span>:  lr = 1e-4</span>
+<span class="line"><span class="lbl">GPT-style LLM</span>:    lr = 3e-4  <span class="cmt">// Karpathy's famous default</span></span>
+<span class="line"><span class="lbl">BERT finetune</span>:    lr = 2e-5</span>
+</div>
+</div>
+
+<button class="nx" onclick="go(5)">Summary</button>
+</div>
+
+<!-- PAGE 5 -->
+<div class="page" data-t="5. Summary">
+<h2>Chapter 1 Summary — Loss Curve Diagnostics</h2>
+<div class="card blue">
+<table>
+<tr><th>Pattern</th><th>Diagnosis</th><th>Fix</th></tr>
+<tr><td>Both curves drop smoothly, gap &lt; 0.1</td><td style="color:#4caf50">Healthy</td><td>Nothing</td></tr>
+<tr><td>Val rises while train drops (gap &gt; 0.5)</td><td style="color:#ef5350">Overfit</td><td>Dropout, weight decay, more data</td></tr>
+<tr><td>Sudden jump mid-training</td><td style="color:#ff9800">Spike</td><td>Gradient clipping (max_norm=1.0)</td></tr>
+<tr><td>Flat from step 1</td><td style="color:#ef5350">Not learning</td><td>LR finder → try 3e-4</td></tr>
+<tr><td>Starts well above log(classes)</td><td style="color:#ff9800">Bad init</td><td>Xavier/He init, check loss function</td></tr>
+</table>
+</div>
+<div class="card green">
+<h3>The 5-minute checklist before any training run</h3>
+<div class="math">
+<span class="line">1. Check initial loss ≈ log(num_classes)  <span class="cmt">// sanity check</span></span>
+<span class="line">2. Overfit 1 batch to &lt;0.01 loss           <span class="cmt">// model can learn</span></span>
+<span class="line">3. Run LR finder (100 steps)               <span class="cmt">// pick good lr</span></span>
+<span class="line">4. Add gradient clipping max_norm=1.0      <span class="cmt">// prevent spikes</span></span>
+<span class="line">5. Monitor val loss every epoch            <span class="cmt">// catch overfit early</span></span>
+</div>
+</div>
+</div>
+
+<script>
+const pages=document.querySelectorAll('.page'),nav=document.getElementById('nav');
+pages.forEach((p,i)=>{const b=document.createElement('button');b.textContent=p.dataset.t;b.onclick=()=>go(i);if(i===0)b.classList.add('on');nav.appendChild(b);});
+function go(n){pages.forEach((p,i)=>p.classList.toggle('on',i===n));nav.querySelectorAll('button').forEach((b,i)=>{b.classList.remove('on');if(i<n)b.classList.add('done');else b.classList.remove('done');if(i===n)b.classList.add('on');});window.scrollTo({top:0,behavior:'smooth'});}
+</script>
+</body>
+</html>

@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chapter 3: REINFORCE — Policy Gradient with a Neural Network</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Segoe UI',system-ui,sans-serif;background:#0a0a1a;color:#e0e0e0;padding:20px;line-height:1.6}
+  h1{text-align:center;color:#fff;margin-bottom:6px;font-size:1.5em}
+  .sub{text-align:center;color:#888;margin-bottom:24px;font-size:.9em}
+  .nav{display:flex;justify-content:center;gap:5px;margin-bottom:20px;flex-wrap:wrap}
+  .nav button{padding:7px 12px;border:2px solid #333;background:#111;color:#888;border-radius:8px;cursor:pointer;font-size:.8em;transition:.2s}
+  .nav button:hover{border-color:#555;color:#ccc}
+  .nav button.on{border-color:#4fc3f7;color:#4fc3f7;background:#0d2137}
+  .nav button.done{border-color:#4caf50;color:#4caf50}
+  .step{display:none;max-width:920px;margin:0 auto}
+  .step.on{display:block}
+  .step h2{color:#4fc3f7;margin-bottom:10px;font-size:1.25em}
+  .step h3{color:#ffb74d;margin:14px 0 6px;font-size:1em}
+  .card{background:#12122a;border:1px solid #2a2a4a;border-radius:12px;padding:18px;margin-bottom:14px}
+  .card.hi{border-color:#4fc3f7;background:#0d1b2a}
+  .card.warn{border-color:#ff9800;background:#1a1400}
+  .card.ok{border-color:#4caf50;background:#0a1a0a}
+  .card.red{border-color:#ef5350;background:#1a0a0a}
+  pre{background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:14px;overflow-x:auto;margin:10px 0;font-size:.88em;line-height:1.5}
+  code{font-family:'Fira Code',Consolas,monospace}
+  .cmt{color:#6a9955}.kw{color:#c586c0}.num{color:#b5cea8}.str{color:#ce9178}.var{color:#9cdcfe}.fn{color:#dcdcaa}.hl{background:#264f78;display:inline-block;width:100%;padding:0 4px;margin:0 -4px;border-radius:3px}
+  .diagram{display:flex;align-items:center;justify-content:center;gap:10px;margin:14px 0;flex-wrap:wrap}
+  .box{padding:10px 16px;border-radius:10px;text-align:center;font-weight:600;font-size:.9em}
+  .b-bl{background:#1a3a5c;border:2px solid #4fc3f7;color:#4fc3f7}
+  .b-or{background:#3a2a0a;border:2px solid #ffb74d;color:#ffb74d}
+  .b-gr{background:#0a3a0a;border:2px solid #4caf50;color:#4caf50}
+  .b-rd{background:#3a0a0a;border:2px solid #ef5350;color:#ef5350}
+  .b-pu{background:#2a0a3a;border:2px solid #ce93d8;color:#ce93d8}
+  .arr{color:#666;font-size:1.4em}
+  .cmp{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:10px 0}
+  @media(max-width:650px){.cmp{grid-template-columns:1fr}}
+  table{width:100%;border-collapse:collapse;margin:10px 0}
+  th,td{padding:7px 10px;border:1px solid #333;text-align:center;font-size:.9em}
+  th{background:#1a1a3a;color:#4fc3f7}
+  .key{color:#ffb74d;font-weight:600}
+  button.nx{padding:10px 22px;background:#4caf50;color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:.9em;margin-top:14px}
+  button.nx:hover{background:#66bb6a}
+  button.run{padding:9px 20px;background:#4fc3f7;color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:.9em}
+  button.run:hover{background:#81d4fa}
+  canvas{border-radius:8px;display:block;margin:10px auto}
+  #log3{background:#0a0a1a;border:1px solid #333;border-radius:8px;padding:10px;max-height:260px;overflow-y:auto;font-family:monospace;font-size:.82em;white-space:pre;margin:10px 0}
+  .val{color:#4fc3f7;font-weight:700;min-width:40px}
+  .controls{display:flex;gap:10px;align-items:center;margin:10px 0;flex-wrap:wrap}
+</style>
+</head>
+<body>
+<a href="../index.html" style="position:fixed;top:10px;left:14px;font-size:.75em;color:#555;text-decoration:none;z-index:999;padding:4px 8px;background:#0a0a1a;border:1px solid #333;border-radius:6px;">&larr; index</a>
+
+<h1>Chapter 3: REINFORCE</h1>
+<p class="sub">From a Q-table to a neural network that learns a policy directly</p>
+
+<div class="nav" id="nav"></div>
+
+<!-- ===== STEP 0 ===== -->
+<div class="step on" data-s="0. Why Not Q-Table?">
+  <h2>Why Q-Tables Break Down</h2>
+  <div class="card">
+    <h3>Q-tables work great... for tiny worlds</h3>
+    <table>
+      <tr><th>World</th><th>States</th><th>Actions</th><th>Q-table size</th></tr>
+      <tr><td>4x4 grid</td><td>16</td><td>4</td><td style="color:#4caf50">64 entries</td></tr>
+      <tr><td>Chess</td><td>~10<sup>47</sup></td><td>~35</td><td style="color:#ef5350">impossible</td></tr>
+      <tr><td>Self-driving car</td><td>continuous</td><td>continuous</td><td style="color:#ef5350">infinite</td></tr>
+      <tr><td>LLM (token generation)</td><td>all possible prompts</td><td>50k tokens</td><td style="color:#ef5350">laughably impossible</td></tr>
+    </table>
+  </div>
+
+  <div class="card hi">
+    <h3>The fix: replace the table with a neural network</h3>
+    <div class="cmp">
+      <div class="card">
+        <p><strong>Q-table (Chapter 2)</strong></p>
+        <p>Look up Q[state, action] from a big table</p>
+        <p style="color:#ef5350">Only works for small, discrete states</p>
+      </div>
+      <div class="card">
+        <p><strong>Policy network (Chapter 3)</strong></p>
+        <p>Feed state into a neural network, output action probabilities</p>
+        <p style="color:#4caf50">Works for any state representation</p>
+      </div>
+    </div>
+    <div class="diagram">
+      <div class="box b-pu">State<br><small>(any format)</small></div>
+      <span class="arr">&#x2192;</span>
+      <div class="box b-bl">Neural Network<br><small>&#x03C0;(a|s)</small></div>
+      <span class="arr">&#x2192;</span>
+      <div class="box b-gr">P(up)=0.1<br>P(down)=0.6<br>P(left)=0.05<br>P(right)=0.25</div>
+    </div>
+    <p>This network IS the policy. It directly outputs "what to do." We call it <strong>&#x03C0;</strong> (pi).</p>
+  </div>
+  <button class="nx" onclick="go(1)">Next: What does the network actually look like? &#x2192;</button>
+</div>
+
+<!-- ===== STEP 1: THE NETWORK ===== -->
+<div class="step" data-s="1. The Network">
+  <h2>What Does the Network Look Like?</h2>
+
+  <div class="card hi">
+    <h3>Our 2x2 grid from Chapter 2 — same world, new brain</h3>
+    <p>The network replaces the Q-table. Instead of looking up values in a table, we <strong>feed the state in</strong> and get <strong>action probabilities out</strong>.</p>
+  </div>
+
+  <div class="card">
+    <h3>Input: "Where am I?" — one-hot encoded</h3>
+    <p>The 2x2 grid has 4 cells. We represent the robot's position as 4 numbers: a 1 in the current cell, 0s elsewhere.</p>
+    <table>
+      <tr><th>Robot at</th><th>Input vector (4 numbers)</th></tr>
+      <tr><td>(0,0) start</td><td style="font-family:monospace">[<strong style="color:#4caf50">1</strong>, 0, 0, 0]</td></tr>
+      <tr><td>(0,1)</td><td style="font-family:monospace">[0, <strong style="color:#4caf50">1</strong>, 0, 0]</td></tr>
+      <tr><td>(1,0) pit</td><td style="font-family:monospace">[0, 0, <strong style="color:#4caf50">1</strong>, 0]</td></tr>
+      <tr><td>(1,1) gold</td><td style="font-family:monospace">[0, 0, 0, <strong style="color:#4caf50">1</strong>]</td></tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <h3>Output: "What should I do?" — 4 probabilities</h3>
+    <p>The network outputs one probability for each action. They sum to 1 (via softmax).</p>
+    <table>
+      <tr><th>Output index</th><th>Meaning</th><th>Example output</th></tr>
+      <tr><td>0</td><td>P(up)</td><td>0.05</td></tr>
+      <tr><td>1</td><td>P(down)</td><td>0.10</td></tr>
+      <tr><td>2</td><td>P(left)</td><td>0.05</td></tr>
+      <tr><td>3</td><td>P(right)</td><td style="color:#4caf50;font-weight:700">0.80</td></tr>
+    </table>
+    <p style="margin-top:6px">Then we <strong>randomly sample</strong> from these probabilities. 80% of the time we'd go right, 10% down, etc.</p>
+  </div>
+
+  <div class="card hi">
+    <h3>The full network: input(4) &#x2192; hidden(8) &#x2192; output(4)</h3>
+
+    <!-- Visual network diagram using simple divs -->
+    <div style="display:flex;align-items:center;justify-content:center;gap:6px;margin:16px 0;flex-wrap:wrap">
+      <!-- Input layer -->
+      <div style="display:flex;flex-direction:column;gap:4px;align-items:center">
+        <div style="font-size:.7em;color:#888;margin-bottom:4px">INPUT (4)</div>
+        <div style="background:#2a0a3a;border:2px solid #ce93d8;color:#ce93d8;border-radius:8px;padding:4px 10px;font-size:.75em;font-family:monospace"><strong>1</strong></div>
+        <div style="background:#1a1a2e;border:1px solid #444;color:#555;border-radius:8px;padding:4px 10px;font-size:.75em;font-family:monospace">0</div>
+        <div style="background:#1a1a2e;border:1px solid #444;color:#555;border-radius:8px;padding:4px 10px;font-size:.75em;font-family:monospace">0</div>
+        <div style="background:#1a1a2e;border:1px solid #444;color:#555;border-radius:8px;padding:4px 10px;font-size:.75em;font-family:monospace">0</div>
+        <div style="font-size:.6em;color:#666;margin-top:2px">"I'm at (0,0)"</div>
+      </div>
+
+      <!-- Weights 1 -->
+      <div style="display:flex;flex-direction:column;align-items:center;gap:2px">
+        <div style="font-size:.6em;color:#888">weights</div>
+        <div style="font-size:.6em;color:#888">4 &times; 8</div>
+        <div style="color:#666;font-size:1.5em">&#x2192;</div>
+        <div style="font-size:.6em;color:#888">+ ReLU</div>
+      </div>
+
+      <!-- Hidden layer -->
+      <div style="display:flex;flex-direction:column;gap:4px;align-items:center">
+        <div style="font-size:.7em;color:#888;margin-bottom:4px">HIDDEN (8)</div>
+        <div style="background:#1a3a5c;border:1px solid #4fc3f7;color:#4fc3f7;border-radius:8px;padding:3px 10px;font-size:.7em;font-family:monospace">0.3</div>
+        <div style="background:#1a3a5c;border:1px solid #4fc3f7;color:#4fc3f7;border-radius:8px;padding:3px 10px;font-size:.7em;font-family:monospace">0.0</div>
+        <div style="background:#1a3a5c;border:1px solid #4fc3f7;color:#4fc3f7;border-radius:8px;padding:3px 10px;font-size:.7em;font-family:monospace">0.7</div>
+        <div style="background:#1a3a5c;border:1px solid #4fc3f7;color:#4fc3f7;border-radius:8px;padding:3px 10px;font-size:.7em;font-family:monospace">0.1</div>
+        <div style="background:#1a3a5c;border:1px solid #4fc3f7;color:#4fc3f7;border-radius:8px;padding:3px 10px;font-size:.7em;font-family:monospace">0.5</div>
+        <div style="background:#1a3a5c;border:1px solid #4fc3f7;color:#4fc3f7;border-radius:8px;padding:3px 10px;font-size:.7em;font-family:monospace">0.0</div>
+        <div style="background:#1a3a5c;border:1px solid #4fc3f7;color:#4fc3f7;border-radius:8px;padding:3px 10px;font-size:.7em;font-family:monospace">0.2</div>
+        <div style="background:#1a3a5c;border:1px solid #4fc3f7;color:#4fc3f7;border-radius:8px;padding:3px 10px;font-size:.7em;font-family:monospace">0.4</div>
+        <div style="font-size:.6em;color:#666;margin-top:2px">"features"</div>
+      </div>
+
+      <!-- Weights 2 -->
+      <div style="display:flex;flex-direction:column;align-items:center;gap:2px">
+        <div style="font-size:.6em;color:#888">weights</div>
+        <div style="font-size:.6em;color:#888">8 &times; 4</div>
+        <div style="color:#666;font-size:1.5em">&#x2192;</div>
+        <div style="font-size:.6em;color:#888">+ softmax</div>
+      </div>
+
+      <!-- Output layer -->
+      <div style="display:flex;flex-direction:column;gap:4px;align-items:center">
+        <div style="font-size:.7em;color:#888;margin-bottom:4px">OUTPUT (4)</div>
+        <div style="background:#1a1a2e;border:1px solid #666;color:#aaa;border-radius:8px;padding:4px 10px;font-size:.75em;font-family:monospace">&#x2191; 0.05</div>
+        <div style="background:#1a1a2e;border:1px solid #666;color:#aaa;border-radius:8px;padding:4px 10px;font-size:.75em;font-family:monospace">&#x2193; 0.10</div>
+        <div style="background:#1a1a2e;border:1px solid #666;color:#aaa;border-radius:8px;padding:4px 10px;font-size:.75em;font-family:monospace">&#x2190; 0.05</div>
+        <div style="background:#0a3a0a;border:2px solid #4caf50;color:#4caf50;border-radius:8px;padding:4px 10px;font-size:.75em;font-family:monospace;font-weight:700">&#x2192; 0.80</div>
+        <div style="font-size:.6em;color:#666;margin-top:2px">"go right!"</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>In code</h3>
+<pre><code><span class="kw">import</span> torch.nn <span class="kw">as</span> nn
+
+<span class="var">policy_network</span> = nn.<span class="fn">Sequential</span>(
+    nn.<span class="fn">Linear</span>(<span class="num">4</span>, <span class="num">8</span>),      <span class="cmt"># 4 inputs → 8 hidden  (4×8 = 32 weights)</span>
+    nn.<span class="fn">ReLU</span>(),              <span class="cmt"># activation function</span>
+    nn.<span class="fn">Linear</span>(<span class="num">8</span>, <span class="num">4</span>),      <span class="cmt"># 8 hidden → 4 outputs (8×4 = 32 weights)</span>
+    nn.<span class="fn">Softmax</span>(dim=-<span class="num">1</span>),   <span class="cmt"># turn raw scores into probabilities (sum to 1)</span>
+)
+
+<span class="cmt"># Use it:</span>
+<span class="var">state</span> = [<span class="num">1</span>, <span class="num">0</span>, <span class="num">0</span>, <span class="num">0</span>]        <span class="cmt"># "I'm at (0,0)"</span>
+<span class="var">probs</span> = <span class="fn">policy_network</span>(<span class="var">state</span>) <span class="cmt"># → [0.05, 0.10, 0.05, 0.80]</span>
+<span class="var">action</span> = <span class="fn">sample</span>(<span class="var">probs</span>)        <span class="cmt"># → 3 (= right), picked randomly with 80% chance</span>
+</code></pre>
+  </div>
+
+  <div class="card" style="border-color:#ce93d8">
+    <h3>Q-table vs network — same job, different storage</h3>
+    <table>
+      <tr><th></th><th>Q-table (Ch.2)</th><th>Network (Ch.3)</th></tr>
+      <tr><td>Input</td><td>row, col &#x2192; table lookup</td><td>[1,0,0,0] &#x2192; matrix multiply</td></tr>
+      <tr><td>Output</td><td>4 Q-values (one per action)</td><td>4 probabilities (one per action)</td></tr>
+      <tr><td>Stored in</td><td>2 rows &times; 4 cols = 8 numbers</td><td>64 weights + 12 biases = 76 numbers</td></tr>
+      <tr><td>Picks action</td><td>argmax (highest Q)</td><td>random sample (weighted by probs)</td></tr>
+      <tr><td>Scales to</td><td style="color:#ef5350">only tiny grids</td><td style="color:#4caf50">images, text, anything</td></tr>
+    </table>
+    <p style="margin-top:8px;font-size:.85em;color:#888">For our tiny 2x2 grid the network is overkill (76 params vs 8). The point is that the same architecture works when the state is a 1000-dim vector or a camera image.</p>
+  </div>
+
+  <button class="nx" onclick="go(2)">Next: How do you train it? &#x2192;</button>
+</div>
+
+<!-- ===== STEP 2 ===== -->
+<div class="step" data-s="2. The Core Idea">
+  <h2>The REINFORCE Idea — No Math</h2>
+
+  <div class="card ok">
+    <h3>Run a full episode. Then look back.</h3>
+<pre><code><span class="cmt"># Episode on our 2x2 grid:</span>
+<span class="cmt"># Step 0: at (0,0), went RIGHT    → reward -1</span>
+<span class="cmt"># Step 1: at (0,1), went DOWN     → reward +10  (gold!)</span>
+<span class="cmt"># Total return: -1 + 10 = +9 (great!)</span>
+</code></pre>
+  </div>
+
+  <div class="card hi">
+    <h3>The rule: make good episodes more likely, bad ones less</h3>
+    <p>For each action in the episode:</p>
+    <div style="font-size:1.05em;margin:10px 0;">
+      <p><strong>If the return from this point was HIGH</strong>: increase the probability of this action</p>
+      <p><strong>If the return from this point was LOW</strong>: decrease the probability</p>
+    </div>
+    <p>That's it. That's REINFORCE. Now how do you "increase the probability"?</p>
+  </div>
+
+  <div class="card">
+    <h3>Log probability = the knob you turn</h3>
+<pre><code><span class="cmt"># The network outputs probabilities like P(down) = 0.6</span>
+<span class="cmt"># log(0.6) = -0.51</span>
+<span class="cmt">#</span>
+<span class="cmt"># To make an action MORE likely: increase log P(action)</span>
+<span class="cmt"># To make an action LESS likely: decrease log P(action)</span>
+<span class="cmt"># Gradient of log P naturally does this — it's how softmax works.</span>
+<span class="cmt">#</span>
+<span class="cmt"># And to scale HOW MUCH to push: multiply by the return G</span>
+<span class="cmt"># Big G → big push.  Small G → small push.  Negative G → push the other way.</span>
+</code></pre>
+  </div>
+  <button class="nx" onclick="go(3)">Next: Walk through one episode &#x2192;</button>
+</div>
+
+<!-- ===== STEP 2 ===== -->
+<div class="step" data-s="3. One Episode">
+  <h2>One Episode, Step by Step</h2>
+
+  <div class="card">
+    <h3>1. Collect the full episode (no learning yet, just play)</h3>
+<pre><code><span class="var">saved</span> = []  <span class="cmt"># we'll save everything for later</span>
+
+<span class="var">state</span> = (<span class="num">0</span>, <span class="num">0</span>)  <span class="cmt"># start</span>
+<span class="kw">while</span> <span class="kw">not</span> done:
+    <span class="var">probs</span> = <span class="fn">network</span>(<span class="var">state</span>)   <span class="cmt"># e.g. [0.1, 0.6, 0.05, 0.25]</span>
+    <span class="var">action</span> = <span class="fn">sample</span>(<span class="var">probs</span>)   <span class="cmt"># randomly pick based on probs</span>
+    <span class="var">reward</span>, <span class="var">next_state</span>, <span class="var">done</span> = <span class="fn">env.step</span>(<span class="var">action</span>)
+
+    <span class="var">saved</span>.<span class="fn">append</span>( (<span class="var">state</span>, <span class="var">action</span>, <span class="var">reward</span>) )
+    <span class="var">state</span> = <span class="var">next_state</span>
+
+<span class="cmt"># saved = [(s0,a0,r0), (s1,a1,r1), ..., (sT,aT,rT)]</span>
+</code></pre>
+  </div>
+
+  <div class="card hi">
+    <h3>2. Compute returns (walk backward through the episode)</h3>
+<pre><code><span class="cmt"># Rewards collected: [-1, -1, -1, -1, -1, +10]</span>
+<span class="cmt"># Return at step t = reward_t + gamma*reward_{t+1} + gamma^2*reward_{t+2} + ...</span>
+<span class="cmt"># Easier: walk backward</span>
+
+<span class="var">G</span> = <span class="num">0</span>
+<span class="var">returns</span> = []
+<span class="kw">for</span> <span class="var">r</span> <span class="kw">in</span> <span class="fn">reversed</span>(<span class="var">rewards</span>):
+    <span class="var">G</span> = <span class="var">r</span> + <span class="var">gamma</span> * <span class="var">G</span>
+    <span class="var">returns</span>.<span class="fn">insert</span>(<span class="num">0</span>, <span class="var">G</span>)
+
+<span class="cmt"># With gamma=0.99, rewards=[-1,-1,-1,-1,-1,+10]:</span>
+<span class="cmt"># Step 5: G = 10                          = 10.00</span>
+<span class="cmt"># Step 4: G = -1 + 0.99*10                =  8.90</span>
+<span class="cmt"># Step 3: G = -1 + 0.99*8.90              =  7.81</span>
+<span class="cmt"># Step 2: G = -1 + 0.99*7.81              =  6.73</span>
+<span class="cmt"># Step 1: G = -1 + 0.99*6.73              =  5.66</span>
+<span class="cmt"># Step 0: G = -1 + 0.99*5.66              =  4.60</span>
+<span class="cmt">#</span>
+<span class="cmt"># returns = [4.60, 5.66, 6.73, 7.81, 8.90, 10.00]</span>
+<span class="cmt"># ALL positive! Every step of this episode was good.</span>
+</code></pre>
+  </div>
+
+  <div class="card ok">
+    <h3>3. Compute the loss and update</h3>
+<pre><code><span class="var">loss</span> = <span class="num">0</span>
+<span class="kw">for</span> <span class="var">t</span> <span class="kw">in</span> <span class="fn">range</span>(<span class="fn">len</span>(<span class="var">saved</span>)):
+    <span class="var">state</span>, <span class="var">action</span>, _ = <span class="var">saved</span>[<span class="var">t</span>]
+    <span class="var">probs</span> = <span class="fn">network</span>(<span class="var">state</span>)
+
+    <span class="hl"><span class="var">loss</span> += -<span class="fn">log</span>(<span class="var">probs</span>[<span class="var">action</span>]) * <span class="var">returns</span>[<span class="var">t</span>]</span>
+    <span class="cmt">#         ^^^^^^^^^^^^^^^^    ^^^^^^^^^^^</span>
+    <span class="cmt">#         "how surprised"     "how good was it"</span>
+    <span class="cmt">#</span>
+    <span class="cmt"># High return + low probability → BIG loss</span>
+    <span class="cmt"># "This action was great but I almost didn't pick it — fix that!"</span>
+    <span class="cmt">#</span>
+    <span class="cmt"># Low return + high probability → also pushes (negatively)</span>
+    <span class="cmt"># "This action was bad and I keep picking it — stop!"</span>
+
+<span class="var">loss</span>.<span class="fn">backward</span>()   <span class="cmt"># compute gradients</span>
+<span class="fn">optimizer.step</span>()  <span class="cmt"># update the network</span>
+</code></pre>
+  </div>
+  <button class="nx" onclick="go(4)">Next: Connection to the fry shop &#x2192;</button>
+</div>
+
+<!-- ===== STEP 3 ===== -->
+<div class="step" data-s="4. Fry Shop Connection">
+  <h2>Same Algorithm, Same Math</h2>
+
+  <div class="card hi">
+    <h3>Chapter 0 (fry shop) vs Chapter 3 (gridworld) — it's identical</h3>
+    <table>
+      <tr><th>Concept</th><th>Fry Shop (Ch.0)</th><th>Gridworld (Ch.3)</th></tr>
+      <tr><td>State</td><td>Hunger level (one number)</td><td>Grid position (row, col)</td></tr>
+      <tr><td>Action</td><td>Squatch or Norm</td><td>Up/Down/Left/Right</td></tr>
+      <tr><td>Network</td><td>1 weight + 1 bias + sigmoid</td><td>Multi-layer + softmax</td></tr>
+      <tr><td>"The guess"</td><td>Pretend chosen shop is correct</td><td>Compute -log P(action)</td></tr>
+      <tr><td>"The reward"</td><td>+1 or -1 from fry size</td><td>Return G from whole episode</td></tr>
+      <tr><td>The update</td><td>gradient * reward</td><td>-log P(a) * G</td></tr>
+    </table>
+    <p style="margin-top:8px">The fry shop was one step, one state. Here it's many steps, many states. But the core idea — <strong>"gradient * reward signal"</strong> — is exactly the same.</p>
+  </div>
+
+  <div class="card warn">
+    <h3>The big problem: NOISE</h3>
+<pre><code><span class="cmt"># Episode A: stumbles around, accidentally finds treasure  → return = +2</span>
+<span class="cmt"># Episode B: takes a direct path but treasure was 1 step away → return = +9</span>
+<span class="cmt">#</span>
+<span class="cmt"># REINFORCE says: push BOTH episodes' actions proportionally</span>
+<span class="cmt"># Episode A's random stumbling gets reinforced too!</span>
+<span class="cmt">#</span>
+<span class="cmt"># Even worse:</span>
+<span class="cmt"># Episode C: return = +5 (good? bad? no idea without context!)</span>
+<span class="cmt"># If average return is +3, then +5 is great.</span>
+<span class="cmt"># If average return is +8, then +5 is terrible.</span>
+<span class="cmt"># Raw G doesn't tell you which.</span>
+<span class="cmt">#</span>
+<span class="cmt"># This is the VARIANCE PROBLEM. Chapter 4 fixes it.</span>
+</code></pre>
+  </div>
+  <button class="nx" onclick="go(5)">Next: Watch it train &#x2192;</button>
+</div>
+
+<!-- ===== STEP 4 ===== -->
+<div class="step" data-s="5. Live Training">
+  <h2>Watch REINFORCE Train</h2>
+
+  <div class="card hi">
+    <p>This runs a simplified REINFORCE in the browser on the same 4x4 grid. The network is tiny (state&#x2192;hidden&#x2192;4 action probs).</p>
+    <div class="controls">
+      <button class="run" onclick="trainR()">Train 300 episodes</button>
+    </div>
+
+    <div style="display:flex;flex-wrap:wrap;gap:20px;justify-content:center;margin-top:10px;">
+      <div>
+        <p style="text-align:center;color:#aaa;font-size:.85em;margin-bottom:4px;">Learned Policy</p>
+        <canvas id="r-policy" width="280" height="280"></canvas>
+      </div>
+      <div>
+        <p style="text-align:center;color:#aaa;font-size:.85em;margin-bottom:4px;">Reward per episode</p>
+        <canvas id="r-reward" width="540" height="280"></canvas>
+      </div>
+    </div>
+
+    <div id="log3"></div>
+  </div>
+
+  <div class="card">
+    <h3>Compared to Q-learning (Chapter 2)</h3>
+    <table>
+      <tr><th></th><th>Q-Learning</th><th>REINFORCE</th></tr>
+      <tr><td>Learns</td><td>Value of each action</td><td>Probability of each action</td></tr>
+      <tr><td>Update</td><td>After every step</td><td>After full episode</td></tr>
+      <tr><td>Scales to</td><td>Small discrete states</td><td>Any state (via neural net)</td></tr>
+      <tr><td>Noise</td><td>Low (bootstraps from Q)</td><td style="color:#ef5350">HIGH (uses raw returns)</td></tr>
+    </table>
+    <p style="margin-top:8px"><span class="key">REINFORCE is noisy.</span> The reward curve will bounce around much more than Q-learning. That's the price of using a neural network without a baseline. Chapter 4 adds the baseline.</p>
+  </div>
+</div>
+
+<script>
+// Nav
+const steps=document.querySelectorAll('.step');
+const nav=document.getElementById('nav');
+steps.forEach((s,i)=>{const b=document.createElement('button');b.textContent=s.dataset.s;b.onclick=()=>go(i);if(i===0)b.classList.add('on');nav.appendChild(b);});
+function go(n){steps.forEach((s,i)=>s.classList.toggle('on',i===n));nav.querySelectorAll('button').forEach((b,i)=>{b.classList.remove('on');if(i<n)b.classList.add('done');else b.classList.remove('done');if(i===n)b.classList.add('on');});window.scrollTo({top:0,behavior:'smooth'});}
+
+// Minimal neural net in JS for REINFORCE demo
+function trainR(){
+  const GS=4, ACTS=[[-1,0],[1,0],[0,-1],[0,1]], ANAME=['\u2191','\u2193','\u2190','\u2192'];
+  const TREASURE=[3,3],PIT=[1,1],START=[0,0];
+  const gamma=0.99, lr=0.01;
+
+  // Simple 2-layer net: 16 -> 16 -> 4
+  let W1=[], b1=[], W2=[], b2=[];
+  for(let i=0;i<16;i++){W1[i]=[];for(let j=0;j<16;j++) W1[i][j]=(Math.random()-0.5)*0.3;}
+  for(let i=0;i<16;i++) b1[i]=0;
+  for(let i=0;i<16;i++){W2[i]=[];for(let j=0;j<4;j++) W2[i][j]=(Math.random()-0.5)*0.3;}
+  for(let i=0;i<4;i++) b2[i]=0;
+
+  function relu(x){return x>0?x:0;}
+  function drelu(x){return x>0?1:0;}
+
+  function forward(stateIdx){
+    const inp=new Array(16).fill(0); inp[stateIdx]=1;
+    const h=new Array(16).fill(0);
+    for(let i=0;i<16;i++){let s=b1[i];for(let j=0;j<16;j++) s+=inp[j]*W1[j][i];h[i]=relu(s);}
+    const logits=new Array(4).fill(0);
+    for(let i=0;i<4;i++){let s=b2[i];for(let j=0;j<16;j++) s+=h[j]*W2[j][i];logits[i]=s;}
+    const mx=Math.max(...logits);
+    const exps=logits.map(l=>Math.exp(l-mx));
+    const sm=exps.reduce((a,b)=>a+b);
+    const probs=exps.map(e=>e/sm);
+    return {inp, h, logits, probs};
+  }
+
+  function sample(probs){
+    let r=Math.random(),cum=0;
+    for(let i=0;i<probs.length;i++){cum+=probs[i];if(r<cum) return i;}
+    return probs.length-1;
+  }
+
+  function step(s,a){
+    let nr=s[0]+ACTS[a][0],nc=s[1]+ACTS[a][1];
+    nr=Math.max(0,Math.min(3,nr));nc=Math.max(0,Math.min(3,nc));
+    if(nr===TREASURE[0]&&nc===TREASURE[1]) return [[nr,nc],10,true];
+    if(nr===PIT[0]&&nc===PIT[1]) return [[nr,nc],-10,true];
+    return [[nr,nc],-1,false];
+  }
+
+  const rewards=[];
+  const episodes=300;
+
+  for(let ep=0;ep<episodes;ep++){
+    const traj=[];
+    let s=[...START], done=false;
+    for(let t=0;t<50&&!done;t++){
+      const si=s[0]*4+s[1];
+      const fwd=forward(si);
+      const a=sample(fwd.probs);
+      const [ns,r,d]=step(s,a);
+      traj.push({si,a,r,fwd});
+      s=ns;done=d;
+    }
+
+    // Returns
+    const rets=new Array(traj.length);
+    let G=0;
+    for(let t=traj.length-1;t>=0;t--){G=traj[t].r+gamma*G;rets[t]=G;}
+
+    // Normalize returns
+    if(rets.length>1){
+      const mu=rets.reduce((a,b)=>a+b)/rets.length;
+      let std=Math.sqrt(rets.reduce((a,b)=>a+(b-mu)**2,0)/rets.length)+1e-8;
+      for(let i=0;i<rets.length;i++) rets[i]=(rets[i]-mu)/std;
+    }
+
+    // REINFORCE gradient update (manual backprop)
+    for(let t=0;t<traj.length;t++){
+      const {si,a,fwd}=traj[t];
+      const G_t=rets[t];
+      const inp=fwd.inp, h=fwd.h, probs=fwd.probs;
+
+      // d(loss)/d(logits): for cross-entropy with sampling
+      const dlogits=probs.slice();
+      dlogits[a]-=1; // gradient of -log(p[a]) w.r.t. logits
+      for(let i=0;i<4;i++) dlogits[i]*=G_t; // multiply by return
+
+      // Backprop to W2, b2
+      for(let j=0;j<16;j++) for(let i=0;i<4;i++) W2[j][i]-=lr*h[j]*dlogits[i];
+      for(let i=0;i<4;i++) b2[i]-=lr*dlogits[i];
+
+      // Backprop to hidden
+      const dh=new Array(16).fill(0);
+      for(let j=0;j<16;j++) for(let i=0;i<4;i++) dh[j]+=W2[j][i]*dlogits[i];
+      for(let j=0;j<16;j++) dh[j]*=drelu(h[j]>0?h[j]:0)>0?1:0;
+      // Fix: use pre-relu values
+      const preH=new Array(16).fill(0);
+      for(let i=0;i<16;i++){let s2=b1[i];for(let j=0;j<16;j++) s2+=inp[j]*W1[j][i];preH[i]=s2;}
+      for(let j=0;j<16;j++) dh[j]*=drelu(preH[j]);
+
+      // Backprop to W1, b1
+      for(let j=0;j<16;j++) for(let i=0;i<16;i++) W1[j][i]-=lr*inp[j]*dh[i];
+      for(let i=0;i<16;i++) b1[i]-=lr*dh[i];
+    }
+
+    rewards.push(traj.reduce((a,b)=>a+b.r,0));
+  }
+
+  // Draw policy
+  const pcv=document.getElementById('r-policy'),pctx=pcv.getContext('2d');
+  pctx.clearRect(0,0,280,280);
+  const cs=66,pad=8;
+  for(let r=0;r<4;r++) for(let c=0;c<4;c++){
+    const x=pad+c*(cs+4),y=pad+r*(cs+4),si=r*4+c;
+    if(r===TREASURE[0]&&c===TREASURE[1]){pctx.fillStyle='#3a3a0a';pctx.beginPath();pctx.roundRect(x,y,cs,cs,6);pctx.fill();pctx.fillStyle='#ffd54f';pctx.font='28px serif';pctx.textAlign='center';pctx.fillText('\u{1F3C6}',x+cs/2,y+cs/2+10);}
+    else if(r===PIT[0]&&c===PIT[1]){pctx.fillStyle='#3a0a0a';pctx.beginPath();pctx.roundRect(x,y,cs,cs,6);pctx.fill();pctx.fillStyle='#ef5350';pctx.font='28px serif';pctx.textAlign='center';pctx.fillText('\u{1F573}',x+cs/2,y+cs/2+10);}
+    else{
+      pctx.fillStyle='#1a1a3a';pctx.beginPath();pctx.roundRect(x,y,cs,cs,6);pctx.fill();
+      const fwd=forward(si);
+      let best=0;for(let i=1;i<4;i++) if(fwd.probs[i]>fwd.probs[best]) best=i;
+      pctx.fillStyle='#4fc3f7';pctx.font='bold 28px sans-serif';pctx.textAlign='center';
+      pctx.fillText(ANAME[best],x+cs/2,y+cs/2+10);
+      pctx.fillStyle='#666';pctx.font='9px monospace';
+      pctx.fillText(fwd.probs.map(p=>p.toFixed(2)).join(' '),x+cs/2,y+14);
+    }
+  }
+
+  // Draw reward curve
+  const rcv=document.getElementById('r-reward'),rctx=rcv.getContext('2d');
+  rctx.clearRect(0,0,540,280);rctx.fillStyle='#12122a';rctx.fillRect(0,0,540,280);
+  const rp={l:40,r:10,t:20,b:30},rw2=540-rp.l-rp.r,rh2=280-rp.t-rp.b;
+  const rmin=Math.min(...rewards,-15),rmax2=Math.max(...rewards,12),rng2=rmax2-rmin||1;
+
+  rctx.strokeStyle='#2a2a4a';rctx.lineWidth=1;
+  for(let i=0;i<=4;i++){const y=rp.t+rh2*i/4;rctx.beginPath();rctx.moveTo(rp.l,y);rctx.lineTo(rp.l+rw2,y);rctx.stroke();rctx.fillStyle='#666';rctx.font='10px monospace';rctx.textAlign='right';rctx.fillText((rmax2-rng2*i/4).toFixed(0),rp.l-4,y+3);}
+
+  // Dots
+  for(let i=0;i<rewards.length;i++){
+    const x=rp.l+(i/episodes)*rw2,y=rp.t+rh2*((rmax2-rewards[i])/rng2);
+    rctx.fillStyle=rewards[i]>0?'#4caf5066':'#ef535066';
+    rctx.beginPath();rctx.arc(x,y,2,0,Math.PI*2);rctx.fill();
+  }
+
+  // Moving average
+  const avg=[];
+  for(let i=0;i<rewards.length;i++){const s=Math.max(0,i-19);let sm=0;for(let j=s;j<=i;j++) sm+=rewards[j];avg.push(sm/(i-s+1));}
+  rctx.strokeStyle='#4fc3f7';rctx.lineWidth=2;rctx.beginPath();
+  for(let i=0;i<avg.length;i++){const x=rp.l+(i/episodes)*rw2,y=rp.t+rh2*((rmax2-avg[i])/rng2);if(i===0) rctx.moveTo(x,y);else rctx.lineTo(x,y);}
+  rctx.stroke();
+
+  rctx.fillStyle='#aaa';rctx.font='10px sans-serif';rctx.textAlign='center';
+  rctx.fillText('Episode (blue line = moving avg)',rp.l+rw2/2,278);
+  rctx.fillText('Notice how much noisier this is vs Q-learning!',rp.l+rw2/2,262);
+
+  // Log
+  let logText='Training complete.\n';
+  for(let i=0;i<rewards.length;i+=30){
+    logText+=`Ep ${String(i+1).padStart(3)}: reward=${rewards[i].toFixed(0).padStart(4)}\n`;
+  }
+  logText+=`Ep ${episodes}: reward=${rewards[episodes-1].toFixed(0)}\n`;
+  document.getElementById('log3').textContent=logText;
+}
+
+setTimeout(trainR,200);
+</script>
+</body>
+</html>

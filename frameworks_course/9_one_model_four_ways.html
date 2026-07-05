@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>One model, four dialects</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0a0a1a;color:#e0e0e0;padding:20px 20px 80px;line-height:1.7}
+h1{text-align:center;color:#fff;margin-bottom:4px;font-size:1.5em}
+.sub{text-align:center;color:#888;margin-bottom:24px;font-size:.88em}
+.nav{display:flex;justify-content:center;gap:6px;margin-bottom:20px;flex-wrap:wrap}
+.nav button{padding:7px 13px;border:2px solid #333;background:#111;color:#888;border-radius:8px;cursor:pointer;font-size:.78em;transition:.2s}
+.nav button:hover{border-color:#555;color:#ccc}
+.nav button.on{border-color:#4fc3f7;color:#4fc3f7;background:#0d2137}
+.nav button.done{border-color:#4caf50;color:#4caf50}
+.page{display:none;max-width:880px;margin:0 auto}
+.page.on{display:block}
+.page h2{color:#4fc3f7;margin-bottom:12px;font-size:1.2em}
+.card{background:#12122a;border:1px solid #2a2a4a;border-radius:12px;padding:18px;margin-bottom:14px}
+.card.blue{border-color:#4fc3f7;background:#0d1b2a}
+.card.green{border-color:#4caf50;background:#0a1a0a}
+.card.orange{border-color:#ff9800;background:#1a1400}
+.card.red{border-color:#ef5350;background:#1a0a0a}
+.card.purple{border-color:#ce93d8;background:#1a0a2a}
+.card h3{color:#ffb74d;margin-bottom:8px;font-size:1em}
+button.nx{padding:10px 24px;background:#4caf50;color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:.9em;margin-top:14px}
+button.nx:hover{background:#66bb6a}
+a.nx{display:inline-block;padding:10px 24px;background:#4caf50;color:#000;border-radius:8px;font-weight:700;font-size:.9em;margin-top:14px;text-decoration:none}
+table{width:100%;border-collapse:collapse;margin:10px 0}
+th,td{padding:8px 10px;border:1px solid #333;text-align:left;font-size:.84em}
+th{background:#1a1a3a;color:#4fc3f7}
+td.num{font-family:'Fira Code',Consolas,monospace;text-align:right}
+.math{background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:14px;margin:10px 0;font-family:'Fira Code',Consolas,monospace;font-size:.82em;line-height:1.75;overflow-x:auto}
+.math .line{margin:2px 0;display:block;white-space:pre}
+.math .cmt{color:#6a9955}
+.math .val{color:#b5cea8}
+.math .lbl{color:#9cdcfe}
+.math .kw{color:#c586c0}
+.math .fn{color:#dcdcaa}
+.math .hl{background:#264f78;padding:2px 6px;border-radius:4px;display:inline-block}
+.math.out{border-left:3px solid #4caf50;background:#0d1a12}
+.outlabel{display:block;font-size:.72em;color:#4caf50;letter-spacing:.08em;text-transform:uppercase;margin-bottom:6px}
+.key{color:#ffb74d;font-weight:600}
+.inline{font-family:'Fira Code',Consolas,monospace;background:#1a1a2e;border:1px solid #333;border-radius:4px;padding:1px 6px;font-size:.86em;color:#9cdcfe}
+.faded{color:#888;font-size:.86em}
+ul{margin-left:20px;margin-top:6px}
+li{margin:4px 0}
+details{margin-top:12px}
+details summary{cursor:pointer;color:#888;font-size:.85em;padding:8px 12px;background:#12122a;border:1px solid #333;border-radius:8px}
+details summary:hover{color:#ccc;border-color:#555}
+details[open] summary{color:#4fc3f7;border-color:#4fc3f7}
+.fw{display:inline-block;font-weight:700;padding:1px 8px;border-radius:4px;font-size:.82em;border:1px solid}
+.fw.np{color:#4fc3f7;border-color:rgba(79,195,247,.4);background:rgba(79,195,247,.08)}
+.fw.tf{color:#ff9800;border-color:rgba(255,152,0,.4);background:rgba(255,152,0,.08)}
+.fw.pt{color:#ef5350;border-color:rgba(239,83,80,.4);background:rgba(239,83,80,.08)}
+.fw.jx{color:#ce93d8;border-color:rgba(206,147,216,.4);background:rgba(206,147,216,.08)}
+</style>
+</head>
+<body>
+<a href="../index.html" style="position:fixed;top:10px;left:14px;font-size:.75em;color:#555;text-decoration:none;z-index:999;padding:4px 8px;background:#0a0a1a;border:1px solid #333;border-radius:6px;">&larr; index</a>
+
+<h1><span style="font-size:.7em;vertical-align:middle;color:#4fc3f7;border:1px solid rgba(79,195,247,.4);border-radius:4px;padding:1px 8px;background:rgba(79,195,247,.08);font-weight:700">Part 3</span> One model, four dialects</h1>
+<p class="sub">Same network, same data, same initial weights, same optimizer — written in NumPy, PyTorch, TensorFlow and JAX. If they're really the same math, the losses must match. They do.</p>
+
+<div class="nav" id="nav"></div>
+
+<!-- PAGE 0 -->
+<div class="page on" data-t="0. The experiment">
+<h2>The experiment, and the result up front</h2>
+
+<div class="card">
+<h3>The task: XOR — smallest problem that needs a hidden layer</h3>
+<div class="math">
+<span class="line">X = [[0,0], [0,1], [1,0], [1,1]]      <span class="cmt"># 4 points, hand-checkable</span></span>
+<span class="line">Y = [ 0,     1,     1,     0  ]       <span class="cmt"># not linearly separable</span></span>
+<span class="line"></span>
+<span class="line">model:  2 → 8 (tanh) → 1 (sigmoid)    <span class="cmt"># 25 parameters + biases</span></span>
+<span class="line">loss :  mean((pred − Y)²)             <span class="cmt"># plain MSE, same formula everywhere</span></span>
+<span class="line">train:  full-batch gradient descent, lr = 0.5, 2000 steps</span>
+</div>
+</div>
+
+<div class="card blue">
+<h3>The discipline that makes it a real experiment</h3>
+<ul>
+<li><span class="key">Identical initial weights</span>: generated once with <span class="inline">np.random.default_rng(0)</span>, as float32, then <em>loaded into</em> each framework. No per-framework initializers.</li>
+<li><span class="key">Identical update rule</span>: hand-rolled SGD (<span class="inline">p -= lr·g</span>) in each dialect — no Adam, no framework magic.</li>
+<li><span class="key">Same op sequence</span>: <span class="inline">sigmoid(tanh(X@W1+b1)@W2+b2)</span>, float32 everywhere.</li>
+</ul>
+<p>If the four frameworks are — as this course claims — <em>the same math behind different state machines</em>, then every loss at every step must agree to float32 precision.</p>
+</div>
+
+<div class="card green">
+<h3>The result (real run) — the whole course in one table</h3>
+<table>
+<tr><th>step</th><th><span class="fw np">numpy</span></th><th><span class="fw pt">torch</span></th><th><span class="fw tf">tf</span></th><th><span class="fw jx">jax</span></th></tr>
+<tr><td class="num">0</td><td class="num">0.251708</td><td class="num">0.251708</td><td class="num">0.251708</td><td class="num">0.251708</td></tr>
+<tr><td class="num">100</td><td class="num">0.177644</td><td class="num">0.177644</td><td class="num">0.177644</td><td class="num">0.177644</td></tr>
+<tr><td class="num">500</td><td class="num">0.004852</td><td class="num">0.004852</td><td class="num">0.004852</td><td class="num">0.004852</td></tr>
+<tr><td class="num">1000</td><td class="num">0.001573</td><td class="num">0.001573</td><td class="num">0.001573</td><td class="num">0.001573</td></tr>
+<tr><td class="num">2000</td><td class="num">0.000609</td><td class="num">0.000609</td><td class="num">0.000609</td><td class="num">0.000609</td></tr>
+</table>
+<div class="math out"><span class="outlabel">output — real run</span>
+<span class="line">numpy final predictions (want [0,1,1,0]): [0.016 0.973 0.975 0.029]</span>
+</div>
+<p>Identical to six decimal places, at every checkpoint, for 2000 steps — including the NumPy column, where <span class="key">we computed every gradient by hand</span>. The frameworks add exactly nothing to the math. What they add is everything <em>around</em> the math — which the next four pages let you feel, line by line.</p>
+</div>
+<button class="nx" onclick="go(1)">Next: the NumPy version (by hand)</button>
+</div>
+
+<!-- PAGE 1 -->
+<div class="page" data-t="1. NumPy">
+<h2><span class="fw np">NumPy</span> — you are the autograd</h2>
+
+<div class="card blue">
+<h3>Forward, then backward — every line derived</h3>
+<div class="math">
+<span class="line"><span class="cmt"># forward</span></span>
+<span class="line">z1 = X @ W1 + b1          <span class="cmt"># (4,8)</span></span>
+<span class="line">h  = np.<span class="fn">tanh</span>(z1)          <span class="cmt"># (4,8)</span></span>
+<span class="line">z2 = h @ W2 + b2          <span class="cmt"># (4,1)</span></span>
+<span class="line">p  = <span class="fn">sigmoid</span>(z2)          <span class="cmt"># (4,1)</span></span>
+<span class="line">loss = ((p - Y)**<span class="val">2</span>).<span class="fn">mean</span>()</span>
+<span class="line"></span>
+<span class="line"><span class="cmt"># backward — chapter 8's chain rule, now with matrices</span></span>
+<span class="line">dp  = <span class="val">2</span>*(p - Y) / <span class="val">4</span>       <span class="cmt">#  ∂loss/∂p      (the /4 is the mean)</span></span>
+<span class="line">dz2 = dp * p * (<span class="val">1</span> - p)    <span class="cmt">#  × sigmoid′(z2) = p(1−p)</span></span>
+<span class="line">dW2 = h.T @ dz2           <span class="cmt">#  ∂loss/∂W2</span></span>
+<span class="line">db2 = dz2.<span class="fn">sum</span>(axis=<span class="val">0</span>)</span>
+<span class="line">dh  = dz2 @ W2.T          <span class="cmt">#  push through the matmul</span></span>
+<span class="line">dz1 = dh * (<span class="val">1</span> - h**<span class="val">2</span>)     <span class="cmt">#  × tanh′(z1) = 1−h²</span></span>
+<span class="line">dW1 = X.T @ dz1</span>
+<span class="line">db1 = dz1.<span class="fn">sum</span>(axis=<span class="val">0</span>)</span>
+<span class="line"></span>
+<span class="line">W1 -= <span class="val">0.5</span>*dW1; b1 -= <span class="val">0.5</span>*db1; W2 -= <span class="val">0.5</span>*dW2; b2 -= <span class="val">0.5</span>*db2</span>
+</div>
+<p>Read the backward block against the forward block — <span class="key">it's the forward pass mirrored</span>: every <span class="inline">@ W</span> becomes <span class="inline">@ W.T</span> going the other way; every activation contributes its local derivative (sigmoid′ = p(1−p), tanh′ = 1−h²); every <span class="inline">+ b</span> (a broadcast) reverses into a <span class="inline">.sum(axis=0)</span>. That mirror-image structure is exactly what the Chapter 8 engine automates.</p>
+</div>
+
+<div class="card orange">
+<h3>What this dialect makes you think about</h3>
+<ul>
+<li><span class="key">Everything.</span> Shapes, derivatives, transposes, the mean's 1/N — one wrong transpose and it silently trains badly (the classic failure: loss goes down <em>slowly</em>, because a half-right gradient still descends).</li>
+<li>Why the bias gradient is a <span class="inline">sum</span>: b1 was <em>broadcast</em> to 4 rows in forward — Chapter 1's stride-0 trick — so its gradient collects from all 4 rows. Broadcasting forward = summing backward, always.</li>
+</ul>
+<p class="faded">Worth doing once in your life — it is the single best autograd debugging skill — and never in production.</p>
+</div>
+<button class="nx" onclick="go(2)">Next: PyTorch</button>
+</div>
+
+<!-- PAGE 2 -->
+<div class="page" data-t="2. PyTorch">
+<h2><span class="fw pt">PyTorch</span> — the backward block becomes one line</h2>
+
+<div class="card red">
+<h3>The same program, tape-powered</h3>
+<div class="math">
+<span class="line">W1 = torch.<span class="fn">tensor</span>(W1_0, requires_grad=<span class="kw">True</span>)   <span class="cmt"># load the SHARED inits</span></span>
+<span class="line">b1, W2, b2 = …same…</span>
+<span class="line"></span>
+<span class="line"><span class="kw">for</span> step <span class="kw">in</span> <span class="fn">range</span>(<span class="val">2001</span>):</span>
+<span class="line">    p = torch.<span class="fn">sigmoid</span>(torch.<span class="fn">tanh</span>(X @ W1 + b1) @ W2 + b2)</span>
+<span class="line">    loss = ((p - Y)**<span class="val">2</span>).<span class="fn">mean</span>()</span>
+<span class="line">    <span class="kw">for</span> prm <span class="kw">in</span> params: prm.grad = <span class="kw">None</span>       <span class="cmt"># empty the mailboxes</span></span>
+<span class="line">    <span class="hl">loss.backward()</span>                          <span class="cmt"># ← the entire backward block</span></span>
+<span class="line">    <span class="kw">with</span> torch.<span class="fn">no_grad</span>():                    <span class="cmt"># don't record the update itself!</span></span>
+<span class="line">        <span class="kw">for</span> prm <span class="kw">in</span> params: prm -= <span class="val">0.5</span> * prm.grad</span>
+</div>
+</div>
+
+<div class="card">
+<h3>What vanished, what appeared</h3>
+<table>
+<tr><th>Vanished (vs NumPy)</th><th>Appeared (the price)</th></tr>
+<tr><td>8 lines of hand derivatives → <span class="inline">loss.backward()</span></td><td><span class="inline">requires_grad=True</span> — opting tensors into the tape</td></tr>
+<tr><td>worrying about transposes</td><td>the <span class="key">zeroing ritual</span> — mailboxes accumulate (Ch. 6)</td></tr>
+<tr><td></td><td><span class="inline">no_grad()</span> — the update must hide from the tape, or step 2's graph would include step 1's update (and leak memory forever)</td></tr>
+</table>
+<p>The new lines are all <span class="key">state management</span>: telling an ambient, always-on recorder what to track, what to forget, and when to look away. That's the tape's ergonomic signature. (In real code: <span class="inline">nn.Module</span> + <span class="inline">optim.SGD</span> wrap these exact lines — your PyTorch Mechanics course has that wiring.)</p>
+</div>
+<button class="nx" onclick="go(3)">Next: TensorFlow</button>
+</div>
+
+<!-- PAGE 3 -->
+<div class="page" data-t="3. TensorFlow">
+<h2><span class="fw tf">TensorFlow 2</span> — same tape idea, explicit edition</h2>
+
+<div class="card orange">
+<h3>The same program, context-managed</h3>
+<div class="math">
+<span class="line">W1 = tf.<span class="fn">Variable</span>(W1_0)                        <span class="cmt"># load the SHARED inits</span></span>
+<span class="line">b1, W2, b2 = …same…</span>
+<span class="line"></span>
+<span class="line"><span class="kw">for</span> step <span class="kw">in</span> <span class="fn">range</span>(<span class="val">2001</span>):</span>
+<span class="line">    <span class="kw">with</span> tf.<span class="fn">GradientTape</span>() <span class="kw">as</span> tape:           <span class="cmt"># recording ON, lexically</span></span>
+<span class="line">        p = tf.<span class="fn">sigmoid</span>(tf.<span class="fn">tanh</span>(X @ W1 + b1) @ W2 + b2)</span>
+<span class="line">        loss = tf.<span class="fn">reduce_mean</span>((p - Y)**<span class="val">2</span>)</span>
+<span class="line">    g = tape.<span class="fn">gradient</span>(loss, [W1, b1, W2, b2]) <span class="cmt"># grads RETURNED as a list</span></span>
+<span class="line">    <span class="kw">for</span> prm, grad <span class="kw">in</span> <span class="fn">zip</span>([W1,b1,W2,b2], g):</span>
+<span class="line">        prm.<span class="fn">assign_sub</span>(<span class="val">0.5</span> * grad)             <span class="cmt"># Variables mutate via methods</span></span>
+</div>
+</div>
+
+<div class="card">
+<h3>Spot the philosophical differences from torch — same tape, different manners</h3>
+<ul>
+<li>Recording is <span class="key">scoped, not ambient</span>: only what happens inside the <span class="inline">with</span> is taped. No zeroing ritual (the tape dies each iteration), no <span class="inline">no_grad</span> (the update is simply outside the block). The two bugs torch invites are structurally impossible; the bug TF invites instead: compute something <em>outside</em> the block and wonder why its gradient is None.</li>
+<li>Gradients are <span class="key">returned in a list</span> you zip with params — halfway between torch's mailboxes and JAX's pytree-in-pytree-out.</li>
+<li><span class="inline">assign_sub</span>, not <span class="inline">-=</span>: a Variable is a managed resource (remember the graph nodes it compiled to in Chapter 2), so mutation goes through methods.</li>
+</ul>
+<details><summary>The way TF would rather you write it (Keras)</summary>
+<div class="math" style="margin-top:8px">
+<span class="line">model = keras.<span class="fn">Sequential</span>([keras.layers.<span class="fn">Dense</span>(<span class="val">8</span>, activation=<span class="val">'tanh'</span>),</span>
+<span class="line">                          keras.layers.<span class="fn">Dense</span>(<span class="val">1</span>, activation=<span class="val">'sigmoid'</span>)])</span>
+<span class="line">model.<span class="fn">compile</span>(optimizer=<span class="val">'sgd'</span>, loss=<span class="val">'mse'</span>)</span>
+<span class="line">model.<span class="fn">fit</span>(X, Y, epochs=<span class="val">2000</span>)</span>
+</div>
+<p style="padding:4px">Zero visible mechanics — the tape/update loop above is what <span class="inline">.fit</span> runs inside. Great until you need a nonstandard loop; then you're back to GradientTape.</p></details>
+</div>
+<button class="nx" onclick="go(4)">Next: JAX</button>
+</div>
+
+<!-- PAGE 4 -->
+<div class="page" data-t="4. JAX">
+<h2><span class="fw jx">JAX</span> — the loop becomes a pure function you compile</h2>
+
+<div class="card purple">
+<h3>The same program, functional edition</h3>
+<div class="math">
+<span class="line">params = {<span class="val">'W1'</span>: jnp.<span class="fn">array</span>(W1_0), <span class="val">'b1'</span>: …, <span class="val">'W2'</span>: …, <span class="val">'b2'</span>: …}  <span class="cmt"># a pytree</span></span>
+<span class="line"></span>
+<span class="line"><span class="kw">def</span> <span class="fn">loss_fn</span>(prm):                              <span class="cmt"># pure: params in, number out</span></span>
+<span class="line">    p = jax.nn.<span class="fn">sigmoid</span>(jnp.<span class="fn">tanh</span>(X @ prm[<span class="val">'W1'</span>] + prm[<span class="val">'b1'</span>]) @ prm[<span class="val">'W2'</span>] + prm[<span class="val">'b2'</span>])</span>
+<span class="line">    <span class="kw">return</span> ((p - Y)**<span class="val">2</span>).<span class="fn">mean</span>()</span>
+<span class="line"></span>
+<span class="line"><span class="kw">@jax.jit</span></span>
+<span class="line"><span class="kw">def</span> <span class="fn">train_step</span>(prm):                           <span class="cmt"># old params → (new params, loss)</span></span>
+<span class="line">    loss, grads = jax.<span class="fn">value_and_grad</span>(loss_fn)(prm)   <span class="cmt"># grads: SAME pytree shape</span></span>
+<span class="line">    <span class="kw">return</span> jax.tree.<span class="fn">map</span>(<span class="kw">lambda</span> p, g: p - <span class="val">0.5</span>*g, prm, grads), loss</span>
+<span class="line"></span>
+<span class="line"><span class="kw">for</span> step <span class="kw">in</span> <span class="fn">range</span>(<span class="val">2001</span>):</span>
+<span class="line">    params, loss = <span class="fn">train_step</span>(params)          <span class="cmt"># rebind — nothing mutated</span></span>
+</div>
+</div>
+
+<div class="card">
+<h3>What changed conceptually</h3>
+<ul>
+<li>There is no tape, no zeroing, no no_grad, no assign — <span class="key">no state machinery at all</span>. The step is a pure value transformation: <span class="inline">params → params</span>. All Chapter 6 rituals existed to manage a recorder; with no recorder, the rituals vanish.</li>
+<li><span class="inline">value_and_grad</span> returns gradients as <span class="key">a pytree matching params</span> — <span class="inline">grads['W1']</span> next to <span class="inline">params['W1']</span> — and one <span class="inline">tree.map</span> is the whole optimizer.</li>
+<li>Because <span class="inline">train_step</span> is pure, <span class="inline">@jax.jit</span> compiles the <em>entire</em> step — forward, backward, update — into one fused XLA program. In this run, all 2000 JAX steps finished fastest of the four despite doing identical math, and that's on CPU with a toy model.</li>
+</ul>
+</div>
+<button class="nx" onclick="go(5)">Next: the Rosetta stone</button>
+</div>
+
+<!-- PAGE 5 -->
+<div class="page" data-t="5. Rosetta stone">
+<h2>Every concept, four spellings</h2>
+
+<div class="card blue">
+<h3>The correspondence table — bookmark this</h3>
+<table>
+<tr><th>Concept</th><th><span class="fw np">NumPy</span></th><th><span class="fw pt">PyTorch</span></th><th><span class="fw tf">TF 2</span></th><th><span class="fw jx">JAX</span></th></tr>
+<tr><td>parameters</td><td>arrays you manage</td><td>tensors w/ <span class="inline">requires_grad</span> (in Modules)</td><td><span class="inline">tf.Variable</span> (in Layers)</td><td>a pytree you thread</td></tr>
+<tr><td>get gradients</td><td>derive &amp; code by hand</td><td><span class="inline">loss.backward()</span></td><td><span class="inline">tape.gradient(loss, vars)</span></td><td><span class="inline">value_and_grad(loss_fn)</span></td></tr>
+<tr><td>grads live…</td><td>your variables</td><td>in <span class="inline">.grad</span> mailboxes</td><td>in a returned list</td><td>in a returned pytree</td></tr>
+<tr><td>apply update</td><td><span class="inline">W -= lr*dW</span></td><td>mutate under <span class="inline">no_grad</span> (or <span class="inline">opt.step()</span>)</td><td><span class="inline">assign_sub</span> (or Keras opt)</td><td><span class="inline">tree.map</span> → new params (or optax)</td></tr>
+<tr><td>per-step hygiene</td><td>—</td><td>zero the mailboxes</td><td>fresh tape each step</td><td>—</td></tr>
+<tr><td>make it fast</td><td>(already C, no fusion)</td><td><span class="inline">torch.compile(step)</span></td><td><span class="inline">@tf.function</span></td><td><span class="inline">@jax.jit</span></td></tr>
+</table>
+</div>
+
+<div class="card green">
+<h3>Why they matched (and when they wouldn't)</h3>
+<p>Six-decimal agreement happened because we forced <span class="key">same inits + same op order + same dtype</span>. In everyday work the frameworks <em>won't</em> match each other — different default initializers, RNG streams, reduction orders, and fused kernels (Chapter 3's 667.494<span class="key">63</span> vs 667.494<span class="key">69</span>) all introduce drift. The lesson cuts both ways: framework choice never changes the math you asked for — and bit-level reproducibility across frameworks requires pinning <em>everything</em>, which is why porting a model is easy but <em>verifying</em> a port is real work (the standard trick: load shared weights and compare layer-by-layer outputs — exactly what we did here).</p>
+</div>
+
+<div class="card purple">
+<h3>What each dialect made you think about — the retrospective</h3>
+<table>
+<tr><th>Dialect</th><th>Your attention went to…</th></tr>
+<tr><td><span class="fw np">NumPy</span></td><td>the calculus (chain rule, shapes, transposes)</td></tr>
+<tr><td><span class="fw pt">PyTorch</span></td><td>the recorder (what's taped, zeroing, hiding updates)</td></tr>
+<tr><td><span class="fw tf">TF</span></td><td>the scope (what's inside the tape, Variable methods)</td></tr>
+<tr><td><span class="fw jx">JAX</span></td><td>the dataflow (what goes in, what comes out — then jit the whole thing)</td></tr>
+</table>
+<p>Same 25 parameters, same −24-style gradients underneath it all. The framework decides <span class="key">where your attention goes</span> — that's what a framework <em>is</em>.</p>
+</div>
+<a class="nx" href="10_jax_in_practice.html">Next chapter: JAX in practice →</a>
+</div>
+
+<script>
+const pages=document.querySelectorAll('.page'),nav=document.getElementById('nav');
+pages.forEach((p,i)=>{
+  const b=document.createElement('button');
+  b.textContent=p.dataset.t;
+  b.onclick=()=>go(i);
+  if(i===0)b.classList.add('on');
+  nav.appendChild(b);
+});
+function go(n){
+  pages.forEach((p,i)=>p.classList.toggle('on',i===n));
+  nav.querySelectorAll('button').forEach((b,i)=>{
+    b.classList.remove('on');
+    if(i<n)b.classList.add('done');
+    else b.classList.remove('done');
+    if(i===n)b.classList.add('on');
+  });
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+</script>
+</body>
+</html>

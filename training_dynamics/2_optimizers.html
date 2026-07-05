@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Training Dynamics Ch2: Adam vs SGD</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0a0a1a;color:#e0e0e0;padding:20px 20px 80px;line-height:1.7}
+h1{text-align:center;color:#fff;margin-bottom:4px;font-size:1.5em}
+.sub{text-align:center;color:#888;margin-bottom:24px;font-size:.88em}
+.nav{display:flex;justify-content:center;gap:6px;margin-bottom:20px;flex-wrap:wrap}
+.nav button{padding:7px 13px;border:2px solid #333;background:#111;color:#888;border-radius:8px;cursor:pointer;font-size:.78em;transition:.2s}
+.nav button:hover{border-color:#555;color:#ccc}
+.nav button.on{border-color:#4fc3f7;color:#4fc3f7;background:#0d2137}
+.nav button.done{border-color:#4caf50;color:#4caf50}
+.page{display:none;max-width:860px;margin:0 auto}
+.page.on{display:block}
+.page h2{color:#4fc3f7;margin-bottom:12px;font-size:1.2em}
+.card{background:#12122a;border:1px solid #2a2a4a;border-radius:12px;padding:18px;margin-bottom:14px}
+.card.blue{border-color:#4fc3f7;background:#0d1b2a}
+.card.green{border-color:#4caf50;background:#0a1a0a}
+.card.orange{border-color:#ff9800;background:#1a1400}
+.card.red{border-color:#ef5350;background:#1a0a0a}
+.card.purple{border-color:#ce93d8;background:#1a0a2a}
+.card h3{color:#ffb74d;margin-bottom:8px;font-size:1em}
+button.nx{padding:10px 24px;background:#4caf50;color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:.9em;margin-top:14px}
+button.nx:hover{background:#66bb6a}
+table{width:100%;border-collapse:collapse;margin:10px 0}
+th,td{padding:8px 12px;border:1px solid #333;text-align:center;font-size:.88em}
+th{background:#1a1a3a;color:#4fc3f7}
+td{text-align:left}
+.math{background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:14px;margin:10px 0;font-family:'Fira Code',Consolas,monospace;font-size:.85em;line-height:1.8}
+.math .line{margin:2px 0;display:block}
+.math .hl{background:#264f78;padding:2px 6px;border-radius:4px;display:inline-block}
+.math .cmt{color:#6a9955}
+.math .val{color:#b5cea8}
+.math .lbl{color:#9cdcfe}
+.key{color:#ffb74d;font-weight:600}
+.vs{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:10px 0}
+@media(max-width:650px){.vs{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<a href="../index.html" style="position:fixed;top:10px;left:14px;font-size:.75em;color:#555;text-decoration:none;z-index:999;padding:4px 8px;background:#0a0a1a;border:1px solid #333;border-radius:6px;">&larr; index</a>
+
+<h1>Training Dynamics Ch2: Adam vs SGD</h1>
+<p class="sub">Why Adam became the default — with concrete gradient update numbers</p>
+
+<div class="nav" id="nav"></div>
+
+<!-- PAGE 0 -->
+<div class="page on" data-t="0. SGD">
+<h2>SGD — The Simplest Optimizer</h2>
+
+<div class="card blue">
+<h3>The update rule</h3>
+<div class="math">
+<span class="line cmt">// Stochastic Gradient Descent (SGD)</span>
+<span class="line"><span class="lbl">w_new</span> = w − lr × grad</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Concrete: lr=0.01, grad=0.5, w=2.0</span>
+<span class="line"><span class="lbl">w_new</span> = 2.0 − 0.01 × 0.5 = 2.0 − <span class="val">0.005</span> = <span class="val">1.995</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// After 10 steps with same gradient:</span>
+<span class="line"><span class="lbl">step 1</span>:  w = 2.000 − 0.005 = 1.995</span>
+<span class="line"><span class="lbl">step 2</span>:  w = 1.995 − 0.005 = 1.990</span>
+<span class="line"><span class="lbl">step 10</span>: w = 1.950  <span class="cmt">// total moved: 0.050</span></span>
+</div>
+</div>
+
+<div class="card orange">
+<h3>Problem 1 — same lr for every parameter</h3>
+<div class="math">
+<span class="line cmt">// Consider two parameters with very different gradient scales:</span>
+<span class="line"><span class="lbl">param_a</span>: grad = 0.001  <span class="cmt">// tiny gradient (sparse feature)</span></span>
+<span class="line"><span class="lbl">param_b</span>: grad = 50.0   <span class="cmt">// large gradient (frequent feature)</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// SGD with lr=0.01:</span>
+<span class="line"><span class="lbl">param_a update</span> = 0.01 × 0.001 = <span class="val">0.00001</span>  <span class="cmt">// barely moves</span></span>
+<span class="line"><span class="lbl">param_b update</span> = 0.01 × 50.0  = <span class="val">0.500</span>    <span class="cmt">// giant step</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// If you raise lr to help param_a, param_b explodes.</span>
+<span class="line cmt">// If you lower lr to help param_b, param_a never learns.</span>
+</div>
+</div>
+
+<div class="card orange">
+<h3>Problem 2 — bouncing in ravines</h3>
+<p>Loss landscapes have ravines: steep in one direction, shallow in another. SGD bounces back and forth across the steep direction instead of moving efficiently along the valley floor.</p>
+<svg width="100%" viewBox="0 0 400 120" style="display:block;background:#0d0d1e;border:1px solid #2a2a4a;border-radius:8px;margin:10px 0">
+  <!-- ravine ellipses -->
+  <ellipse cx="200" cy="60" rx="160" ry="40" fill="none" stroke="#2a2a4a" stroke-width="1"/>
+  <ellipse cx="200" cy="60" rx="120" ry="25" fill="none" stroke="#333" stroke-width="1"/>
+  <ellipse cx="200" cy="60" rx="70" ry="12" fill="none" stroke="#3a3a4a" stroke-width="1"/>
+  <!-- SGD path: bouncing -->
+  <polyline points="60,40 120,80 170,45 210,75 240,50 260,70 275,58 285,63 292,60"
+    stroke="#ef5350" stroke-width="1.5" fill="none"/>
+  <!-- Momentum path: smooth -->
+  <polyline points="60,40 100,55 140,58 180,60 220,60 260,60 285,60 292,60"
+    stroke="#4caf50" stroke-width="1.5" fill="none" stroke-dasharray="4,2"/>
+  <!-- minimum -->
+  <circle cx="292" cy="60" r="4" fill="#4fc3f7"/>
+  <text x="296" y="64" fill="#4fc3f7" font-size="9">minimum</text>
+  <!-- legend -->
+  <line x1="40" y1="110" x2="70" y2="110" stroke="#ef5350" stroke-width="1.5"/>
+  <text x="74" y="114" fill="#ef5350" font-size="9">SGD (bouncing)</text>
+  <line x1="180" y1="110" x2="210" y2="110" stroke="#4caf50" stroke-width="1.5" stroke-dasharray="4,2"/>
+  <text x="214" y="114" fill="#4caf50" font-size="9">Momentum (smooth)</text>
+</svg>
+</div>
+
+<div class="card green">
+<h3>Where SGD still wins</h3>
+<p>SGD with momentum and a tuned lr can match or beat Adam in final accuracy — especially in image classification (ResNets). It requires more hyperparameter tuning but can generalize slightly better because it doesn't adapt per-parameter.</p>
+</div>
+
+<button class="nx" onclick="go(1)">Momentum</button>
+</div>
+
+<!-- PAGE 1 -->
+<div class="page" data-t="1. Momentum">
+<h2>Momentum — Adding Memory to SGD</h2>
+
+<div class="card blue">
+<h3>The update rule with momentum</h3>
+<div class="math">
+<span class="line cmt">// Accumulate a velocity vector v, updated with exponential moving average</span>
+<span class="line"><span class="lbl">v</span>     = β × v + grad      <span class="cmt">// β=0.9 typical</span></span>
+<span class="line"><span class="lbl">w_new</span> = w − lr × v</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Note: some implementations use v = β×v + (1-β)×grad</span>
+<span class="line cmt">// PyTorch uses the first form. Absorbed into lr scaling.</span>
+</div>
+</div>
+
+<div class="card">
+<h3>5 steps with constant gradient — watch velocity build</h3>
+<div class="math">
+<span class="line cmt">// β=0.9, grad=0.5 each step, v starts at 0</span>
+<span class="line">&nbsp;</span>
+<span class="line"><span class="lbl">step 1</span>: v = 0.9×0 + 0.5 = <span class="val">0.500</span>   w -= lr×0.500</span>
+<span class="line"><span class="lbl">step 2</span>: v = 0.9×0.5 + 0.5 = <span class="val">0.950</span>  w -= lr×0.950</span>
+<span class="line"><span class="lbl">step 3</span>: v = 0.9×0.95 + 0.5 = <span class="val">1.355</span> w -= lr×1.355</span>
+<span class="line"><span class="lbl">step 4</span>: v = 0.9×1.355 + 0.5 = <span class="val">1.720</span> w -= lr×1.720</span>
+<span class="line"><span class="lbl">step 5</span>: v = 0.9×1.720 + 0.5 = <span class="val">2.048</span> w -= lr×2.048</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Steady-state velocity = grad / (1-β) = 0.5 / 0.1 = 5.0</span>
+<span class="line cmt">// Momentum is building: updating faster and faster in this direction</span>
+</div>
+
+<table>
+<tr><th>Step</th><th>Gradient</th><th>Velocity v</th><th>Effective update (lr=0.01)</th></tr>
+<tr><td>1</td><td>0.5</td><td>0.500</td><td>0.0050</td></tr>
+<tr><td>2</td><td>0.5</td><td>0.950</td><td>0.0095</td></tr>
+<tr><td>3</td><td>0.5</td><td>1.355</td><td>0.0136</td></tr>
+<tr><td>4</td><td>0.5</td><td>1.720</td><td>0.0172</td></tr>
+<tr><td>5</td><td>0.5</td><td>2.048</td><td>0.0205</td></tr>
+<tr><td>∞</td><td>0.5</td><td>5.000</td><td>0.0500</td></tr>
+</table>
+</div>
+
+<div class="card orange">
+<h3>What happens when gradient flips direction</h3>
+<div class="math">
+<span class="line cmt">// Velocity built up going right. Now gradient reverses.</span>
+<span class="line"><span class="lbl">before</span>: v = +2.0 (going right fast)</span>
+<span class="line"><span class="lbl">step 6</span>: grad = −0.5 (now pointing left)</span>
+<span class="line">         v = 0.9×2.0 + (−0.5) = <span class="val">1.30</span>  <span class="cmt">// still going right! just slower</span></span>
+<span class="line"><span class="lbl">step 7</span>: v = 0.9×1.30 + (−0.5) = <span class="val">0.67</span> <span class="cmt">// slowing down</span></span>
+<span class="line"><span class="lbl">step 8</span>: v = 0.9×0.67 + (−0.5) = <span class="val">0.10</span> <span class="cmt">// nearly stopped</span></span>
+<span class="line"><span class="lbl">step 9</span>: v = 0.9×0.10 + (−0.5) = <span class="val">−0.41</span> <span class="cmt">// now going left</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Momentum smooths out oscillations — doesn't react to every single gradient</span>
+</div>
+</div>
+
+<div class="card purple">
+<h3>Momentum still shares one lr across all parameters</h3>
+<p>Momentum helps with direction and speed, but it still uses <strong>one global learning rate</strong>. If parameter A needs lr=0.1 and parameter B needs lr=0.001, momentum can't help. That's what Adam solves.</p>
+</div>
+
+<button class="nx" onclick="go(2)">Adam</button>
+</div>
+
+<!-- PAGE 2 -->
+<div class="page" data-t="2. Adam">
+<h2>Adam — Adaptive Moment Estimation</h2>
+
+<div class="card blue">
+<h3>Adam tracks two things per parameter</h3>
+<div class="math">
+<span class="line cmt">// m = first moment (exponential moving average of gradient)</span>
+<span class="line cmt">// v = second moment (exponential moving average of gradient²)</span>
+<span class="line">&nbsp;</span>
+<span class="line"><span class="lbl">m</span> = β₁ × m + (1−β₁) × g       <span class="cmt">// β₁=0.9 (default)</span></span>
+<span class="line"><span class="lbl">v</span> = β₂ × v + (1−β₂) × g²      <span class="cmt">// β₂=0.999 (default)</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Bias correction (important at early steps):</span>
+<span class="line"><span class="lbl">m̂</span> = m / (1 − β₁^t)</span>
+<span class="line"><span class="lbl">v̂</span> = v / (1 − β₂^t)</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Update:</span>
+<span class="line"><span class="lbl">w</span> -= lr × m̂ / (sqrt(v̂) + ε)    <span class="cmt">// ε=1e-8 prevents divide-by-zero</span></span>
+</div>
+</div>
+
+<div class="card green">
+<h3>Step-by-step at step t=1: g=0.5, β₁=0.9, β₂=0.999</h3>
+<div class="math">
+<span class="line cmt">// m and v both start at 0</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Update m and v:</span>
+<span class="line"><span class="lbl">m</span> = 0.9×0 + (1−0.9)×0.5 = <span class="val">0.05</span></span>
+<span class="line"><span class="lbl">v</span> = 0.999×0 + (1−0.999)×0.5² = 0.001×0.25 = <span class="val">0.000250</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Bias correction (t=1):</span>
+<span class="line"><span class="lbl">m̂</span> = 0.05 / (1 − 0.9^1) = 0.05 / 0.1 = <span class="val">0.500</span></span>
+<span class="line"><span class="lbl">v̂</span> = 0.000250 / (1 − 0.999^1) = 0.000250 / 0.001 = <span class="val">0.250</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Update size:</span>
+<span class="line"><span class="lbl">step_size</span> = lr × m̂ / (sqrt(v̂) + ε)</span>
+<span class="line">           = 0.001 × 0.500 / (sqrt(0.250) + 1e-8)</span>
+<span class="line">           = 0.001 × 0.500 / 0.500</span>
+<span class="line">           = <span class="hl val">0.001</span>  <span class="cmt">// exactly lr! At step 1, Adam ≈ SGD with bias correction</span></span>
+</div>
+</div>
+
+<div class="card">
+<h3>Step t=2: same gradient g=0.5</h3>
+<div class="math">
+<span class="line"><span class="lbl">m</span> = 0.9×0.05 + 0.1×0.5 = 0.045 + 0.050 = <span class="val">0.095</span></span>
+<span class="line"><span class="lbl">v</span> = 0.999×0.000250 + 0.001×0.25 = 0.000250 + 0.000250 = <span class="val">0.000500</span></span>
+<span class="line">&nbsp;</span>
+<span class="line"><span class="lbl">m̂</span> = 0.095 / (1 − 0.9²) = 0.095 / 0.19 = <span class="val">0.500</span></span>
+<span class="line"><span class="lbl">v̂</span> = 0.000500 / (1 − 0.999²) = 0.000500 / 0.002 = <span class="val">0.250</span></span>
+<span class="line">&nbsp;</span>
+<span class="line"><span class="lbl">step_size</span> = 0.001 × 0.500 / 0.500 = <span class="val">0.001</span>  <span class="cmt">// same as step 1</span></span>
+<span class="line cmt">// Notice: Adam makes roughly the same size step regardless of gradient scale!</span>
+</div>
+</div>
+
+<div class="card orange">
+<h3>Why Adam adapts — different gradient history, different step size</h3>
+<div class="math">
+<span class="line cmt">// Two parameters after 1000 steps:</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Param A: frequently updated, avg gradient ≈ 0.5</span>
+<span class="line"><span class="lbl">v_A</span> ≈ 0.25  <span class="cmt">// high variance estimate</span></span>
+<span class="line"><span class="lbl">Adam step A</span> = lr × m / sqrt(0.25) = lr × m / 0.5 = <span class="val">2×lr×m</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Param B: rarely updated, avg gradient ≈ 0.001</span>
+<span class="line"><span class="lbl">v_B</span> ≈ 0.000001  <span class="cmt">// low variance estimate</span></span>
+<span class="line"><span class="lbl">Adam step B</span> = lr × m / sqrt(0.000001) = lr × m / 0.001 = <span class="val">1000×lr×m</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Param B gets 500× larger effective lr than Param A.</span>
+<span class="line cmt">// SGD would have treated them identically.</span>
+</div>
+</div>
+
+<button class="nx" onclick="go(3)">Why Adam for LLMs</button>
+</div>
+
+<!-- PAGE 3 -->
+<div class="page" data-t="3. Adam for LLMs">
+<h2>Why Adam Is Essential for LLMs</h2>
+
+<div class="card blue">
+<h3>The embedding sparsity problem</h3>
+<p>A language model has an embedding table: one row per vocabulary token, 50,000 rows. In a single batch of 512 tokens, only ~200–400 unique tokens appear. The rest are never seen — their gradients are exactly zero.</p>
+<div class="math">
+<span class="line cmt">// vocab_size = 50,000, batch = 512 tokens</span>
+<span class="line"><span class="lbl">unique_tokens_in_batch</span> ≈ 300  <span class="cmt">// only ~0.6% of vocab seen</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// SGD for the 49,700 unseen tokens:</span>
+<span class="line">grad = 0 → w -= lr × 0 = <span class="val">0</span>  <span class="cmt">// zero update. Every step.</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// SGD for 300 seen tokens:</span>
+<span class="line">grad ≈ 0.3 → w -= 0.001 × 0.3 = w − <span class="val">0.0003</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// The 49,700 unseen embeddings get no gradient</span>
+<span class="line cmt">// They rely on being seen in future batches</span>
+</div>
+</div>
+
+<div class="card green">
+<h3>How Adam handles sparse embeddings</h3>
+<div class="math">
+<span class="line cmt">// Token "the" — appears 20 times per batch, every batch</span>
+<span class="line"><span class="lbl">v_the</span> after 1000 steps ≈ 0.09  <span class="cmt">// large accumulated variance</span></span>
+<span class="line"><span class="lbl">Adam lr_effective</span> = lr / sqrt(0.09) = lr / 0.3 = <span class="val">3.3 × lr</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Token "serendipity" — appears once every 500 batches</span>
+<span class="line"><span class="lbl">v_seren</span> after 1000 steps ≈ 0.000002  <span class="cmt">// tiny variance</span></span>
+<span class="line"><span class="lbl">Adam lr_effective</span> = lr / sqrt(0.000002) ≈ <span class="val">707 × lr</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Adam automatically gives rare tokens a much larger effective lr</span>
+<span class="line cmt">// They get a strong update when they finally appear</span>
+<span class="line cmt">// SGD: both tokens get exactly lr × grad = same update size</span>
+</div>
+</div>
+
+<div class="card">
+<h3>Comparison — 10000-step training, 1 rare token seen 20 times</h3>
+<table>
+<tr><th>Optimizer</th><th>Update per appearance</th><th>Total movement</th><th>Learning rate used</th></tr>
+<tr><td>SGD (lr=0.001)</td><td>0.001 × 0.3 = 0.0003</td><td>20 × 0.0003 = 0.006</td><td>0.001 (fixed)</td></tr>
+<tr><td>Adam (lr=0.001)</td><td>~0.001 × 300 = 0.3</td><td>20 × 0.3 ≈ 6.0</td><td>~0.3 (adaptive)</td></tr>
+</table>
+<p style="margin-top:8px">Adam moves the rare token embedding <strong>1000× more</strong> than SGD. This is why Adam trains embedding-based models (transformers, language models) dramatically faster.</p>
+</div>
+
+<div class="card orange">
+<h3>When SGD is still used</h3>
+<p>Computer vision (ResNets, ConvNets): dense activations, no sparsity. Every parameter gets gradients every batch. SGD with momentum + cosine schedule often matches or beats Adam. PyTorch's official ResNet-50 recipe uses SGD, lr=0.1, momentum=0.9, weight decay=1e-4.</p>
+</div>
+
+<button class="nx" onclick="go(4)">AdamW</button>
+</div>
+
+<!-- PAGE 4 -->
+<div class="page" data-t="4. AdamW">
+<h2>AdamW — Fixing Adam's Weight Decay Bug</h2>
+
+<div class="card red">
+<h3>The problem with Adam + L2 regularization</h3>
+<div class="math">
+<span class="line cmt">// Naive: add L2 loss, take gradient</span>
+<span class="line"><span class="lbl">loss_total</span> = loss + λ × ||w||²</span>
+<span class="line"><span class="lbl">grad_total</span> = grad + 2λ × w</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// In Adam, this gradient goes into m and v:</span>
+<span class="line"><span class="lbl">m</span> = β₁×m + (1−β₁)×(grad + 2λ×w)  <span class="cmt">// ← L2 term absorbed into moment!</span></span>
+<span class="line"><span class="lbl">v</span> = β₂×v + (1−β₂)×(grad + 2λ×w)²</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Problem: v accumulates (grad + 2λ×w)²</span>
+<span class="line cmt">// Large weights → large v → small effective step for L2 term</span>
+<span class="line cmt">// The adaptive scaling FIGHTS the weight decay regularization</span>
+<span class="line cmt">// Result: weight decay doesn't actually shrink large weights</span>
+</div>
+</div>
+
+<div class="card green">
+<h3>AdamW — decouple weight decay from the gradient</h3>
+<div class="math">
+<span class="line cmt">// AdamW applies weight decay AFTER the Adam update, not through it</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Step 1: compute Adam update using ONLY the loss gradient (no L2)</span>
+<span class="line"><span class="lbl">m</span> = β₁×m + (1−β₁)×grad   <span class="cmt">// just grad, no weight decay</span></span>
+<span class="line"><span class="lbl">v</span> = β₂×v + (1−β₂)×grad²</span>
+<span class="line"><span class="lbl">w_temp</span> = w − lr × m̂ / (sqrt(v̂) + ε)</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Step 2: apply weight decay separately</span>
+<span class="line"><span class="lbl">w_new</span> = w_temp − lr × λ × w</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Combined: w -= lr × [m̂/(sqrt(v̂)+ε) + λ×w]</span>
+</div>
+</div>
+
+<div class="card">
+<h3>Concrete numbers — weight w=2.0, λ=0.01, lr=0.001</h3>
+<div class="math">
+<span class="line cmt">// Regular Adam + L2 regularization:</span>
+<span class="line"><span class="lbl">grad_with_L2</span> = grad + 2×0.01×2.0 = grad + 0.04</span>
+<span class="line cmt">// If original grad=0.001 (rare embedding, small gradient):</span>
+<span class="line"><span class="lbl">v</span> accumulates (0.001 + 0.04)² = 0.041² = <span class="val">0.00168</span></span>
+<span class="line"><span class="lbl">effective_lr</span> = 0.001 / sqrt(0.00168) = 0.001 / 0.041 = <span class="val">0.024</span></span>
+<span class="line cmt">// Weight decay term: 0.024 × 0.04 = only 0.001 shrinkage ← weak!</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// AdamW — weight decay not in v, so it doesn't get divided:</span>
+<span class="line"><span class="lbl">v</span> accumulates grad² = 0.001² = <span class="val">0.000001</span></span>
+<span class="line"><span class="lbl">effective_lr</span> = 0.001 / sqrt(0.000001) = <span class="val">1.0</span>  <span class="cmt">// large for rare token</span></span>
+<span class="line"><span class="lbl">decay_step</span> = lr × λ × w = 0.001 × 0.01 × 2.0 = <span class="val">0.00002</span>  <span class="cmt">// always applied fully</span></span>
+</div>
+</div>
+
+<div class="card blue">
+<h3>AdamW in practice — every modern LLM uses it</h3>
+<div class="math">
+<span class="line cmt">// PyTorch:</span>
+<span class="line">optimizer = torch.optim.AdamW(</span>
+<span class="line">    model.parameters(),</span>
+<span class="line">    lr=3e-4,</span>
+<span class="line">    betas=(0.9, 0.999),   <span class="cmt">// β₁, β₂</span></span>
+<span class="line">    eps=1e-8,</span>
+<span class="line">    weight_decay=0.1      <span class="cmt">// λ — typical for LLMs (0.01–0.1)</span></span>
+<span class="line">)</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Note: don't apply weight decay to bias terms and LayerNorm!</span>
+<span class="line">no_decay = ['bias', 'LayerNorm.weight']</span>
+<span class="line">optimizer_grouped_parameters = [</span>
+<span class="line">  {'params': [p for n,p in model.named_parameters()</span>
+<span class="line">              if not any(nd in n for nd in no_decay)],  'weight_decay': 0.1},</span>
+<span class="line">  {'params': [p for n,p in model.named_parameters()</span>
+<span class="line">              if any(nd in n for nd in no_decay)],      'weight_decay': 0.0},</span>
+<span class="line">]</span>
+</div>
+</div>
+
+<button class="nx" onclick="go(5)">Summary</button>
+</div>
+
+<!-- PAGE 5 -->
+<div class="page" data-t="5. Summary">
+<h2>Chapter 2 Summary — Optimizer Comparison</h2>
+<div class="card blue">
+<table>
+<tr><th>Optimizer</th><th>Per-param lr?</th><th>Memory</th><th>Best for</th></tr>
+<tr><td>SGD</td><td>No</td><td>0 extra</td><td>Dense CV tasks with tuned schedule</td></tr>
+<tr><td>SGD + Momentum</td><td>No</td><td>1× params (velocity)</td><td>Dense CV, avoids ravine bouncing</td></tr>
+<tr><td>Adam</td><td>Yes</td><td>2× params (m and v)</td><td>Sparse params, LLMs, transformers</td></tr>
+<tr><td>AdamW</td><td>Yes</td><td>2× params (m and v)</td><td>All modern LLMs — Adam + correct weight decay</td></tr>
+</table>
+</div>
+<div class="card green">
+<h3>Key numbers to remember</h3>
+<div class="math">
+<span class="line"><span class="lbl">β₁</span> = 0.9    <span class="cmt">// gradient mean decay — momentum for direction</span></span>
+<span class="line"><span class="lbl">β₂</span> = 0.999  <span class="cmt">// gradient var decay — slow to adapt (stable)</span></span>
+<span class="line"><span class="lbl">ε</span>  = 1e-8   <span class="cmt">// prevents divide by zero</span></span>
+<span class="line"><span class="lbl">λ</span>  = 0.1    <span class="cmt">// weight decay for LLMs (GPT-3, LLaMA etc.)</span></span>
+<span class="line"><span class="lbl">lr</span> = 3e-4   <span class="cmt">// classic Karpathy default</span></span>
+</div>
+</div>
+</div>
+
+<script>
+const pages=document.querySelectorAll('.page'),nav=document.getElementById('nav');
+pages.forEach((p,i)=>{const b=document.createElement('button');b.textContent=p.dataset.t;b.onclick=()=>go(i);if(i===0)b.classList.add('on');nav.appendChild(b);});
+function go(n){pages.forEach((p,i)=>p.classList.toggle('on',i===n));nav.querySelectorAll('button').forEach((b,i)=>{b.classList.remove('on');if(i<n)b.classList.add('done');else b.classList.remove('done');if(i===n)b.classList.add('on');});window.scrollTo({top:0,behavior:'smooth'});}
+</script>
+</body>
+</html>

@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VAE Ch4: Use Cases</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0a0a1a;color:#e0e0e0;padding:20px 20px 80px;line-height:1.7}
+h1{text-align:center;color:#fff;margin-bottom:4px;font-size:1.5em}
+.sub{text-align:center;color:#888;margin-bottom:24px;font-size:.88em}
+.nav{display:flex;justify-content:center;gap:6px;margin-bottom:20px;flex-wrap:wrap}
+.nav button{padding:7px 13px;border:2px solid #333;background:#111;color:#888;border-radius:8px;cursor:pointer;font-size:.78em;transition:.2s}
+.nav button:hover{border-color:#555;color:#ccc}
+.nav button.on{border-color:#4fc3f7;color:#4fc3f7;background:#0d2137}
+.nav button.done{border-color:#4caf50;color:#4caf50}
+.page{display:none;max-width:860px;margin:0 auto}
+.page.on{display:block}
+.page h2{color:#4fc3f7;margin-bottom:12px;font-size:1.2em}
+.card{background:#12122a;border:1px solid #2a2a4a;border-radius:12px;padding:18px;margin-bottom:14px}
+.card.blue{border-color:#4fc3f7;background:#0d1b2a}
+.card.green{border-color:#4caf50;background:#0a1a0a}
+.card.orange{border-color:#ff9800;background:#1a1400}
+.card.red{border-color:#ef5350;background:#1a0a0a}
+.card.purple{border-color:#ce93d8;background:#1a0a2a}
+.card h3{color:#ffb74d;margin-bottom:8px;font-size:1em}
+button.nx{padding:10px 24px;background:#4caf50;color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:.9em;margin-top:14px}
+button.nx:hover{background:#66bb6a}
+table{width:100%;border-collapse:collapse;margin:10px 0}
+th,td{padding:8px 12px;border:1px solid #333;text-align:center;font-size:.88em}
+th{background:#1a1a3a;color:#4fc3f7}
+td{text-align:left}
+.math{background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:14px;margin:10px 0;font-family:'Fira Code',Consolas,monospace;font-size:.85em;line-height:1.8}
+.math .line{margin:2px 0;display:block}
+.math .hl{background:#264f78;padding:2px 6px;border-radius:4px;display:inline-block}
+.math .cmt{color:#6a9955}.math .val{color:#b5cea8}.math .lbl{color:#9cdcfe}
+.key{color:#ffb74d;font-weight:600}
+.vs{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:10px 0}
+@media(max-width:650px){.vs{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<a href="../index.html" style="position:fixed;top:10px;left:14px;font-size:.75em;color:#555;text-decoration:none;z-index:999;padding:4px 8px;background:#0a0a1a;border:1px solid #333;border-radius:6px;">&larr; index</a>
+<h1>VAE Course — Chapter 4: Use Cases</h1>
+<p class="sub">Why reconstruction produces better representations than supervised prediction</p>
+<div class="nav" id="nav"></div>
+
+<!-- PAGE 0 -->
+<div class="page on" data-t="0. Reconstruction vs MLP">
+<h2>Why Autoencoder Bottleneck Is Better Than MLP Hidden Layer</h2>
+
+<div class="card orange">
+<h3>The question you're asking</h3>
+<p>If you just want a compressed representation (embedding), why not take a hidden layer from an MLP trained on some label? Both have a bottleneck. What does reconstruction actually add?</p>
+</div>
+
+<div class="card">
+<h3>MLP shortcut — supervised prediction can ignore most of the input</h3>
+<div class="math">
+<div class="line"><span class="cmt">// MLP trained on "will user click this video?"</span></div>
+<div class="line">video_features → [512 hidden] → P(click)</div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// What the 512 hidden nodes need to encode:</span></div>
+<div class="line"><span class="cmt">// Only what predicts clicks — thumbnail appeal, title curiosity, maybe topic.</span></div>
+<div class="line"><span class="cmt">// Production quality? Irrelevant for CTR → discarded.</span></div>
+<div class="line"><span class="cmt">// Video length? Irrelevant for click → discarded.</span></div>
+<div class="line"><span class="cmt">// Specific topic details? Mostly irrelevant → compressed away.</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// The hidden layer encodes "how clickable is this?" not "what IS this?"</span></div>
+<div class="line"><span class="cmt">// Useful for one task. Brittle for anything else.</span></div>
+</div>
+</div>
+
+<div class="card blue">
+<h3>Autoencoder — reconstruction can't throw anything away</h3>
+<div class="math">
+<div class="line"><span class="cmt">// Autoencoder trained to reconstruct video features:</span></div>
+<div class="line">video_features → [bottleneck: 32] → reconstruct video_features</div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// What the bottleneck must encode:</span></div>
+<div class="line"><span class="cmt">// Everything. If it drops production quality, reconstruction fails.</span></div>
+<div class="line"><span class="cmt">// If it drops topic details, reconstruction fails.</span></div>
+<div class="line"><span class="cmt">// If it drops video length, reconstruction fails.</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// The bottleneck encodes "what IS this video, fully"</span></div>
+<div class="line"><span class="cmt">// No single task can bias it. No signal can dominate.</span></div>
+<div class="line"><span class="cmt">// Result: a general-purpose representation of the content.</span></div>
+</div>
+</div>
+
+<div class="card green">
+<h3>Concrete: same video, two embeddings</h3>
+<div class="math">
+<div class="line"><span class="cmt">// Video: "Advanced calculus lecture, 2 hours, low-budget camera, niche topic"</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// MLP (click-prediction) embedding:</span></div>
+<div class="line"><span class="cmt">// CTR is low (niche topic, bad thumbnail) → embedding ≈ "not clickable"</span></div>
+<div class="line"><span class="cmt">// Two completely different calculus lectures get similar embeddings</span></div>
+<div class="line"><span class="cmt">// because they're both "not clickable." Their content differences are lost.</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// Autoencoder embedding:</span></div>
+<div class="line"><span class="cmt">// Must encode: topic=calculus, depth=advanced, length=2h, style=lecture</span></div>
+<div class="line"><span class="cmt">// Two calculus lectures get similar embeddings (same content)</span></div>
+<div class="line"><span class="cmt">// A cooking video gets a very different embedding</span></div>
+<div class="line"><span class="cmt">// The content is what determines similarity, not clickability</span></div>
+</div>
+<p style="margin-top:8px"><span class="key">Reconstruction forces generality. Supervised prediction allows shortcuts.</span></p>
+</div>
+<button class="nx" onclick="go(1)">Next: Anomaly detection &#x2192;</button>
+</div>
+
+<!-- PAGE 1 -->
+<div class="page" data-t="1. Anomaly Detection">
+<h2>Anomaly Detection — Catch the Unusual</h2>
+
+<div class="card blue">
+<h3>The idea</h3>
+<p>Train an autoencoder on <strong>normal data only</strong>. It learns to reconstruct normal inputs well. When an unusual input arrives, reconstruction error is high — it can't rebuild it from the bottleneck.</p>
+<div class="math">
+<div class="line"><span class="cmt">// Credit card transactions (training on normal ones):</span></div>
+<div class="line"><span class="lbl">normal_tx</span>:  [amount=50, merchant=grocery, time=18:00, country=US]</div>
+<div class="line"><span class="cmt">// Autoencoder trained for 1M normal transactions:</span></div>
+<div class="line"><span class="lbl">reconstruction error</span> = 0.003  <span class="cmt">// very low, seen this pattern many times</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="lbl">suspicious_tx</span>: [amount=4999, merchant=crypto, time=03:17, country=RU]</div>
+<div class="line"><span class="lbl">reconstruction error</span> = 0.847  <span class="cmt">// HIGH — bottleneck can't compress this pattern</span></div>
+<div class="line"><span class="cmt">// The bottleneck learned to represent "normal transaction space"</span></div>
+<div class="line"><span class="cmt">// This transaction is outside that space → poor reconstruction → flag it</span></div>
+</div>
+</div>
+
+<div class="card green">
+<h3>Why not just train a classifier "normal vs fraud"?</h3>
+<div class="math">
+<div class="line"><span class="cmt">// Classifier problem: you need labeled fraud examples to train on.</span></div>
+<div class="line"><span class="cmt">// Fraud patterns change constantly — today's fraud doesn't look like last year's.</span></div>
+<div class="line"><span class="cmt">// A classifier trained on old fraud misses new attack patterns.</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// Autoencoder advantage: only needs NORMAL data (abundant).</span></div>
+<div class="line"><span class="cmt">// Any deviation from normal — whether it's a known fraud pattern or a new one</span></div>
+<div class="line"><span class="cmt">// — shows up as high reconstruction error.</span></div>
+<div class="line"><span class="cmt">// Catches novel anomalies the classifier was never trained on.</span></div>
+</div>
+</div>
+<button class="nx" onclick="go(2)">Next: Denoising autoencoders &#x2192;</button>
+</div>
+
+<!-- PAGE 2 -->
+<div class="page" data-t="2. Denoising">
+<h2>Denoising Autoencoders — The Ancestor of Diffusion</h2>
+
+<div class="card blue">
+<h3>The twist: corrupt the input, reconstruct the clean version</h3>
+<div class="math">
+<div class="line"><span class="cmt">// Standard autoencoder:</span></div>
+<div class="line">input [1,1,1,1] → encoder → z → decoder → reconstruct [1,1,1,1]</div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// Denoising autoencoder:</span></div>
+<div class="line">clean input [1,1,1,1]</div>
+<div class="line">    ↓ add noise</div>
+<div class="line">noisy input [1.2, 0.7, 1.1, 0.8] → encoder → z → decoder → reconstruct [1,1,1,1]</div>
+<div class="line"><span class="cmt">//                                                               ^^^^^^^^^^^</span></div>
+<div class="line"><span class="cmt">//                                                               CLEAN version, not noisy!</span></div>
+<div class="line"><span class="cmt">// Loss = MSE(output, CLEAN input)  ← must learn to undo the noise</span></div>
+</div>
+</div>
+
+<div class="card">
+<h3>Why this produces better representations</h3>
+<div class="math">
+<div class="line"><span class="cmt">// Standard AE: just compresses. Can memorize pixel patterns.</span></div>
+<div class="line"><span class="cmt">// Denoising AE: must learn WHAT the input IS, not just compress it.</span></div>
+<div class="line"><span class="cmt">// To remove noise from a cat photo, you need to understand "cat" — not memorize pixels.</span></div>
+<div class="line"><span class="cmt">// Forces learning of robust, semantic features.</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// This is the foundational idea behind diffusion models (Chapter 1 of diffusion_course):</span></div>
+<div class="line"><span class="cmt">// Add noise in 1000 steps. Train a network to reverse each step (denoise).</span></div>
+<div class="line"><span class="cmt">// Denoising autoencoder = diffusion model with 1 noise step instead of 1000.</span></div>
+</div>
+</div>
+<button class="nx" onclick="go(3)">Next: Semantic IDs &#x2192;</button>
+</div>
+
+<!-- PAGE 3 -->
+<div class="page" data-t="3. Semantic IDs">
+<h2>Semantic IDs — VQ-VAE for Recommendation</h2>
+
+<div class="card orange">
+<h3>The problem: cold start</h3>
+<div class="math">
+<div class="line"><span class="cmt">// Standard ID embedding in recommenders:</span></div>
+<div class="line"><span class="lbl">video_id = 48291</span> → embedding lookup → 64-dim vector</div>
+<div class="line"><span class="cmt">// Trained by: user engaged with video 48291 → update its embedding</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// NEW video uploaded today: id = 99999</span></div>
+<div class="line"><span class="cmt">// Zero plays → embedding never updated → stays random initialization</span></div>
+<div class="line"><span class="cmt">// Recommender doesn't know what to do with it → video is buried</span></div>
+<div class="line"><span class="cmt">// This is the cold-start problem.</span></div>
+</div>
+</div>
+
+<div class="card blue">
+<h3>VQ-VAE solution: derive ID from content, not from engagement</h3>
+<div class="math">
+<div class="line"><span class="cmt">// VQ-VAE = VAE with a quantized (discrete) bottleneck</span></div>
+<div class="line"><span class="cmt">// Instead of z being a continuous number, z is forced to be a discrete code</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// Step 1: train VQ-VAE on item content features (text, image, audio)</span></div>
+<div class="line">item_features → encoder → continuous z = [0.3, 0.8, -0.1, 0.5]</div>
+<div class="line">                                          ↓ quantize: snap to nearest codebook entry</div>
+<div class="line">                              code = [<span class="val">2</span>, <span class="val">7</span>, <span class="val">3</span>]  <span class="cmt">← SEMANTIC ID</span></div>
+<div class="line">                                          ↓</div>
+<div class="line">decoder(codes) → reconstruct item_features</div>
+<div class="line"><span class="cmt">// Same as VAE: reconstruction loss forces codes to capture full content</span></div>
+<div class="line"><span class="cmt">// Codes [2,7,3] are the discrete IDs that go into the recommender</span></div>
+</div>
+</div>
+
+<div class="card">
+<h3>The codebook — what the codes mean</h3>
+<div class="math">
+<div class="line"><span class="cmt">// The codebook is a lookup table of learned "prototype" vectors</span></div>
+<div class="line"><span class="lbl">codebook[2]</span> = [0.31, 0.77, -0.12]  <span class="cmt">// a learned "direction" in feature space</span></div>
+<div class="line"><span class="lbl">codebook[7]</span> = [0.82, -0.23, 0.44]  <span class="cmt">// another direction</span></div>
+<div class="line"><span class="lbl">codebook[3]</span> = [-0.11, 0.51, 0.79]  <span class="cmt">// another direction</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// Code 2 at level 1 might emerge as: "educational content"</span></div>
+<div class="line"><span class="cmt">// Code 7 at level 2 might emerge as: "advanced/technical depth"</span></div>
+<div class="line"><span class="cmt">// Code 3 at level 3 might emerge as: "long-form"</span></div>
+<div class="line"><span class="cmt">// → [2,7,3] = "educational, advanced, long-form"</span></div>
+<div class="line"><span class="cmt">// You didn't label these meanings. They emerged from reconstruction.</span></div>
+</div>
+</div>
+
+<div class="card green">
+<h3>Why reconstruction is essential for cold start</h3>
+<div class="math">
+<div class="line"><span class="cmt">// Old video: 10M plays, embedding well-trained by engagement signal</span></div>
+<div class="line"><span class="lbl">ID embedding</span>: 64 numbers, refined by 10M gradient updates → very good</div>
+<div class="line"><span class="lbl">Semantic ID</span>:  [2, 7, 3] → lookup codebook entries → also good</div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// NEW video: 0 plays, uploaded 5 minutes ago</span></div>
+<div class="line"><span class="lbl">ID embedding</span>: random → useless</div>
+<div class="line"><span class="lbl">Semantic ID</span>:  encoder(content_features) → [2, 7, 3]</div>
+<div class="line"><span class="cmt">// Same [2,7,3] as the old similar video!</span></div>
+<div class="line"><span class="cmt">// Recommender can treat the new video similarly to the old one.</span></div>
+<div class="line"><span class="cmt">// Zero engagement data needed. Content IS the ID.</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// This works because the VQ-VAE was trained on reconstruction.</span></div>
+<div class="line"><span class="cmt">// It had to understand content to rebuild it.</span></div>
+<div class="line"><span class="cmt">// An MLP trained on clicks couldn't do this — it never saw zero-click videos.</span></div>
+</div>
+</div>
+<button class="nx" onclick="go(4)">Next: Transfer learning &#x2192;</button>
+</div>
+
+<!-- PAGE 4 -->
+<div class="page" data-t="4. Transfer Learning">
+<h2>Transfer Learning — Pre-train on Unlabeled, Fine-tune on Labels</h2>
+
+<div class="card blue">
+<h3>The setup</h3>
+<div class="math">
+<div class="line"><span class="cmt">// You have:</span></div>
+<div class="line"><span class="cmt">// 10,000,000 unlabeled images (cheap — just scrape the internet)</span></div>
+<div class="line"><span class="cmt">// 10,000 labeled images (expensive — humans had to annotate)</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// Option A: train MLP only on 10k labeled images</span></div>
+<div class="line"><span class="cmt">// Option B: train autoencoder on 10M unlabeled → fine-tune encoder on 10k labels</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// Option B wins. Why?</span></div>
+<div class="line"><span class="cmt">// The autoencoder encoder has seen 10M images.</span></div>
+<div class="line"><span class="cmt">// It already knows edges, textures, shapes, objects — all from reconstruction.</span></div>
+<div class="line"><span class="cmt">// Fine-tuning on 10k labels is easy — just teach it to use what it already knows.</span></div>
+</div>
+</div>
+
+<div class="card green">
+<h3>Why this works: reconstruction learns general features</h3>
+<div class="math">
+<div class="line"><span class="cmt">// Autoencoder trained on 10M cat+dog+car+sky+food photos:</span></div>
+<div class="line"><span class="cmt">// To reconstruct all of these, the encoder must learn:</span></div>
+<div class="line"><span class="cmt">// - edges and contours (needed for all images)</span></div>
+<div class="line"><span class="cmt">// - color regions (needed for all images)</span></div>
+<div class="line"><span class="cmt">// - textures: fur, metal, glass (needed for specific categories)</span></div>
+<div class="line"><span class="cmt">// - shapes: round, rectangular (needed to distinguish objects)</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// These are EXACTLY the features a classifier needs.</span></div>
+<div class="line"><span class="cmt">// The autoencoder learned them for free, from unlabeled data.</span></div>
+<div class="line"><span class="cmt">// Fine-tuning = "take these features and map them to categories"</span></div>
+</div>
+</div>
+<button class="nx" onclick="go(5)">Summary &#x2192;</button>
+</div>
+
+<!-- PAGE 5 -->
+<div class="page" data-t="5. Summary">
+<h2>When to Use What</h2>
+<div class="card blue">
+<table>
+<tr><th>Use case</th><th>Architecture</th><th>Why reconstruction helps</th></tr>
+<tr><td>Anomaly detection</td><td>Autoencoder</td><td>Normal data reconstructs well. Anomalies don't. High error = flag.</td></tr>
+<tr><td>Denoising / robustness</td><td>Denoising AE</td><td>Forces model to understand content, not memorize noise.</td></tr>
+<tr><td>Image / text generation</td><td>VAE</td><td>Smooth latent space → sample anywhere → valid output.</td></tr>
+<tr><td>Semantic IDs (rec sys)</td><td>VQ-VAE</td><td>Reconstruction forces content understanding → works for cold-start items.</td></tr>
+<tr><td>Transfer learning</td><td>AE or VAE</td><td>Pre-train on unlabeled data → rich general features → fine-tune cheaply.</td></tr>
+<tr><td>Structured latents (YouTube)</td><td>Variational IB</td><td>Bottleneck + reconstruction + routing → interpretable, debiased latents.</td></tr>
+</table>
+<p style="margin-top:10px">The common thread: <span class="key">reconstruction forces the bottleneck to keep everything</span>. A supervised MLP can shortcut — it only keeps what its label needs. An autoencoder can't shortcut — it needs to rebuild the full input, so the bottleneck ends up being a general-purpose summary.</p>
+</div>
+</div>
+
+<script>
+const pages=document.querySelectorAll('.page'),nav=document.getElementById('nav');
+pages.forEach((p,i)=>{const b=document.createElement('button');b.textContent=p.dataset.t;b.onclick=()=>go(i);if(i===0)b.classList.add('on');nav.appendChild(b);});
+function go(n){pages.forEach((p,i)=>p.classList.toggle('on',i===n));nav.querySelectorAll('button').forEach((b,i)=>{b.classList.remove('on');if(i<n)b.classList.add('done');else b.classList.remove('done');if(i===n)b.classList.add('on');});window.scrollTo({top:0,behavior:'smooth'});}
+</script>
+</body></html>

@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Transformer Ch5: BERT vs GPT</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0a0a1a;color:#e0e0e0;padding:20px 20px 80px;line-height:1.7}
+h1{text-align:center;color:#fff;margin-bottom:4px;font-size:1.5em}
+.sub{text-align:center;color:#888;margin-bottom:24px;font-size:.88em}
+.nav{display:flex;justify-content:center;gap:6px;margin-bottom:20px;flex-wrap:wrap}
+.nav button{padding:7px 13px;border:2px solid #333;background:#111;color:#888;border-radius:8px;cursor:pointer;font-size:.78em;transition:.2s}
+.nav button:hover{border-color:#555;color:#ccc}
+.nav button.on{border-color:#4fc3f7;color:#4fc3f7;background:#0d2137}
+.nav button.done{border-color:#4caf50;color:#4caf50}
+.page{display:none;max-width:860px;margin:0 auto}
+.page.on{display:block}
+.page h2{color:#4fc3f7;margin-bottom:12px;font-size:1.2em}
+.card{background:#12122a;border:1px solid #2a2a4a;border-radius:12px;padding:18px;margin-bottom:14px}
+.card.blue{border-color:#4fc3f7;background:#0d1b2a}
+.card.green{border-color:#4caf50;background:#0a1a0a}
+.card.orange{border-color:#ff9800;background:#1a1400}
+.card.red{border-color:#ef5350;background:#1a0a0a}
+.card.purple{border-color:#ce93d8;background:#1a0a2a}
+.card h3{color:#ffb74d;margin-bottom:8px;font-size:1em}
+button.nx{padding:10px 24px;background:#4caf50;color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:.9em;margin-top:14px}
+button.nx:hover{background:#66bb6a}
+table{width:100%;border-collapse:collapse;margin:10px 0}
+th,td{padding:8px 12px;border:1px solid #333;text-align:center;font-size:.88em}
+th{background:#1a1a3a;color:#4fc3f7}
+td{text-align:left}
+.math{background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:14px;margin:10px 0;font-family:'Fira Code',Consolas,monospace;font-size:.85em;line-height:1.8}
+.math .line{margin:2px 0;display:block}
+.math .hl{background:#264f78;padding:2px 6px;border-radius:4px;display:inline-block}
+.math .cmt{color:#6a9955}
+.math .val{color:#b5cea8}
+.math .lbl{color:#9cdcfe}
+.key{color:#ffb74d;font-weight:600}
+.vs{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:10px 0}
+@media(max-width:650px){.vs{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<a href="../index.html" style="position:fixed;top:10px;left:14px;font-size:.75em;color:#555;text-decoration:none;z-index:999;padding:4px 8px;background:#0a0a1a;border:1px solid #333;border-radius:6px;">&larr; index</a>
+
+<h1>Transformer Ch5: BERT vs GPT</h1>
+<p class="sub">Encoder-only vs decoder-only — when to use which</p>
+
+<div class="nav" id="nav"></div>
+
+<!-- PAGE 0 -->
+<div class="page on" data-t="0. Key Difference">
+<h2>0. The Key Difference: One Line of Code</h2>
+
+<div class="card blue">
+<h3>Everything comes down to one mask</h3>
+<p>Both BERT and GPT use the same transformer blocks. The only architectural difference is whether the attention mask allows looking forward:</p>
+<div class="math">
+  <span class="line"><span class="cmt">// GPT (causal mask): token i can only see tokens 0..i</span></span>
+  <span class="line"><span class="lbl">mask</span> = torch.tril(torch.ones(<span class="val">T</span>, <span class="val">T</span>))</span>
+  <span class="line"><span class="cmt">// T=4 example:</span></span>
+  <span class="line"><span class="cmt">// [[1, 0, 0, 0],  ← token 0 sees only itself</span></span>
+  <span class="line"><span class="cmt">//  [1, 1, 0, 0],  ← token 1 sees tokens 0,1</span></span>
+  <span class="line"><span class="cmt">//  [1, 1, 1, 0],  ← token 2 sees tokens 0,1,2</span></span>
+  <span class="line"><span class="cmt">//  [1, 1, 1, 1]]  ← token 3 sees all</span></span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// BERT (no causal mask): every token sees everything</span></span>
+  <span class="line"><span class="lbl">mask</span> = torch.ones(<span class="val">T</span>, <span class="val">T</span>)</span>
+  <span class="line"><span class="cmt">// [[1, 1, 1, 1],  ← every token sees all tokens</span></span>
+  <span class="line"><span class="cmt">//  [1, 1, 1, 1],</span></span>
+  <span class="line"><span class="cmt">//  [1, 1, 1, 1],</span></span>
+  <span class="line"><span class="cmt">//  [1, 1, 1, 1]]</span></span>
+</div>
+</div>
+
+<div class="card orange">
+<h3>How the mask is applied</h3>
+<div class="math">
+  <span class="line"><span class="cmt">// After computing raw scores:</span></span>
+  <span class="line"><span class="lbl">scores</span> = Q · K^T / sqrt(d_k)    <span class="cmt">// shape: T × T</span></span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// Apply mask: set future positions to -infinity</span></span>
+  <span class="line"><span class="lbl">scores[mask == 0]</span> = <span class="val">-1e9</span></span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// After softmax, -1e9 becomes ≈ 0 (exp(-1e9) ≈ 0)</span></span>
+  <span class="line"><span class="cmt">// Token i effectively cannot attend to future tokens</span></span>
+</div>
+</div>
+
+<div class="card">
+<h3>Consequence: different training objectives</h3>
+<p>The mask choice determines what you can train on:</p>
+<ul style="margin-left:16px;margin-top:8px">
+<li><span class="key">Causal mask (GPT):</span> can predict next token — all tokens 0..T-2 have targets token 1..T-1. Very efficient training signal.</li>
+<li><span class="key">No mask (BERT):</span> can't predict next token (would cheat by looking at it). Must use a different objective: masked language modeling.</li>
+</ul>
+</div>
+
+<button class="nx" onclick="go(1)">Next: GPT →</button>
+</div>
+
+<!-- PAGE 1 -->
+<div class="page" data-t="1. GPT (decoder-only)">
+<h2>1. GPT — Decoder-Only Language Modeling</h2>
+
+<div class="card blue">
+<h3>Training objective: predict the next token</h3>
+<div class="math">
+  <span class="line"><span class="cmt">// Training example: "The cat sat"</span></span>
+  <span class="line"><span class="lbl">Input:</span>  [The, cat, sat]</span>
+  <span class="line"><span class="lbl">Target:</span> [cat, sat, on]   <span class="cmt">// shifted right by 1</span></span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// What GPT is trained to do:</span></span>
+  <span class="line"><span class="lbl">P(cat | "The")                </span> → maximize</span>
+  <span class="line"><span class="lbl">P(sat | "The cat")            </span> → maximize</span>
+  <span class="line"><span class="lbl">P(on  | "The cat sat")        </span> → maximize</span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// Loss = -sum of log probabilities (cross-entropy)</span></span>
+  <span class="line"><span class="lbl">L</span> = -( log P(cat|The) + log P(sat|The,cat) + log P(on|The,cat,sat) )</span>
+</div>
+</div>
+
+<div class="card orange">
+<h3>The causal mask visualized</h3>
+<p>For "The cat sat on", the attention scores (before softmax) look like:</p>
+<table>
+<tr><th></th><th>The</th><th>cat</th><th>sat</th><th>on</th></tr>
+<tr><td><span class="key">The</span></td><td>score</td><td style="color:#ef5350">-∞</td><td style="color:#ef5350">-∞</td><td style="color:#ef5350">-∞</td></tr>
+<tr><td><span class="key">cat</span></td><td>score</td><td>score</td><td style="color:#ef5350">-∞</td><td style="color:#ef5350">-∞</td></tr>
+<tr><td><span class="key">sat</span></td><td>score</td><td>score</td><td>score</td><td style="color:#ef5350">-∞</td></tr>
+<tr><td><span class="key">on</span></td><td>score</td><td>score</td><td>score</td><td>score</td></tr>
+</table>
+<p style="margin-top:8px">The red cells are forced to 0 after softmax. "The" can only attend to itself; "cat" can attend to "The" and "cat"; etc. No future peeking.</p>
+</div>
+
+<div class="card green">
+<h3>At inference: generate token by token</h3>
+<div class="math">
+  <span class="line"><span class="cmt">// Prompt: "The cat"</span></span>
+  <span class="line"><span class="lbl">Step 1:</span> model sees [The, cat] → predicts next: P(sat)=0.6, P(slept)=0.2, ...</span>
+  <span class="line">          sample "sat", append → [The, cat, sat]</span>
+  <span class="line"><span class="lbl">Step 2:</span> model sees [The, cat, sat] → predicts: P(on)=0.5, P(by)=0.1, ...</span>
+  <span class="line">          sample "on", append → [The, cat, sat, on]</span>
+  <span class="line"><span class="lbl">Step 3:</span> continue until [EOS] token or max length</span>
+</div>
+</div>
+
+<div class="card blue">
+<h3>GPT model sizes</h3>
+<table>
+<tr><th>Model</th><th>Layers</th><th>d_model</th><th>Heads</th><th>Parameters</th></tr>
+<tr><td>GPT-1</td><td>12</td><td>768</td><td>12</td><td>117M</td></tr>
+<tr><td>GPT-2</td><td>48</td><td>1600</td><td>25</td><td>1.5B</td></tr>
+<tr><td>GPT-3</td><td>96</td><td>12288</td><td>96</td><td>175B</td></tr>
+<tr><td>Llama-3-70B</td><td>80</td><td>8192</td><td>64</td><td>70B</td></tr>
+</table>
+</div>
+
+<button class="nx" onclick="go(2)">Next: BERT →</button>
+</div>
+
+<!-- PAGE 2 -->
+<div class="page" data-t="2. BERT (encoder-only)">
+<h2>2. BERT — Encoder-Only with Masked LM</h2>
+
+<div class="card blue">
+<h3>Training objective: predict masked tokens</h3>
+<p>Random 15% of tokens are replaced with [MASK]. Model predicts the original token at each masked position using <em>both</em> left and right context.</p>
+<div class="math">
+  <span class="line"><span class="cmt">// Original sentence: "The cat sat on the mat"</span></span>
+  <span class="line"><span class="cmt">// After masking 15% (~1 token here):</span></span>
+  <span class="line"><span class="lbl">Input:</span>  [The, <span class="hl">[MASK]</span>, sat, on, the, mat]</span>
+  <span class="line"><span class="lbl">Target:</span> predict "cat" at position 1</span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// "sat" can attend to [MASK] (the future position!)</span></span>
+  <span class="line"><span class="cmt">// "on" can attend to [MASK] too</span></span>
+  <span class="line"><span class="cmt">// → "cat" gets information from BOTH sides</span></span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// The 15% masked tokens are split:</span></span>
+  <span class="line"><span class="lbl">80%</span> replaced with [MASK]</span>
+  <span class="line"><span class="lbl">10%</span> replaced with random token  <span class="cmt">// prevents overfit to [MASK]</span></span>
+  <span class="line"><span class="lbl">10%</span> kept unchanged              <span class="cmt">// model must also "check" these</span></span>
+</div>
+</div>
+
+<div class="card orange">
+<h3>Second BERT pretraining task: NSP</h3>
+<p>Next Sentence Prediction: given two sentences, predict if sentence B follows sentence A in the original text.</p>
+<div class="math">
+  <span class="line"><span class="lbl">Input:</span>  [CLS] The cat sat [SEP] It was on the mat [SEP]</span>
+  <span class="line"><span class="lbl">Label:</span>  IsNext (1) or NotNext (0)</span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// [CLS] token output is used for sentence-level classification</span></span>
+  <span class="line"><span class="cmt">// Note: later research (RoBERTa) showed NSP was not useful</span></span>
+</div>
+</div>
+
+<div class="card green">
+<h3>BERT model sizes</h3>
+<table>
+<tr><th>Model</th><th>Layers</th><th>d_model</th><th>Heads</th><th>Parameters</th></tr>
+<tr><td>BERT-base</td><td>12</td><td>768</td><td>12</td><td>110M</td></tr>
+<tr><td>BERT-large</td><td>24</td><td>1024</td><td>16</td><td>340M</td></tr>
+<tr><td>RoBERTa-large</td><td>24</td><td>1024</td><td>16</td><td>355M</td></tr>
+<tr><td>DeBERTa-v3-large</td><td>24</td><td>1024</td><td>16</td><td>304M</td></tr>
+</table>
+</div>
+
+<button class="nx" onclick="go(3)">Next: When to use which →</button>
+</div>
+
+<!-- PAGE 3 -->
+<div class="page" data-t="3. When to use which">
+<h2>3. When to Use Which</h2>
+
+<div class="card">
+<h3>Decision table</h3>
+<table>
+<tr><th>Task</th><th>Best choice</th><th>Why</th></tr>
+<tr><td>Text generation / completion</td><td><span class="key" style="color:#4fc3f7">GPT</span></td><td>Natively generates tokens left-to-right</td></tr>
+<tr><td>Chatbots / instruction following</td><td><span class="key" style="color:#4fc3f7">GPT</span></td><td>Same — generation tasks</td></tr>
+<tr><td>Sentiment classification</td><td><span class="key" style="color:#4caf50">BERT</span></td><td>Bidirectional context → better representations</td></tr>
+<tr><td>Named Entity Recognition (NER)</td><td><span class="key" style="color:#4caf50">BERT</span></td><td>Each token needs full context</td></tr>
+<tr><td>Question answering (extractive)</td><td><span class="key" style="color:#4caf50">BERT</span></td><td>Span extraction needs full context</td></tr>
+<tr><td>Semantic search / retrieval</td><td><span class="key" style="color:#4caf50">BERT</span></td><td>Encodes sentences as fixed vectors</td></tr>
+<tr><td>Summarization</td><td><span class="key" style="color:#4fc3f7">GPT</span> or T5</td><td>Generative task</td></tr>
+<tr><td>Translation</td><td>T5 / encoder-decoder</td><td>Needs both understanding and generation</td></tr>
+</table>
+</div>
+
+<div class="card orange">
+<h3>Concrete benchmark numbers</h3>
+<p>SST-2 sentiment classification (Stanford Sentiment Treebank, binary):</p>
+<table>
+<tr><th>Model</th><th>Approach</th><th>Accuracy</th></tr>
+<tr><td>BERT-large</td><td>Finetune (3 epochs)</td><td style="color:#4caf50;font-weight:700">94.9%</td></tr>
+<tr><td>RoBERTa-large</td><td>Finetune (3 epochs)</td><td style="color:#4caf50;font-weight:700">96.4%</td></tr>
+<tr><td>GPT-2 (1.5B)</td><td>Zero-shot prompting</td><td>82.5%</td></tr>
+<tr><td>GPT-3 (175B)</td><td>Zero-shot</td><td>85.1%</td></tr>
+<tr><td>GPT-3 (175B)</td><td>Few-shot (32 examples)</td><td>91.2%</td></tr>
+<tr><td>GPT-4</td><td>Zero-shot</td><td style="color:#4caf50;font-weight:700">~96%</td></tr>
+</table>
+<p style="margin-top:8px">Key insight: a 340M BERT-large finetuned for 3 epochs <span class="key">beats</span> GPT-3 (175B) zero-shot on classification. 500× smaller model, much better on discriminative tasks. The right tool for the right job.</p>
+</div>
+
+<div class="card blue">
+<h3>The finetuning gap closes with scale</h3>
+<p>GPT-3-scale models (100B+) with few-shot prompting start matching finetuned BERT on many tasks. At GPT-4 scale, zero-shot often exceeds finetuned BERT. But for production deployment where cost matters, finetuned smaller models are usually better.</p>
+</div>
+
+<button class="nx" onclick="go(4)">Next: T5 and Encoder-Decoder →</button>
+</div>
+
+<!-- PAGE 4 -->
+<div class="page" data-t="4. T5 and Encoder-Decoder">
+<h2>4. T5 — The Best of Both Worlds</h2>
+
+<div class="card blue">
+<h3>Encoder-decoder architecture</h3>
+<p>T5 (Text-To-Text Transfer Transformer) uses a full encoder-decoder transformer:</p>
+<ul style="margin-left:16px;margin-top:8px">
+<li><span class="key">Encoder:</span> bidirectional, processes the full input (like BERT)</li>
+<li><span class="key">Decoder:</span> causal, generates the output token by token (like GPT)</li>
+<li><span class="key">Cross-attention:</span> decoder attends to encoder outputs at every step</li>
+</ul>
+</div>
+
+<div class="card orange">
+<h3>The text-to-text framework</h3>
+<p>Every NLP task is framed as: given an input string, produce an output string. Task type is encoded in the prefix:</p>
+<div class="math">
+  <span class="line"><span class="cmt">// Sentiment classification:</span></span>
+  <span class="line"><span class="lbl">Input:</span>  "classify sentiment: The movie was great!"</span>
+  <span class="line"><span class="lbl">Output:</span> "positive"</span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// Translation:</span></span>
+  <span class="line"><span class="lbl">Input:</span>  "translate English to French: The cat sat on the mat"</span>
+  <span class="line"><span class="lbl">Output:</span> "Le chat était assis sur le tapis"</span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// Summarization:</span></span>
+  <span class="line"><span class="lbl">Input:</span>  "summarize: [long article text...]"</span>
+  <span class="line"><span class="lbl">Output:</span> "A new study found that..."</span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// Question answering:</span></span>
+  <span class="line"><span class="lbl">Input:</span>  "question: What is the capital of France? context: France is..."</span>
+  <span class="line"><span class="lbl">Output:</span> "Paris"</span>
+</div>
+</div>
+
+<div class="card green">
+<h3>Why T5 / encoder-decoder?</h3>
+<p>For tasks where the output is much shorter than the input (e.g., summarization, QA), encoder-decoder is efficient: the encoder processes the full input bidirectionally (good for understanding), and the decoder only generates the short output.</p>
+<p style="margin-top:8px">For tasks where input and output are similar length (translation), it also works well. T5-11B achieved SOTA on many benchmarks at release.</p>
+<p style="margin-top:8px">Modern successors: <span class="key">mT5</span> (multilingual), <span class="key">Flan-T5</span> (instruction-finetuned), <span class="key">BART</span> (similar architecture, different pretraining).</p>
+</div>
+
+<table>
+<tr><th>Architecture</th><th>Attention type</th><th>Best for</th><th>Examples</th></tr>
+<tr><td><span class="key">Encoder-only</span></td><td>Bidirectional (full)</td><td>Understanding tasks</td><td>BERT, RoBERTa, DeBERTa</td></tr>
+<tr><td><span class="key">Decoder-only</span></td><td>Causal (lower-tri)</td><td>Generation tasks</td><td>GPT, Llama, Mistral, Gemma</td></tr>
+<tr><td><span class="key">Encoder-Decoder</span></td><td>Both</td><td>Seq2seq tasks</td><td>T5, BART, mT5, Flan-T5</td></tr>
+</table>
+</div>
+
+<script>
+const pages=document.querySelectorAll('.page'),nav=document.getElementById('nav');
+pages.forEach((p,i)=>{const b=document.createElement('button');b.textContent=p.dataset.t;b.onclick=()=>go(i);if(i===0)b.classList.add('on');nav.appendChild(b);});
+function go(n){pages.forEach((p,i)=>p.classList.toggle('on',i===n));nav.querySelectorAll('button').forEach((b,i)=>{b.classList.remove('on');if(i<n)b.classList.add('done');else b.classList.remove('done');if(i===n)b.classList.add('on');});window.scrollTo({top:0,behavior:'smooth'});}
+</script>
+</body>
+</html>

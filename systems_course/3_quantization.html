@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Systems Ch3: Quantization</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0a0a1a;color:#e0e0e0;padding:20px 20px 80px;line-height:1.7}
+h1{text-align:center;color:#fff;margin-bottom:4px;font-size:1.5em}
+.sub{text-align:center;color:#888;margin-bottom:24px;font-size:.88em}
+.nav{display:flex;justify-content:center;gap:6px;margin-bottom:20px;flex-wrap:wrap}
+.nav button{padding:7px 13px;border:2px solid #333;background:#111;color:#888;border-radius:8px;cursor:pointer;font-size:.78em;transition:.2s}
+.nav button:hover{border-color:#555;color:#ccc}
+.nav button.on{border-color:#4fc3f7;color:#4fc3f7;background:#0d2137}
+.nav button.done{border-color:#4caf50;color:#4caf50}
+.page{display:none;max-width:860px;margin:0 auto}
+.page.on{display:block}
+.page h2{color:#4fc3f7;margin-bottom:12px;font-size:1.2em}
+.card{background:#12122a;border:1px solid #2a2a4a;border-radius:12px;padding:18px;margin-bottom:14px}
+.card.blue{border-color:#4fc3f7;background:#0d1b2a}
+.card.green{border-color:#4caf50;background:#0a1a0a}
+.card.orange{border-color:#ff9800;background:#1a1400}
+.card.red{border-color:#ef5350;background:#1a0a0a}
+.card.purple{border-color:#ce93d8;background:#1a0a2a}
+.card h3{color:#ffb74d;margin-bottom:8px;font-size:1em}
+button.nx{padding:10px 24px;background:#4caf50;color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:.9em;margin-top:14px}
+button.nx:hover{background:#66bb6a}
+table{width:100%;border-collapse:collapse;margin:10px 0}
+th,td{padding:8px 12px;border:1px solid #333;text-align:center;font-size:.88em}
+th{background:#1a1a3a;color:#4fc3f7}
+td{text-align:left}
+.math{background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:14px;margin:10px 0;font-family:'Fira Code',Consolas,monospace;font-size:.85em;line-height:1.8}
+.math .line{margin:2px 0;display:block}
+.math .hl{background:#264f78;padding:2px 6px;border-radius:4px;display:inline-block}
+.math .cmt{color:#6a9955}
+.math .val{color:#b5cea8}
+.math .lbl{color:#9cdcfe}
+.key{color:#ffb74d;font-weight:600}
+.vs{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:10px 0}
+@media(max-width:650px){.vs{grid-template-columns:1fr}}
+.chip{display:inline-block;padding:2px 8px;border-radius:4px;font-size:.72em;font-weight:600;margin:2px}
+.chip.fp32{background:rgba(239,83,80,.15);color:#ef5350;border:1px solid rgba(239,83,80,.4)}
+.chip.fp16{background:rgba(255,152,0,.15);color:#ff9800;border:1px solid rgba(255,152,0,.4)}
+.chip.int8{background:rgba(79,195,247,.15);color:#4fc3f7;border:1px solid rgba(79,195,247,.4)}
+.chip.int4{background:rgba(76,175,80,.15);color:#4caf50;border:1px solid rgba(76,175,80,.4)}
+.step-head{font-size:.82em;font-weight:700;color:#4fc3f7;margin:16px 0 8px;padding-top:12px;border-top:1px solid #2a2a4a}
+.step-head:first-child{border-top:none;padding-top:0;margin-top:0}
+.bar-row{display:flex;align-items:center;gap:10px;margin:6px 0}
+.bar-label{width:80px;font-size:.8em;color:#888;text-align:right;flex-shrink:0}
+.bar-fill{height:22px;border-radius:4px;display:flex;align-items:center;padding:0 8px;font-size:.72em;font-weight:600;min-width:30px}
+.bar-val{font-size:.75em;color:#888;margin-left:6px}
+</style>
+</head>
+<body>
+<a href="../index.html" style="position:fixed;top:10px;left:14px;font-size:.75em;color:#555;text-decoration:none;z-index:999;padding:4px 8px;background:#0a0a1a;border:1px solid #333;border-radius:6px;">&larr; index</a>
+
+<h1>Systems Ch3: Quantization</h1>
+<p class="sub">From FP32 to INT4 — what you gain, what you lose, and how to recover it</p>
+
+<div class="nav" id="nav"></div>
+
+<!-- PAGE 0 -->
+<div class="page on" data-t="0. Why Quantize">
+<h2>Why Quantize — The Size and Speed Math</h2>
+
+<div class="card blue">
+<h3>Every bit you cut is real memory and real speed</h3>
+<div class="vs">
+  <div>
+    <p style="margin-bottom:10px"><span class="chip fp32">FP32</span> — 32 bits</p>
+    <p style="font-size:.85em">1 sign bit, 8 exponent bits, 23 mantissa bits.<br>Range: ±3.4×10³⁸, Precision: ~7 decimal digits</p>
+  </div>
+  <div>
+    <p style="margin-bottom:10px"><span class="chip fp16">BF16</span> — 16 bits</p>
+    <p style="font-size:.85em">1 sign, 8 exponent, 7 mantissa.<br>Same range as FP32, less precision. Default for LLMs.</p>
+  </div>
+</div>
+<div class="vs" style="margin-top:8px">
+  <div>
+    <p style="margin-bottom:10px"><span class="chip int8">INT8</span> — 8 bits</p>
+    <p style="font-size:.85em">256 integer values: -128 to +127.<br>Needs quantization scale to map to FP range.</p>
+  </div>
+  <div>
+    <p style="margin-bottom:10px"><span class="chip int4">INT4</span> — 4 bits</p>
+    <p style="font-size:.85em">16 integer values: -8 to +7.<br>Very aggressive. Quality-sensitive. Needs careful quantization.</p>
+  </div>
+</div>
+</div>
+
+<div class="card">
+<h3>Llama-3-70B across formats</h3>
+<div style="margin:10px 0">
+  <div class="bar-row">
+    <div class="bar-label">FP32</div>
+    <div class="bar-fill" style="width:100%;background:#ef5350;color:#000">280 GB</div>
+  </div>
+  <div class="bar-row">
+    <div class="bar-label">FP16/BF16</div>
+    <div class="bar-fill" style="width:50%;background:#ff9800;color:#000">140 GB</div>
+  </div>
+  <div class="bar-row">
+    <div class="bar-label">INT8</div>
+    <div class="bar-fill" style="width:25%;background:#4fc3f7;color:#000">70 GB</div>
+  </div>
+  <div class="bar-row">
+    <div class="bar-label">INT4</div>
+    <div class="bar-fill" style="width:12.5%;background:#4caf50;color:#000">35 GB</div>
+  </div>
+</div>
+<div class="math">
+<span class="line cmt">// Hardware needed</span>
+<span class="line"><span class="lbl">FP16 (140 GB)</span>  → 2× A100 80GB  (NVLink required)</span>
+<span class="line"><span class="lbl">INT8 (70 GB)</span>   → 1× A100 80GB  ✓</span>
+<span class="line"><span class="lbl">INT4 (35 GB)</span>   → 2× RTX 3090 24GB  ← consumer hardware ✓</span>
+</div>
+</div>
+
+<div class="card green">
+<h3>Speed — inference is memory-bandwidth bound</h3>
+<div class="math">
+<span class="line cmt">// Inference bottleneck: loading weights from HBM to compute units</span>
+<span class="line cmt">// A100: 2 TB/s bandwidth. Decoding 1 token = load all 70B weights.</span>
+<span class="line">&nbsp;</span>
+<span class="line"><span class="lbl">FP16</span>  = 140 GB to load → 140 / 2000 = <span class="val">70 ms</span> per token</span>
+<span class="line"><span class="lbl">INT8</span>  =  70 GB to load → 70 / 2000  = <span class="val">35 ms</span> per token  (2× faster)</span>
+<span class="line"><span class="lbl">INT4</span>  =  35 GB to load → 35 / 2000  = <span class="val">17 ms</span> per token  (4× faster)</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// INT8 matrix multiply units exist on modern GPUs (tensor cores)</span>
+<span class="line cmt">// INT4 is loaded as 4-bit, dequantized to BF16, then GEMM'd</span>
+<span class="line cmt">// Net: ~4× faster due to bandwidth, slight compute overhead</span>
+</div>
+</div>
+
+<button class="nx" onclick="go(1)">How quantization works →</button>
+</div>
+
+<!-- PAGE 1 -->
+<div class="page" data-t="1. How It Works">
+<h2>INT8 Quantization — Step by Step with Real Numbers</h2>
+
+<div class="card blue">
+<h3>The formulas</h3>
+<div class="math">
+<span class="line cmt">// Affine quantization (asymmetric)</span>
+<span class="line"><span class="lbl">scale</span>     = (max - min) / (2ⁿ - 1)   <span class="cmt">// n=8 for INT8 → 255 levels</span></span>
+<span class="line"><span class="lbl">zero_point</span>= round(-min / scale)</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Quantize (float → int)</span>
+<span class="line"><span class="lbl">q</span>         = clamp(round(x / scale) + zero_point, 0, 255)</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Dequantize (int → float)</span>
+<span class="line"><span class="lbl">x̂</span>         = (q - zero_point) × scale</span>
+</div>
+</div>
+
+<div class="card">
+<h3>Worked example: weights = [0.3, -0.8, 1.2, -0.1]</h3>
+<div class="math">
+<span class="line cmt">// Step 1: find range</span>
+<span class="line"><span class="lbl">min</span> = -0.8,  <span class="lbl">max</span> = 1.2</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Step 2: compute scale and zero_point</span>
+<span class="line"><span class="lbl">scale</span>      = (1.2 - (-0.8)) / 255 = 2.0 / 255 = <span class="val">0.007843</span></span>
+<span class="line"><span class="lbl">zero_point</span> = round(0.8 / 0.007843) = round(102.0) = <span class="val">102</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Step 3: quantize each weight</span>
+<span class="line"><span class="lbl">0.3</span>  → round(0.3 / 0.007843) + 102 = round(38.3)  + 102 = 38  + 102 = <span class="val">140</span></span>
+<span class="line"><span class="lbl">-0.8</span> → round(-0.8 / 0.007843) + 102 = round(-102) + 102 = -102 + 102 = <span class="val">0</span></span>
+<span class="line"><span class="lbl">1.2</span>  → round(1.2 / 0.007843) + 102 = round(153.0) + 102 = 153 + 102 = <span class="val">255</span></span>
+<span class="line"><span class="lbl">-0.1</span>→ round(-0.1 / 0.007843) + 102 = round(-12.7) + 102 = -13 + 102 = <span class="val">89</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// INT8 representation: [140, 0, 255, 89]  — 4 bytes total (was 16 bytes FP32)</span>
+</div>
+</div>
+
+<div class="card green">
+<h3>Dequantize — verify the reconstruction error</h3>
+<div class="math">
+<span class="line cmt">// Dequantize: x̂ = (q - zero_point) × scale</span>
+<span class="line"><span class="lbl">q=140</span>: (140 - 102) × 0.007843 = 38 × 0.007843 = <span class="val">0.2980</span>  error: |0.3-0.298| = <span class="val">0.002</span></span>
+<span class="line"><span class="lbl">q=0</span>:   (0 - 102)   × 0.007843 = -102 × 0.007843 = <span class="val">-0.800</span>  error: <span class="val">0.000</span></span>
+<span class="line"><span class="lbl">q=255</span>: (255 - 102) × 0.007843 = 153 × 0.007843 = <span class="val">1.200</span>  error: <span class="val">0.000</span></span>
+<span class="line"><span class="lbl">q=89</span>:  (89 - 102)  × 0.007843 = -13 × 0.007843 = <span class="val">-0.102</span>  error: <span class="val">0.002</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Max quantization error = scale / 2 = 0.007843 / 2 = 0.0039</span>
+<span class="line cmt">// For most LLM weights (range ~[-2, 2]), INT8 error is tiny</span>
+</div>
+</div>
+
+<div class="card orange">
+<h3>Symmetric vs asymmetric quantization</h3>
+<div class="math">
+<span class="line cmt">// Asymmetric (above): handles non-zero-centered distributions</span>
+<span class="line cmt">// zero_point != 0, uses all 256 bins optimally</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Symmetric: zero_point = 0, range is [-max, +max]</span>
+<span class="line"><span class="lbl">scale_sym</span> = max(abs(min), abs(max)) / 127</span>
+<span class="line"><span class="lbl">q</span>         = round(x / scale_sym)   <span class="cmt">// maps to [-127, 127]</span></span>
+<span class="line"><span class="lbl">x̂</span>         = q × scale_sym</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Symmetric is simpler (no zero_point), slightly less efficient</span>
+<span class="line cmt">// LLM weights are roughly symmetric → symmetric quantization works well</span>
+<span class="line cmt">// Activations are NOT symmetric (ReLU, etc.) → use asymmetric</span>
+</div>
+</div>
+
+<button class="nx" onclick="go(2)">Per-tensor vs per-channel →</button>
+</div>
+
+<!-- PAGE 2 -->
+<div class="page" data-t="2. Per-tensor vs Per-channel">
+<h2>Granularity — Where Precision Lives</h2>
+
+<div class="card blue">
+<h3>Per-tensor: one scale for the whole weight matrix</h3>
+<div class="math">
+<span class="line cmt">// One scale covers all values in W (d_out × d_in)</span>
+<span class="line"><span class="lbl">scale</span> = (max(W) - min(W)) / 255   <span class="cmt">// one scalar</span></span>
+<span class="line"><span class="lbl">Metadata</span> = 2 numbers (scale, zero_point) per matrix</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Problem: if one column has a huge outlier, the scale inflates</span>
+<span class="line cmt">// ALL other columns lose precision</span>
+</div>
+</div>
+
+<div class="card red">
+<h3>The outlier problem — concrete example</h3>
+<div class="math">
+<span class="line cmt">// Weight matrix row: [0.01, 0.02, -0.01, 0.015, ..., 10.0]</span>
+<span class="line cmt">// 99% of values are in [-0.1, 0.1], one outlier at 10.0</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Per-tensor scale:</span>
+<span class="line"><span class="lbl">scale</span> = (10.0 - (-10.0)) / 255 = <span class="val">0.0784</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Quantize a normal weight 0.01:</span>
+<span class="line"><span class="lbl">q</span> = round(0.01 / 0.0784) = round(0.127) = <span class="val">0</span></span>
+<span class="line"><span class="lbl">x̂</span> = 0 × 0.0784 = <span class="val">0.000</span>   ← complete precision loss!</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// The outlier forces all small weights to quantize to 0</span>
+</div>
+</div>
+
+<div class="card green">
+<h3>Per-channel: one scale per output neuron</h3>
+<div class="math">
+<span class="line cmt">// One scale per row (for weight matrices) or per column</span>
+<span class="line"><span class="lbl">scale_i</span> = (max(W[i,:]) - min(W[i,:])) / 255   <span class="cmt">// per-row scale</span></span>
+<span class="line"><span class="lbl">Metadata</span> = 2 × d_out numbers per matrix</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Same example: outlier row gets its own scale</span>
+<span class="line"><span class="lbl">Row with outlier</span>: scale = 10/127 = 0.079  → outlier quantized fine</span>
+<span class="line"><span class="lbl">Normal rows</span>: scale = 0.1/127 = 0.00079 → 100× more precision</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Quantize 0.01 with per-channel scale 0.00079:</span>
+<span class="line"><span class="lbl">q</span> = round(0.01 / 0.00079) = round(12.7) = <span class="val">13</span></span>
+<span class="line"><span class="lbl">x̂</span> = 13 × 0.00079 = <span class="val">0.01027</span>  ← error: 0.0003 ✓</span>
+</div>
+</div>
+
+<div class="card orange">
+<h3>LLM.int8() — mixed-precision for outlier columns</h3>
+<p>Dettmers (2022) found that LLMs have systematic outlier activations — certain feature dimensions are consistently 100× larger than others (emerges around 6.7B params). These destroy per-tensor quantization.</p>
+<div class="math">
+<span class="line cmt">// LLM.int8() approach</span>
+<span class="line">1. Detect outlier columns in activations (threshold: |x| > 6.0)</span>
+<span class="line">2. Keep outlier columns in FP16                    ← ~1% of columns</span>
+<span class="line">3. Quantize remaining 99% to INT8</span>
+<span class="line">4. Two separate matrix multiplies, add results</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Result: INT8 memory savings with FP16 quality on large models</span>
+<span class="line cmt">// Cost: ~20% slower than pure INT8 due to mixed-precision overhead</span>
+</div>
+</div>
+
+<button class="nx" onclick="go(3)">GPTQ and AWQ →</button>
+</div>
+
+<!-- PAGE 3 -->
+<div class="page" data-t="3. GPTQ and AWQ">
+<h2>Post-Training Quantization for LLMs</h2>
+
+<div class="card blue">
+<h3>The challenge: INT4 is very aggressive</h3>
+<div class="math">
+<span class="line cmt">// INT4 has only 16 values</span>
+<span class="line"><span class="lbl">INT8 step size</span> = range / 255 = 0.016 (range=[-2,2])</span>
+<span class="line"><span class="lbl">INT4 step size</span> = range / 15  = 0.267 (range=[-2,2])</span>
+<span class="line"><span class="lbl">Quantization noise</span>: 17× larger with INT4 vs INT8</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Naive INT4 on Llama-2-7B: perplexity goes from 5.47 → 7.8+</span>
+<span class="line cmt">// Need smarter methods to stay close to FP16 quality</span>
+</div>
+</div>
+
+<div class="card">
+<h3>GPTQ — second-order compensation</h3>
+<div class="math">
+<span class="line cmt">// GPTQ (Frantar et al., 2022): based on Optimal Brain Compression</span>
+<span class="line cmt">// Key insight: use Hessian of the loss to find compensating updates</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Algorithm (per layer):</span>
+<span class="line">1. Compute H = (1/|X|) × XᵀX    <span class="cmt">// Hessian approx from calibration data</span></span>
+<span class="line">2. For each weight w_i in order:</span>
+<span class="line">   a. q_i = quantize(w_i)        <span class="cmt">// round to INT4 value</span></span>
+<span class="line">   b. err_i = w_i - q_i          <span class="cmt">// quantization error</span></span>
+<span class="line">   c. Update remaining weights:   <span class="cmt">// compensate via Hessian</span></span>
+<span class="line">      w_j -= err_i × (H⁻¹[i,j] / H⁻¹[i,i])  for all j > i</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Effect: the error from quantizing w_i is spread to other weights</span>
+<span class="line cmt">// to minimize total output change. Layer output is preserved.</span>
+<span class="line"><span class="lbl">GPTQ INT4</span>: perplexity 5.47 → <span class="val">5.65</span>  (vs naive 7.8)</span>
+</div>
+</div>
+
+<div class="card orange">
+<h3>AWQ — activation-aware weight quantization</h3>
+<div class="math">
+<span class="line cmt">// AWQ (Lin et al., 2023): find the 1% of weights that matter most</span>
+<span class="line cmt">// Key insight: not all weights are equally important</span>
+<span class="line cmt">// Salient weights = those paired with high-activation channels</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Algorithm:</span>
+<span class="line">1. Run calibration data (128 samples) through model</span>
+<span class="line">2. Compute per-channel activation magnitude: s_i = mean(|x_i|)</span>
+<span class="line">3. Find salient weight channels: top 1% by s_i</span>
+<span class="line">4. Scale up salient channels: w_i* = w_i × s_i^α  (α≈0.5)</span>
+<span class="line">   → Quantization error on salient channels is smaller (larger range)</span>
+<span class="line">5. Scale activations to compensate: x_i* = x_i / s_i^α</span>
+<span class="line">   → Net output unchanged (x×w = (x/s)×(w×s) = x×w)</span>
+<span class="line"><span class="lbl">AWQ INT4</span>: perplexity 5.47 → <span class="val">5.58</span>  (slightly better than GPTQ)</span>
+</div>
+</div>
+
+<div class="card green">
+<h3>Real-world speed numbers — RTX 3090</h3>
+<div class="math">
+<span class="line cmt">// Llama-2-7B inference on RTX 3090 (24GB VRAM)</span>
+<span class="line"><span class="lbl">FP16</span>     : fits? Barely (14GB).  Speed: 18 tokens/s</span>
+<span class="line"><span class="lbl">INT8</span>     : fits comfortably.    Speed: 28 tokens/s   (1.6×)</span>
+<span class="line"><span class="lbl">GPTQ INT4</span>: easily (3.5GB).     Speed: 41 tokens/s   (2.3×)</span>
+<span class="line"><span class="lbl">AWQ INT4</span> : easily (3.5GB).     Speed: 43 tokens/s   (2.4×)</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Llama-2-70B — needs INT4 to fit on consumer hardware</span>
+<span class="line"><span class="lbl">FP16</span>     : 140GB → need 4× RTX 3090</span>
+<span class="line"><span class="lbl">INT4</span>     : 35GB  → fits on 2× RTX 3090 ✓</span>
+</div>
+</div>
+
+<button class="nx" onclick="go(4)">Summary table →</button>
+</div>
+
+<!-- PAGE 4 -->
+<div class="page" data-t="4. Summary">
+<h2>Quantization Summary Table</h2>
+
+<div class="card blue">
+<h3>Format comparison — 70B model</h3>
+<table>
+<tr><th>Format</th><th>Bits</th><th>70B Size</th><th>Quality vs FP16</th><th>Speed (A100)</th><th>Use Case</th></tr>
+<tr><td><span class="chip fp32">FP32</span></td><td>32</td><td>280 GB</td><td>Reference</td><td>1×</td><td>Training (some layers)</td></tr>
+<tr><td><span class="chip fp16">BF16</span></td><td>16</td><td>140 GB</td><td>≈FP32</td><td>1×</td><td>Training, inference standard</td></tr>
+<tr><td><span class="chip int8">INT8</span></td><td>8</td><td>70 GB</td><td>-0.1 ppl</td><td>2×</td><td>Inference, fits on 1× A100</td></tr>
+<tr><td><span class="chip int4">INT4</span> (GPTQ)</td><td>4</td><td>35 GB</td><td>-0.2 ppl</td><td>4×</td><td>Consumer GPU inference</td></tr>
+<tr><td><span class="chip int4">INT4</span> (AWQ)</td><td>4</td><td>35 GB</td><td>-0.1 ppl</td><td>4×</td><td>Consumer GPU inference</td></tr>
+</table>
+<p style="margin-top:8px;font-size:.85em;color:#888">Perplexity (ppl): lower is better. Llama-2-7B FP16 baseline ≈ 5.47 on WikiText-2. -0.1 ppl = negligible. -1.0 ppl = noticeable quality drop.</p>
+</div>
+
+<div class="card green">
+<h3>Key takeaways</h3>
+<ul style="margin-left:18px;margin-top:6px">
+  <li>Inference is <span class="key">memory-bandwidth bound</span> — halving weight size halves time</li>
+  <li><span class="key">INT8</span> is essentially free quality loss — use it for all inference</li>
+  <li><span class="key">INT4 with GPTQ/AWQ</span> loses ~1% quality, gets 4× speedup — usually worth it</li>
+  <li><span class="key">Outliers</span> are the enemy of quantization — LLM.int8() handles them</li>
+  <li><span class="key">Per-channel</span> quantization is much better than per-tensor for LLMs</li>
+  <li><span class="key">Calibration data</span> (128 samples) is needed for GPTQ/AWQ — no fine-tuning needed</li>
+</ul>
+</div>
+
+<div class="card orange">
+<h3>When does quantization hurt?</h3>
+<div class="math">
+<span class="line cmt">// Tasks where INT4 quality matters most</span>
+<span class="line"><span class="lbl">Math reasoning</span>   : sensitive (~3% accuracy drop)</span>
+<span class="line"><span class="lbl">Code generation</span>  : somewhat sensitive (~2% on HumanEval)</span>
+<span class="line"><span class="lbl">General chat</span>     : barely noticeable (&lt;1% degradation)</span>
+<span class="line"><span class="lbl">Summarization</span>    : minimal impact</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Rule of thumb: if the task needs precise numerical reasoning,</span>
+<span class="line cmt">// use INT8. For most NLP tasks, INT4 is fine.</span>
+</div>
+</div>
+
+<div class="card purple">
+<h3>Quantization-aware training (QAT) vs post-training (PTQ)</h3>
+<div class="vs">
+  <div>
+    <p style="margin-bottom:6px"><strong style="color:#ce93d8">PTQ (GPTQ, AWQ)</strong></p>
+    <p style="font-size:.85em">No training needed. Run calibration data through model. Minutes to quantize any model. Quality: good but not perfect.</p>
+  </div>
+  <div>
+    <p style="margin-bottom:6px"><strong style="color:#4fc3f7">QAT</strong></p>
+    <p style="font-size:.85em">Simulate quantization during training. Model learns to be quantization-robust. Quality: near-FP16. Cost: full training run required.</p>
+  </div>
+</div>
+</div>
+</div>
+
+<script>
+const pages=document.querySelectorAll('.page'),nav=document.getElementById('nav');
+pages.forEach((p,i)=>{const b=document.createElement('button');b.textContent=p.dataset.t;b.onclick=()=>go(i);if(i===0)b.classList.add('on');nav.appendChild(b);});
+function go(n){pages.forEach((p,i)=>p.classList.toggle('on',i===n));nav.querySelectorAll('button').forEach((b,i)=>{b.classList.remove('on');if(i<n)b.classList.add('done');else b.classList.remove('done');if(i===n)b.classList.add('on');});window.scrollTo({top:0,behavior:'smooth'});}
+</script>
+</body>
+</html>

@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VAE Ch6: PLUM</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0a0a1a;color:#e0e0e0;padding:20px 20px 80px;line-height:1.7}
+h1{text-align:center;color:#fff;margin-bottom:4px;font-size:1.5em}
+.sub{text-align:center;color:#888;margin-bottom:24px;font-size:.88em}
+.nav{display:flex;justify-content:center;gap:6px;margin-bottom:20px;flex-wrap:wrap}
+.nav button{padding:7px 13px;border:2px solid #333;background:#111;color:#888;border-radius:8px;cursor:pointer;font-size:.78em;transition:.2s}
+.nav button:hover{border-color:#555;color:#ccc}
+.nav button.on{border-color:#4fc3f7;color:#4fc3f7;background:#0d2137}
+.nav button.done{border-color:#4caf50;color:#4caf50}
+.page{display:none;max-width:880px;margin:0 auto}
+.page.on{display:block}
+.page h2{color:#4fc3f7;margin-bottom:12px;font-size:1.2em}
+.card{background:#12122a;border:1px solid #2a2a4a;border-radius:12px;padding:18px;margin-bottom:14px}
+.card.blue{border-color:#4fc3f7;background:#0d1b2a}
+.card.green{border-color:#4caf50;background:#0a1a0a}
+.card.orange{border-color:#ff9800;background:#1a1400}
+.card.red{border-color:#ef5350;background:#1a0a0a}
+.card.purple{border-color:#ce93d8;background:#1a0a2a}
+.card h3{color:#ffb74d;margin-bottom:8px;font-size:1em}
+button.nx{padding:10px 24px;background:#4caf50;color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:.9em;margin-top:14px}
+button.nx:hover{background:#66bb6a}
+table{width:100%;border-collapse:collapse;margin:10px 0}
+th,td{padding:8px 12px;border:1px solid #333;text-align:center;font-size:.86em}
+th{background:#1a1a3a;color:#4fc3f7}
+td{text-align:left}
+.math{background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:14px;margin:10px 0;font-family:'Fira Code',Consolas,monospace;font-size:.85em;line-height:1.8;overflow-x:auto}
+.math .line{margin:2px 0;display:block;white-space:pre}
+.math .hl{background:#264f78;padding:2px 6px;border-radius:4px;display:inline-block}
+.math .cmt{color:#6a9955}.math .val{color:#b5cea8}.math .lbl{color:#9cdcfe}.math .win{color:#4caf50;font-weight:700}
+.key{color:#ffb74d;font-weight:600}
+.diagram{display:block;margin:14px auto;max-width:100%}
+.cap{text-align:center;color:#888;font-size:.8em;margin:-6px 0 14px}
+details.more{background:#0d0d20;border:1px solid #333;border-left:3px solid #ce93d8;border-radius:8px;padding:10px 14px;margin:12px 0}
+details.more summary{cursor:pointer;color:#ce93d8;font-size:.86em;font-weight:600;outline:none}
+details.more[open] summary{margin-bottom:10px}
+details.more p,details.more .math{font-size:.85em}
+.stage{display:inline-block;font-size:.72em;font-weight:700;padding:2px 9px;border-radius:5px;background:rgba(79,195,247,.15);color:#4fc3f7;border:1px solid rgba(79,195,247,.35);margin-bottom:6px}
+.num{font-variant-numeric:tabular-nums}
+</style>
+</head>
+<body>
+<a href="../index.html" style="position:fixed;top:10px;left:14px;font-size:.75em;color:#555;text-decoration:none;z-index:999;padding:4px 8px;background:#0a0a1a;border:1px solid #333;border-radius:6px;">&larr; index</a>
+<h1>VAE Course — Chapter 6: PLUM</h1>
+<p class="sub">Teaching a pretrained LLM to speak Semantic-ID — Google/YouTube's recipe for generative recommendation at billion-user scale (2025)</p>
+<div class="nav" id="nav"></div>
+
+<!-- PAGE 0 -->
+<div class="page on" data-t="0. The leap">
+<h2>From TIGER to PLUM — what changes</h2>
+
+<div class="card blue">
+<h3>One sentence</h3>
+<p>TIGER trained a <em>small transformer from scratch</em> to generate semantic IDs. <strong>PLUM</strong> (Pretrained <strong>L</strong>anguage models <strong>U</strong>sed for rec<strong>M</strong>endation) takes a <em>real pretrained LLM</em> — from the Gemini-1.5 family — and teaches it the semantic-ID language, so the LLM's existing world knowledge transfers straight into recommendation.</p>
+</div>
+
+<div class="card orange">
+<h3>Why a from-scratch model leaves value on the table</h3>
+<svg class="diagram" viewBox="0 0 760 215" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI,sans-serif">
+  <!-- TIGER -->
+  <rect x="30" y="40" width="330" height="150" rx="10" fill="#12122a" stroke="#2a2a4a"/>
+  <text x="195" y="64" fill="#888" font-size="13" text-anchor="middle" font-weight="bold">TIGER — small transformer, from scratch</text>
+  <text x="50" y="92" fill="#bbb" font-size="11.5">✓ learns the grammar of item IDs</text>
+  <text x="50" y="116" fill="#ef5350" font-size="11.5">✗ never read a book — no world knowledge</text>
+  <text x="50" y="140" fill="#ef5350" font-size="11.5">✗ "espresso" and "coffee" are unrelated to it</text>
+  <text x="50" y="164" fill="#ef5350" font-size="11.5">✗ must learn everything from clicks alone</text>
+  <!-- PLUM -->
+  <rect x="400" y="40" width="330" height="150" rx="10" fill="#0d1b2a" stroke="#4fc3f7"/>
+  <text x="565" y="64" fill="#4fc3f7" font-size="13" text-anchor="middle" font-weight="bold">PLUM — pretrained LLM, adapted</text>
+  <text x="420" y="92" fill="#bbb" font-size="11.5">✓ already knows language &amp; the world</text>
+  <text x="420" y="116" fill="#4caf50" font-size="11.5">✓ knows espresso ≈ coffee ≈ latte</text>
+  <text x="420" y="140" fill="#4caf50" font-size="11.5">✓ just needs to learn the new "ID words"</text>
+  <text x="420" y="164" fill="#4caf50" font-size="11.5">✓ far fewer training examples needed</text>
+</svg>
+<p>A recommender's whole job is to know that someone who liked an espresso video might like a latte-art video. A pretrained LLM <em>already encodes that relationship</em> from reading the internet. Throwing that away and relearning it from clicks is wasteful. PLUM keeps it.</p>
+</div>
+
+<div class="card green">
+<h3>The plan: three stages</h3>
+<svg class="diagram" viewBox="0 0 760 130" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI,sans-serif">
+  <g text-anchor="middle">
+    <rect x="20" y="35" width="210" height="60" rx="10" fill="#1a0a2a" stroke="#ce93d8"/>
+    <text x="125" y="58" fill="#ce93d8" font-size="12" font-weight="bold">1 · Tokenize</text>
+    <text x="125" y="78" fill="#bbb" font-size="10.5">items → Semantic IDs (RQ-VAE)</text>
+    <rect x="275" y="35" width="210" height="60" rx="10" fill="#0d1b2a" stroke="#4fc3f7"/>
+    <text x="380" y="58" fill="#4fc3f7" font-size="12" font-weight="bold">2 · Continued pre-train</text>
+    <text x="380" y="78" fill="#bbb" font-size="10.5">teach the LLM the ID words</text>
+    <rect x="530" y="35" width="210" height="60" rx="10" fill="#0a1a0a" stroke="#4caf50"/>
+    <text x="635" y="58" fill="#4caf50" font-size="12" font-weight="bold">3 · Fine-tune</text>
+    <text x="635" y="78" fill="#bbb" font-size="10.5">generate next item's ID</text>
+  </g>
+  <g stroke="#555" stroke-width="2" marker-end="url(#arp)">
+    <line x1="230" y1="65" x2="273" y2="65"/><line x1="485" y1="65" x2="528" y2="65"/>
+  </g>
+  <defs><marker id="arp" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#555"/></marker></defs>
+</svg>
+<p>Stage 1 is Chapter 5's RQ-VAE, upgraded. Stages 2 and 3 are how you bolt a new vocabulary onto an LLM without breaking what it already knows. We take them one at a time.</p>
+</div>
+<button class="nx" onclick="go(1)">Next: the core reframe &#x2192;</button>
+</div>
+
+<!-- PAGE 1 -->
+<div class="page" data-t="1. Rec = next-token">
+<h2>The reframe: recommendation IS next-token prediction</h2>
+
+<div class="card blue">
+<h3>Make a user's life into a sentence</h3>
+<p>Every item is a semantic-ID tuple (Chapter 5). So a watch history is just a string of tokens — and "what to recommend" is literally "what token comes next." The same machinery that finishes <em>"the cat sat on the ___"</em> now finishes a viewing session.</p>
+<svg class="diagram" viewBox="0 0 760 175" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI,sans-serif">
+  <text x="40" y="40" fill="#888" font-size="12">Language:</text>
+  <g font-size="12" text-anchor="middle">
+    <rect x="120" y="22" width="60" height="30" rx="5" fill="#12122a" stroke="#555"/><text x="150" y="42" fill="#ccc">the</text>
+    <rect x="185" y="22" width="60" height="30" rx="5" fill="#12122a" stroke="#555"/><text x="215" y="42" fill="#ccc">cat</text>
+    <rect x="250" y="22" width="60" height="30" rx="5" fill="#12122a" stroke="#555"/><text x="280" y="42" fill="#ccc">sat</text>
+    <rect x="315" y="22" width="70" height="30" rx="5" fill="#1a1400" stroke="#ff9800" stroke-dasharray="3 3"/><text x="350" y="42" fill="#ff9800">on ?</text>
+  </g>
+  <text x="40" y="110" fill="#888" font-size="12">Rec:</text>
+  <g font-size="11" text-anchor="middle">
+    <rect x="120" y="92" width="50" height="30" rx="5" fill="#0a1a0a" stroke="#4caf50"/><text x="145" y="112" fill="#4caf50">2,7</text>
+    <rect x="175" y="92" width="50" height="30" rx="5" fill="#0a1a0a" stroke="#4caf50"/><text x="200" y="112" fill="#4caf50">5,1</text>
+    <rect x="230" y="92" width="50" height="30" rx="5" fill="#0a1a0a" stroke="#4caf50"/><text x="255" y="112" fill="#4caf50">2,3</text>
+    <rect x="285" y="92" width="90" height="30" rx="5" fill="#1a1400" stroke="#ff9800" stroke-dasharray="3 3"/><text x="330" y="112" fill="#ff9800">next? </text>
+  </g>
+  <text x="430" y="112" fill="#bbb" font-size="11" text-anchor="start">three watched videos → predict the 4th video's ID</text>
+  <text x="430" y="42" fill="#bbb" font-size="11" text-anchor="start">three words → predict the 4th word</text>
+  <line x1="300" y1="62" x2="300" y2="84" stroke="#333" stroke-width="1"/>
+  <text x="350" y="78" fill="#666" font-size="11" text-anchor="middle">same model, same objective</text>
+</svg>
+</div>
+
+<div class="card green">
+<h3>Why this unlocks the LLM's knowledge</h3>
+<p>Here's the crux. If the token for an espresso video sits <em>near the actual word "espresso"</em> in the model's vocabulary space, then everything the LLM already knows — espresso relates to coffee, to Italy, to mornings — is automatically available to the recommender. The model isn't guessing from clicks; it's reasoning with knowledge it already had.</p>
+<div class="math">
+<div class="line"><span class="cmt">// the dream: the new ID-token <sid_espresso> ends up close to</span></div>
+<div class="line"><span class="cmt">// the existing word-tokens "espresso", "coffee", "latte", "barista"</span></div>
+<div class="line"><span class="cmt">// → user watched coffee videos → LLM naturally continues with espresso</span></div>
+</div>
+<p>But out of the box, a fresh ID-token <code>&lt;sid_4173&gt;</code> means <em>nothing</em> to the LLM — it's a brand-new word it has never seen. Getting it grounded next to "espresso" is the entire job of Stage 2. First, Stage 1 builds better tokens to ground.</p>
+</div>
+<button class="nx" onclick="go(2)">Next: Stage 1 — better Semantic IDs &#x2192;</button>
+</div>
+
+<!-- PAGE 2 -->
+<div class="page" data-t="2. Stage 1: tokenize">
+<span class="stage">Stage 1 of 3</span>
+<h2>Better Semantic IDs than vanilla RQ-VAE</h2>
+
+<div class="card">
+<h3>Same skeleton as Chapter 5, three upgrades</h3>
+<p>PLUM still uses an RQ-VAE to turn content into a tuple of codes. But at YouTube scale they added three things. Each one fixes a concrete failure of the plain version.</p>
+</div>
+
+<div class="card blue">
+<h3>Upgrade 1 — fuse all modalities before quantizing</h3>
+<p>A video isn't just text. PLUM encodes <strong>visual, audio, and text</strong> embeddings separately, concatenates them, and projects to one unified vector — <em>then</em> runs RQ-VAE on that. So the ID reflects the whole video, not just its title.</p>
+<svg class="diagram" viewBox="0 0 760 150" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI,sans-serif">
+  <g font-size="11" text-anchor="middle">
+    <rect x="30" y="30" width="90" height="28" rx="5" fill="#0d1b2a" stroke="#4fc3f7"/><text x="75" y="48" fill="#4fc3f7">visual emb</text>
+    <rect x="30" y="62" width="90" height="28" rx="5" fill="#0d1b2a" stroke="#4fc3f7"/><text x="75" y="80" fill="#4fc3f7">audio emb</text>
+    <rect x="30" y="94" width="90" height="28" rx="5" fill="#0d1b2a" stroke="#4fc3f7"/><text x="75" y="112" fill="#4fc3f7">text emb</text>
+  </g>
+  <g stroke="#555" stroke-width="2" marker-end="url(#arf)"><line x1="120" y1="44" x2="175" y2="70"/><line x1="120" y1="76" x2="175" y2="76"/><line x1="120" y1="108" x2="175" y2="82"/></g>
+  <rect x="180" y="56" width="120" height="40" rx="6" fill="#1a1400" stroke="#ff9800"/><text x="240" y="80" fill="#ff9800" font-size="11" text-anchor="middle">concat + project</text>
+  <line x1="300" y1="76" x2="350" y2="76" stroke="#555" stroke-width="2" marker-end="url(#arf)"/>
+  <rect x="355" y="56" width="110" height="40" rx="6" fill="#12122a" stroke="#bbb"/><text x="410" y="80" fill="#bbb" font-size="11" text-anchor="middle">one vector z</text>
+  <line x1="465" y1="76" x2="515" y2="76" stroke="#555" stroke-width="2" marker-end="url(#arf)"/>
+  <rect x="520" y="56" width="100" height="40" rx="6" fill="#1a0a2a" stroke="#ce93d8"/><text x="570" y="80" fill="#ce93d8" font-size="11" text-anchor="middle">RQ-VAE</text>
+  <line x1="620" y1="76" x2="665" y2="76" stroke="#555" stroke-width="2" marker-end="url(#arf)"/>
+  <text x="710" y="80" fill="#4caf50" font-size="12" text-anchor="middle">SID</text>
+  <defs><marker id="arf" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#555"/></marker></defs>
+</svg>
+</div>
+
+<div class="card purple">
+<h3>Upgrade 2 — multi-resolution codebooks (shrinking sizes)</h3>
+<p>In Chapter 5 every codebook had the same size. PLUM makes the <strong>first</strong> level big (many coarse buckets, fine discrimination) and each later level <strong>smaller</strong>, because later residuals carry less information. The rule they use:</p>
+<div class="math">
+<div class="line"><span class="cmt">// codebook size at level L:</span></div>
+<div class="line">size(L) = 2048 / 2^(L−1)</div>
+<div class="line"> </div>
+<div class="line">level 1:  2048 codes   <span class="cmt">// coarse category — needs lots of room</span></div>
+<div class="line">level 2:  1024 codes</div>
+<div class="line">level 3:   512 codes</div>
+<div class="line">level 4:   256 codes   <span class="cmt">// fine residual — little left to say</span></div>
+</div>
+<p>Intuition: spend your "vocabulary budget" where the information is. The first split (cooking vs. music vs. sports) is high-entropy and deserves 2048 options; by level 4 you're nudging tiny leftovers, so 256 is plenty. They also apply <strong>progressive masking</strong> during training — train using only the first <em>r</em> levels, growing <em>r</em> over time — which forces a clean coarse→fine hierarchy instead of all levels learning mushy overlapping roles.</p>
+</div>
+
+<div class="card green">
+<h3>Upgrade 3 — co-occurrence contrastive loss (inject collaborative filtering)</h3>
+<p>This is the clever one. Pure content RQ-VAE only knows what a video <em>looks/sounds like</em>. But two videos can look different yet be watched by the same people (a workout video and a protein-shake recipe). PLUM adds a loss term that pulls the SIDs of <strong>co-watched items</strong> together.</p>
+<div class="math">
+<div class="line">reconstruction loss   <span class="cmt">// content: rebuild the embedding (Chapter 5)</span></div>
+<div class="line">+ quantization loss    <span class="cmt">// commitment: codes ↔ encoder agree (Chapter 5)</span></div>
+<div class="line"><span class="hl">+ co-occurrence contrastive loss</span>  <span class="cmt">// videos watched together → similar SIDs</span></div>
+</div>
+<p>So the final semantic ID blends <span class="key">"what the item is" (content) with "who watches it" (behavior)</span> — the best of content-based and collaborative-filtering recommendation, baked directly into the token. This is exactly the term YouTube credits for the largest metric gains.</p>
+</div>
+
+<details class="more">
+<summary>Connection back to this course: where's the VAE part?</summary>
+<p>The "VAE" in RQ-VAE is the encoder→bottleneck→decoder skeleton you built in Chapters 1–2, with the continuous latent replaced by a stack of discrete codebook lookups. The reconstruction loss is identical to the autoencoder's MSE. The quantization/commitment loss plays the regularizing role that the KL term played in the variational version (Chapter 2): it keeps the encoder outputs from drifting away from the discrete codebook. So PLUM's tokenizer is a direct descendant of the very first model in this course.</p>
+</details>
+<button class="nx" onclick="go(3)">Next: Stage 2 — teach the LLM the new words &#x2192;</button>
+</div>
+
+<!-- PAGE 3 -->
+<div class="page" data-t="3. Stage 2: CPT">
+<span class="stage">Stage 2 of 3</span>
+<h2>Continued pre-training — grounding the ID words</h2>
+
+<div class="card orange">
+<h3>The problem to solve</h3>
+<p>After Stage 1, every video has a tuple like <code>(417, 92, 13, 5)</code>. We add these as <strong>brand-new tokens</strong> to the LLM's vocabulary — but to the LLM they're gibberish. <code>&lt;sid_417&gt;</code> has a random embedding; it sits nowhere near "espresso." We must <span class="key">ground</span> these tokens — pull them into the LLM's existing meaning-space.</p>
+<div class="math">
+<div class="line"><span class="cmt">// vocabulary BEFORE:  ~256k word/subword tokens (the LLM's native vocab)</span></div>
+<div class="line"><span class="cmt">// vocabulary AFTER:   + a few thousand SID code tokens (one per codeword)</span></div>
+<div class="line"><span class="cmt">// the new tokens start as random vectors → meaningless</span></div>
+</div>
+</div>
+
+<div class="card blue">
+<h3>The fix: keep doing next-token prediction, but on rec data</h3>
+<p>"Continued pre-training" (CPT) = the same next-token objective the LLM was born with, run on two new kinds of text that <em>mix SID tokens with real words</em>. Because the loss predicts each next token from its neighbors, SID tokens that keep appearing next to "espresso" get dragged toward "espresso" in embedding space. That's grounding.</p>
+<svg class="diagram" viewBox="0 0 760 230" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI,sans-serif">
+  <!-- corpus A -->
+  <rect x="20" y="30" width="350" height="80" rx="10" fill="#12122a" stroke="#2a2a4a"/>
+  <text x="195" y="52" fill="#ffb74d" font-size="12" text-anchor="middle">Corpus A — watch histories</text>
+  <text x="35" y="78" fill="#9cdcfe" font-size="11">user: &lt;sid_417&gt;&lt;sid_92&gt; ... &lt;sid_88&gt;&lt;sid_5&gt; ...</text>
+  <text x="35" y="98" fill="#666" font-size="10.5">teaches: which IDs follow which (behavior grammar)</text>
+  <!-- corpus B -->
+  <rect x="390" y="30" width="350" height="80" rx="10" fill="#12122a" stroke="#2a2a4a"/>
+  <text x="565" y="52" fill="#ffb74d" font-size="12" text-anchor="middle">Corpus B — metadata pairs</text>
+  <text x="405" y="78" fill="#9cdcfe" font-size="10.5">&lt;sid_417&gt; = "Pulling the perfect espresso shot"</text>
+  <text x="405" y="98" fill="#666" font-size="10.5">teaches: which IDs MEAN what (grounds to words)</text>
+  <!-- arrows down -->
+  <line x1="195" y1="110" x2="320" y2="150" stroke="#555" stroke-width="2" marker-end="url(#arc)"/>
+  <line x1="565" y1="110" x2="440" y2="150" stroke="#555" stroke-width="2" marker-end="url(#arc)"/>
+  <rect x="300" y="152" width="160" height="44" rx="8" fill="#0d1b2a" stroke="#4fc3f7"/>
+  <text x="380" y="172" fill="#4fc3f7" font-size="12" text-anchor="middle">LLM, next-token</text>
+  <text x="380" y="189" fill="#4fc3f7" font-size="12" text-anchor="middle">objective (CPT)</text>
+  <text x="380" y="222" fill="#4caf50" font-size="11.5" text-anchor="middle">result: &lt;sid_417&gt; now lives next to "espresso" &amp; near other coffee SIDs</text>
+  <defs><marker id="arc" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#555"/></marker></defs>
+</svg>
+<p class="cap">Corpus B is the bridge: by literally writing "&lt;sid_417&gt; = espresso video title," the model learns the new token's meaning from the words it already understands.</p>
+</div>
+
+<div class="card green">
+<h3>Why not skip straight to fine-tuning?</h3>
+<div class="math">
+<div class="line"><span class="cmt">// without CPT: SID tokens are random → fine-tuning must learn BOTH</span></div>
+<div class="line">//   (a) what each ID means  AND  (b) the recommendation task</div>
+<div class="line">//   from clicks alone → slow, data-hungry, wastes the LLM's knowledge</div>
+<div class="line"> </div>
+<div class="line"><span class="cmt">// with CPT: SID tokens already grounded in language → fine-tuning only</span></div>
+<div class="line">//   learns (b). The world knowledge is already wired in. → sample-efficient</div>
+</div>
+<p>CPT is the step that makes "the LLM already knows espresso ≈ coffee" actually pay off. It bridges the <strong>domain gap</strong> between natural language and the new ID language.</p>
+</div>
+<button class="nx" onclick="go(4)">Next: Stage 3 — fine-tune to recommend &#x2192;</button>
+</div>
+
+<!-- PAGE 4 -->
+<div class="page" data-t="4. Stage 3: fine-tune">
+<span class="stage">Stage 3 of 3</span>
+<h2>Fine-tune for generative retrieval</h2>
+
+<div class="card blue">
+<h3>The objective</h3>
+<p>Now specialize the grounded model on the actual task: given a user's context and history, <strong>maximize the likelihood of the next item's semantic ID</strong>. Plain maximum-likelihood (cross-entropy) over the SID tokens — the same loss as language modeling, now pointed at the target item.</p>
+<div class="math">
+<div class="line"><span class="cmt">// input prompt mixes everything the LLM can read:</span></div>
+<div class="line">[user context: country, device, time] +</div>
+<div class="line">[history: &lt;sid_417&gt;&lt;sid_92&gt; ... ]  +  [some titles in plain text]</div>
+<div class="line"> </div>
+<div class="line"><span class="cmt">// target the model is trained to produce:</span></div>
+<div class="line">next item = <span class="hl">&lt;sid_5&gt;&lt;sid_88&gt;&lt;sid_31&gt;&lt;sid_2&gt;</span></div>
+<div class="line"> </div>
+<div class="line">loss = −log P(target SID tokens | prompt)   <span class="cmt">// maximize likelihood</span></div>
+</div>
+</div>
+
+<div class="card green">
+<h3>Inference: beam search gives a ranked list</h3>
+<p>At serving time the model generates SID tokens one at a time. Using <strong>beam search</strong> (keep the top-B partial sequences at each step), one decode produces many complete IDs, ranked by probability — your top-K recommendations, no separate ranking index needed.</p>
+<svg class="diagram" viewBox="0 0 760 210" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI,sans-serif">
+  <text x="60" y="105" fill="#888" font-size="11" text-anchor="middle">prompt</text>
+  <rect x="20" y="60" width="80" height="30" rx="5" fill="#0d1b2a" stroke="#4fc3f7"/><text x="60" y="80" fill="#4fc3f7" font-size="11" text-anchor="middle">context</text>
+  <line x1="100" y1="100" x2="140" y2="100" stroke="#555" stroke-width="2" marker-end="url(#arb)"/>
+  <!-- step 1 -->
+  <text x="180" y="30" fill="#888" font-size="10" text-anchor="middle">token 1</text>
+  <rect x="150" y="55" width="60" height="26" rx="5" fill="#0a1a0a" stroke="#4caf50"/><text x="180" y="73" fill="#4caf50" font-size="11" text-anchor="middle">5  (.6)</text>
+  <rect x="150" y="120" width="60" height="26" rx="5" fill="#1a1400" stroke="#ff9800"/><text x="180" y="138" fill="#ff9800" font-size="11" text-anchor="middle">2  (.3)</text>
+  <!-- step 2 from top beam -->
+  <line x1="210" y1="68" x2="250" y2="60" stroke="#555" stroke-width="1.5" marker-end="url(#arb)"/>
+  <line x1="210" y1="68" x2="250" y2="92" stroke="#555" stroke-width="1.5" marker-end="url(#arb)"/>
+  <line x1="210" y1="133" x2="250" y2="150" stroke="#555" stroke-width="1.5" marker-end="url(#arb)"/>
+  <text x="290" y="30" fill="#888" font-size="10" text-anchor="middle">token 2</text>
+  <rect x="260" y="47" width="64" height="26" rx="5" fill="#0a1a0a" stroke="#4caf50"/><text x="292" y="65" fill="#4caf50" font-size="11" text-anchor="middle">88 (.5)</text>
+  <rect x="260" y="79" width="64" height="26" rx="5" fill="#12122a" stroke="#555"/><text x="292" y="97" fill="#bbb" font-size="11" text-anchor="middle">12 (.3)</text>
+  <rect x="260" y="137" width="64" height="26" rx="5" fill="#12122a" stroke="#555"/><text x="292" y="155" fill="#bbb" font-size="11" text-anchor="middle">40 (.2)</text>
+  <!-- ... -->
+  <text x="370" y="100" fill="#666" font-size="14">…</text>
+  <!-- results -->
+  <rect x="410" y="45" width="320" height="125" rx="10" fill="#12122a" stroke="#2a2a4a"/>
+  <text x="570" y="66" fill="#ffb74d" font-size="12" text-anchor="middle">final beams = ranked recommendations</text>
+  <text x="430" y="92" fill="#4caf50" font-size="11.5">1.  (5, 88, 31, 2)   p=0.21   → "latte art tutorial"</text>
+  <text x="430" y="114" fill="#bbb" font-size="11.5">2.  (5, 88, 31, 9)   p=0.14   → "espresso machine review"</text>
+  <text x="430" y="136" fill="#bbb" font-size="11.5">3.  (5, 12, 4, 7)     p=0.09   → "morning coffee vlog"</text>
+  <text x="430" y="158" fill="#666" font-size="10.5">one decode → a whole top-K list, already scored</text>
+  <defs><marker id="arb" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#555"/></marker></defs>
+</svg>
+</div>
+
+<details class="more">
+<summary>What stops the model from generating an ID that doesn't exist?</summary>
+<p>Free-form generation could in principle emit a token tuple no real video has. Two guards: (1) <strong>constrained / prefix decoding</strong> — at each step, restrict the next-token choices to only those that continue a valid prefix in the catalog (a trie of real SIDs), so every completed beam is guaranteed to be a real item; (2) the shared-prefix structure from Chapter 5 means even a slightly-off generation lands on a content-appropriate neighbor rather than nonsense. PLUM-style systems lean on prefix-constrained beam search so the output is always servable.</p>
+</details>
+<button class="nx" onclick="go(5)">Next: does it actually work? &#x2192;</button>
+</div>
+
+<!-- PAGE 5 -->
+<div class="page" data-t="5. Results & why">
+<h2>Results, and why it works</h2>
+
+<div class="card green">
+<h3>The YouTube A/B numbers (live, billions of users)</h3>
+<table>
+<tr><th>Metric</th><th>Long-form video</th><th>Shorts</th></tr>
+<tr><td>Engaged Users</td><td class="num">+0.07%</td><td class="num">+0.28%</td></tr>
+<tr><td>Panel CTR</td><td class="num">+0.76%</td><td class="num">+4.96%</td></tr>
+<tr><td>Effective vocabulary vs. production embedding model</td><td class="num">2.60×</td><td class="num">13.24×</td></tr>
+</table>
+<p>At YouTube's scale, a <strong>+0.07%</strong> shift in engaged users is enormous in absolute terms. The much bigger lift on <strong>Shorts</strong> (+4.96% CTR) is the tell: Shorts is dominated by fresh, long-tail, cold-start content — precisely where semantic IDs beat memorized embedding tables.</p>
+</div>
+
+<div class="card blue">
+<h3>Two structural wins beyond the metrics</h3>
+<div class="math">
+<div class="line"><span class="cmt">// SAMPLE EFFICIENCY</span></div>
+<div class="line">PLUM trains on hundreds of millions of examples/day;</div>
+<div class="line">the production embedding models needed BILLIONS.</div>
+<div class="line"><span class="cmt">// because the pretrained LLM brought its knowledge — less to relearn.</span></div>
+<div class="line"> </div>
+<div class="line"><span class="cmt">// SCALING</span></div>
+<div class="line">Recall@10 follows a power law in model size &amp; compute,</div>
+<div class="line">with few signs of saturation (MoE, 110M → 3B active params).</div>
+<div class="line"><span class="cmt">// i.e. it behaves like an LLM: bigger keeps getting better.</span></div>
+</div>
+</div>
+
+<div class="card purple">
+<h3>Why it works — the whole arc in three lines</h3>
+<div class="math">
+<div class="line"><span class="lbl">1.</span> RQ-VAE turns items into a <span class="key">language</span> (content + behavior → shareable tokens)</div>
+<div class="line"><span class="lbl">2.</span> CPT <span class="key">teaches that language to an LLM</span> that already knows the world</div>
+<div class="line"><span class="lbl">3.</span> Fine-tune makes it <span class="key">speak recommendations</span> by generating the next ID</div>
+</div>
+<p>The deep reason PLUM beats from-scratch TIGER: recommendation is fundamentally about understanding items and the relationships between them, and a pretrained LLM <em>already</em> encodes a vast web of those relationships. Semantic IDs are the adapter that lets that pre-existing knowledge plug into the click-through problem.</p>
+</div>
+
+<div class="card orange">
+<h3>The one-sentence interview answer</h3>
+<p>"PLUM reframes recommendation as next-token prediction: an RQ-VAE tokenizes each item into a hierarchical, content-and-behavior-aware Semantic ID; those ID tokens are added to a pretrained LLM's vocabulary and <em>grounded</em> via continued pre-training on watch histories and ID↔title pairs; then the model is fine-tuned to autoregressively generate the next item's Semantic ID, decoded with beam search — turning a billion-row embedding table and its ANN index into a single generative model that transfers the LLM's world knowledge and shines on cold-start, long-tail content."</p>
+</div>
+</div>
+
+<script>
+const pages=document.querySelectorAll('.page'),nav=document.getElementById('nav');
+pages.forEach((p,i)=>{const b=document.createElement('button');b.textContent=p.dataset.t;b.onclick=()=>go(i);if(i===0)b.classList.add('on');nav.appendChild(b);});
+function go(n){pages.forEach((p,i)=>p.classList.toggle('on',i===n));nav.querySelectorAll('button').forEach((b,i)=>{b.classList.remove('on');if(i<n)b.classList.add('done');else b.classList.remove('done');if(i===n)b.classList.add('on');});window.scrollTo({top:0,behavior:'smooth'});}
+</script>
+</body></html>

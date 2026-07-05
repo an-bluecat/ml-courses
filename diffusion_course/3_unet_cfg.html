@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Diffusion Ch3: U-Net and Classifier-Free Guidance</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0a0a1a;color:#e0e0e0;padding:20px 20px 80px;line-height:1.7}
+h1{text-align:center;color:#fff;margin-bottom:4px;font-size:1.5em}
+.sub{text-align:center;color:#888;margin-bottom:24px;font-size:.88em}
+.nav{display:flex;justify-content:center;gap:6px;margin-bottom:20px;flex-wrap:wrap}
+.nav button{padding:7px 13px;border:2px solid #333;background:#111;color:#888;border-radius:8px;cursor:pointer;font-size:.78em;transition:.2s}
+.nav button:hover{border-color:#555;color:#ccc}
+.nav button.on{border-color:#4fc3f7;color:#4fc3f7;background:#0d2137}
+.nav button.done{border-color:#4caf50;color:#4caf50}
+.page{display:none;max-width:860px;margin:0 auto}
+.page.on{display:block}
+.page h2{color:#4fc3f7;margin-bottom:12px;font-size:1.2em}
+.card{background:#12122a;border:1px solid #2a2a4a;border-radius:12px;padding:18px;margin-bottom:14px}
+.card.blue{border-color:#4fc3f7;background:#0d1b2a}
+.card.green{border-color:#4caf50;background:#0a1a0a}
+.card.orange{border-color:#ff9800;background:#1a1400}
+.card.red{border-color:#ef5350;background:#1a0a0a}
+.card.purple{border-color:#ce93d8;background:#1a0a2a}
+.card h3{color:#ffb74d;margin-bottom:8px;font-size:1em}
+button.nx{padding:10px 24px;background:#4caf50;color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:.9em;margin-top:14px}
+button.nx:hover{background:#66bb6a}
+table{width:100%;border-collapse:collapse;margin:10px 0}
+th,td{padding:8px 12px;border:1px solid #333;text-align:center;font-size:.88em}
+th{background:#1a1a3a;color:#4fc3f7}
+td{text-align:left}
+.math{background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:14px;margin:10px 0;font-family:'Fira Code',Consolas,monospace;font-size:.85em;line-height:1.8}
+.math .line{margin:2px 0;display:block}
+.math .hl{background:#264f78;padding:2px 6px;border-radius:4px;display:inline-block}
+.math .cmt{color:#6a9955}
+.math .val{color:#b5cea8}
+.math .lbl{color:#9cdcfe}
+.key{color:#ffb74d;font-weight:600}
+.vs{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:10px 0}
+@media(max-width:650px){.vs{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<a href="../index.html" style="position:fixed;top:10px;left:14px;font-size:.75em;color:#555;text-decoration:none;z-index:999;padding:4px 8px;background:#0a0a1a;border:1px solid #333;border-radius:6px;">&larr; index</a>
+
+<h1>Diffusion Ch3: U-Net and Classifier-Free Guidance</h1>
+<p class="sub">The network architecture and how to steer generation</p>
+
+<div class="nav" id="nav"></div>
+
+<!-- PAGE 0 -->
+<div class="page on" data-t="0. Why U-Net">
+<h2>Why U-Net — Predicting Noise at Every Pixel</h2>
+
+<div class="card blue">
+<h3>The task requires spatial precision</h3>
+<p>The network must predict the noise ε that was added to the image. Noise is a vector the <strong>same size as the image</strong> — every pixel has a noise value. A plain MLP or simple CNN would lose spatial structure. We need a network that processes the full image and produces a full-image output, understanding both global context and fine local details.</p>
+</div>
+
+<div class="card green">
+<h3>U-Net: encode down, decode up, skip connections</h3>
+<div class="vs">
+  <div class="card orange" style="margin:0">
+    <h3>Encoder (downsample)</h3>
+    <p>Repeatedly halve spatial resolution with conv+pool. Captures increasingly global context at smaller feature maps. Cheap computation at coarser scales.</p>
+  </div>
+  <div class="card purple" style="margin:0">
+    <h3>Decoder (upsample)</h3>
+    <p>Repeatedly double spatial resolution with upsampling+conv. Restores full resolution while using bottleneck's global context to guide reconstruction.</p>
+  </div>
+</div>
+<p style="margin-top:10px"><span class="key">Skip connections</span> concatenate encoder feature maps directly to the corresponding decoder layer — giving the decoder direct access to fine spatial details that the bottleneck cannot hold.</p>
+</div>
+
+<div class="card">
+<h3>Concrete: 256×256 image through U-Net</h3>
+<div class="math">
+<span class="line cmt">// Input: noisy image x_t (256×256×3) + timestep t → predict ε (256×256×3)</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Encoder (downsampling path):</span>
+<span class="line"><span class="lbl">E1</span>: 256×256 → <span class="val">128×128</span>  (stride-2 conv, 64 channels)</span>
+<span class="line"><span class="lbl">E2</span>: 128×128 → <span class="val"> 64×64</span>  (stride-2 conv, 128 channels)</span>
+<span class="line"><span class="lbl">E3</span>:  64×64  → <span class="val"> 32×32</span>  (stride-2 conv, 256 channels)  <span class="cmt">← bottleneck</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Decoder (upsampling path) + skip connections:</span>
+<span class="line"><span class="lbl">D1</span>:  32×32  → <span class="val"> 64×64</span>  (upsample + concat E2 features)</span>
+<span class="line"><span class="lbl">D2</span>:  64×64  → <span class="val">128×128</span>  (upsample + concat E1 features)</span>
+<span class="line"><span class="lbl">D3</span>: 128×128 → <span class="val">256×256</span>  (upsample + 1×1 conv → ε̂)</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Output: ε̂ same shape as input image (256×256×3)</span>
+</div>
+</div>
+
+<div class="card orange">
+<h3>Why skip connections matter</h3>
+<p>The bottleneck (32×32) compresses the image 64×. It learns <strong>global structure</strong> — overall composition, broad shapes. But it loses fine-grained spatial detail. Skip connections bridge encoder and decoder: when the decoder reconstructs a 128×128 feature map, it concatenates the encoder's 128×128 features, which still contain the original edge positions, textures, and local patterns. Without skip connections, the predicted noise would be spatially blurry and misaligned.</p>
+</div>
+
+<button class="nx" onclick="go(1)">Timestep conditioning</button>
+</div>
+
+<!-- PAGE 1 -->
+<div class="page" data-t="1. Timestep Conditioning">
+<h2>Timestep Conditioning — Telling the Network What Noise Level</h2>
+
+<div class="card blue">
+<h3>Why the network needs t</h3>
+<p>The same noisy image pixel value of 0.5 means very different things at t=1 (barely any noise added — almost certainly signal) versus t=999 (pure noise — value is nearly all noise). Without knowing t, the network cannot know which regime it's in. A single network trying to handle both would fail completely.</p>
+<div class="vs">
+  <div class="card red" style="margin:0">
+    <h3>Without t (wrong)</h3>
+    <p>Network sees x_t=0.5 at any noise level. At t=1, correct ε is tiny. At t=999, correct ε is ~0.5. Contradictory targets — network learns nothing useful.</p>
+  </div>
+  <div class="card green" style="margin:0">
+    <h3>With t (correct)</h3>
+    <p>Network sees (x_t=0.5, t=1): predict tiny ε. Network sees (x_t=0.5, t=999): predict large ε. Different inputs → different outputs. Learnable.</p>
+  </div>
+</div>
+</div>
+
+<div class="card green">
+<h3>Sinusoidal timestep embedding</h3>
+<p>The same technique as positional encoding in Transformers. Maps integer t to a continuous, unique vector that the network can process.</p>
+<div class="math">
+<span class="line cmt">// Sinusoidal embedding for timestep t (dimension d=256):</span>
+<span class="line"><span class="lbl">emb[2i]</span>   = sin(t / 10000^(2i/d))   <span class="cmt">// even dimensions: sin</span></span>
+<span class="line"><span class="lbl">emb[2i+1]</span> = cos(t / 10000^(2i/d))   <span class="cmt">// odd dimensions: cos</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Concrete: t=500, d=256, showing first 4 values (i=0,1):</span>
+<span class="line"><span class="lbl">emb[0]</span> = sin(500 / 10000^0)      = sin(500)       = <span class="val"> 0.960</span></span>
+<span class="line"><span class="lbl">emb[1]</span> = cos(500 / 10000^0)      = cos(500)       = <span class="val">-0.279</span></span>
+<span class="line"><span class="lbl">emb[2]</span> = sin(500 / 10000^(2/256))= sin(500/1.018) = <span class="val"> 0.922</span></span>
+<span class="line"><span class="lbl">emb[3]</span> = cos(500 / 10000^(2/256))= cos(500/1.018) = <span class="val">-0.388</span></span>
+<span class="line">     ... <span class="cmt">// 256 values total — each t gets a unique fingerprint</span></span>
+</div>
+</div>
+
+<div class="card">
+<h3>Injecting t into the U-Net</h3>
+<div class="math">
+<span class="line cmt">// Steps to condition the network on t:</span>
+<span class="line"><span class="lbl">1.</span> t → sinusoidal embedding → 256-dim vector</span>
+<span class="line"><span class="lbl">2.</span> Pass through small MLP: Linear(256→512) → SiLU → Linear(512→512)</span>
+<span class="line"><span class="lbl">3.</span> At each U-Net level, project t_emb to channel size and ADD to feature maps</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Example: at encoder level E2 with 128 channels:</span>
+<span class="line"><span class="lbl">t_proj</span> = Linear(512 → 128)(t_emb)   <span class="cmt">// [128]</span></span>
+<span class="line"><span class="lbl">features</span> = features + t_proj[None, :, None, None]  <span class="cmt">// broadcast over spatial dims</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Every layer at every scale knows the exact noise level — crucial for quality</span>
+</div>
+</div>
+
+<div class="card orange">
+<h3>Why sinusoidal, not just t as a scalar?</h3>
+<p>A single scalar t (or a learned embedding) works, but sinusoidal embeddings have nice properties: (1) Different frequencies encode information at different scales of t, (2) Nearby timesteps get similar embeddings, aiding generalization, (3) No learned parameters needed — works out of the box. The different frequency terms let the network easily distinguish nearby timesteps (via high-frequency components) and far-apart ones (via low-frequency components).</p>
+</div>
+
+<button class="nx" onclick="go(2)">Text conditioning</button>
+</div>
+
+<!-- PAGE 2 -->
+<div class="page" data-t="2. Text Conditioning">
+<h2>Text Conditioning — Steering Generation with Language</h2>
+
+<div class="card blue">
+<h3>The goal: "a cat on a mat" → that specific image</h3>
+<p>We want the noise prediction to be guided by a text description, so each denoising step moves toward images matching the text. The mechanism: encode the text to embeddings, then let the image features <strong>attend to the text embeddings</strong> at each U-Net decoder layer via cross-attention.</p>
+</div>
+
+<div class="card green">
+<h3>Step 1: text encoder</h3>
+<div class="math">
+<span class="line cmt">// Use a pretrained text encoder (CLIP or T5):</span>
+<span class="line"><span class="lbl">text</span> = "a cat on a mat"</span>
+<span class="line"><span class="lbl">tokens</span> = tokenize(text)  <span class="cmt">// ["a", "cat", "on", "a", "mat"] → ids</span></span>
+<span class="line"><span class="lbl">text_emb</span> = TextEncoder(tokens)  <span class="cmt">// shape: [5 tokens × 768 dims]</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Each token gets a 768-dim vector capturing its semantic meaning</span>
+<span class="line cmt">// "cat" embedding is near "kitten", "feline" — far from "dog"</span>
+<span class="line cmt">// CLIP encoder: trained on 400M (image, text) pairs — rich semantics</span>
+</div>
+</div>
+
+<div class="card purple">
+<h3>Step 2: cross-attention in the decoder</h3>
+<div class="math">
+<span class="line cmt">// Each U-Net decoder block has two attention operations:</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// (A) Self-attention: image features attend to each other</span>
+<span class="line"><span class="lbl">Q</span> = W_Q × img_features    <span class="cmt">// [H×W × d]</span></span>
+<span class="line"><span class="lbl">K</span> = W_K × img_features    <span class="cmt">// [H×W × d]</span></span>
+<span class="line"><span class="lbl">V</span> = W_V × img_features    <span class="cmt">// [H×W × d]</span></span>
+<span class="line"><span class="lbl">out</span> = softmax(QKᵀ/√d) × V  <span class="cmt">// image regions attend to each other</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// (B) Cross-attention: image features attend to text tokens</span>
+<span class="line"><span class="lbl">Q</span> = W_Q × img_features    <span class="cmt">// queries come from the image</span></span>
+<span class="line"><span class="lbl">K</span> = W_K × text_emb        <span class="cmt">// keys come from text</span></span>
+<span class="line"><span class="lbl">V</span> = W_V × text_emb        <span class="cmt">// values come from text</span></span>
+<span class="line"><span class="lbl">out</span> = softmax(QKᵀ/√d) × V  <span class="cmt">// image pixels "read" relevant text tokens</span></span>
+</div>
+</div>
+
+<div class="card">
+<h3>How cross-attention guides generation</h3>
+<p>A spatial region of the image (e.g., the area that will become a cat) learns to attend strongly to the "cat" token in the text embedding. This pulls that region's feature toward "cat-like" patterns during denoising. The "mat" token influences the bottom region. Over 1000 denoising steps, the cross-attention continuously redirects noise removal toward the described content.</p>
+<table>
+<tr><th>Attention type</th><th>Q</th><th>K, V</th><th>Effect</th></tr>
+<tr><td>Self-attention</td><td>Image features</td><td>Image features</td><td>Spatial coherence, long-range consistency</td></tr>
+<tr><td>Cross-attention</td><td>Image features</td><td>Text embeddings</td><td>Semantic guidance from the text prompt</td></tr>
+</table>
+</div>
+
+<div class="card orange">
+<h3>Why decoder layers only?</h3>
+<p>The encoder downsamples aggressively — at the bottleneck, spatial resolution is very low. Cross-attention in the decoder makes sense because that's where the model is actively reconstructing spatial detail at multiple resolutions (64×64, 128×128, 256×256). Text tokens inform "what should the high-res features look like here?" at each scale.</p>
+</div>
+
+<button class="nx" onclick="go(3)">Classifier-Free Guidance</button>
+</div>
+
+<!-- PAGE 3 -->
+<div class="page" data-t="3. CFG">
+<h2>Classifier-Free Guidance — Amplifying the Text Signal</h2>
+
+<div class="card blue">
+<h3>The problem: conditioned generation is too weak</h3>
+<p>With text conditioning alone, the model hedges. It generates images that are plausible given the data distribution AND loosely match the text. The result: images that look realistic but don't strongly match the prompt. We want to <strong>amplify</strong> how much the text drives the output.</p>
+</div>
+
+<div class="card green">
+<h3>The CFG training trick</h3>
+<div class="math">
+<span class="line cmt">// During training: randomly drop the text condition</span>
+<span class="line"><span class="lbl">with prob 0.9</span>: train normally with text → ε_θ(x_t, t, c)    <span class="cmt">// conditional</span></span>
+<span class="line"><span class="lbl">with prob 0.1</span>: replace text with null embedding ∅</span>
+<span class="line">               → ε_θ(x_t, t, ∅)  <span class="cmt">// unconditional</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// After training, the same network can predict both:</span>
+<span class="line cmt">// - ε_cond:   noise prediction given the text prompt</span>
+<span class="line cmt">// - ε_uncond: noise prediction with no text (generic image direction)</span>
+</div>
+</div>
+
+<div class="card purple">
+<h3>The CFG inference formula</h3>
+<div class="math">
+<span class="line cmt">// At each denoising step, run the network TWICE:</span>
+<span class="line"><span class="lbl">ε_uncond</span> = ε_θ(x_t, t, ∅)  <span class="cmt">// unconditional prediction</span></span>
+<span class="line"><span class="lbl">ε_cond</span>   = ε_θ(x_t, t, c)  <span class="cmt">// conditional prediction (with text c)</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Combine with guidance scale w:</span>
+<span class="line"><span class="hl lbl">ε_guided</span> = ε_uncond + w × (ε_cond − ε_uncond)</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Interpretation: start at unconditional, then move FURTHER toward</span>
+<span class="line cmt">// conditional than the raw prediction — extrapolate past ε_cond</span>
+</div>
+</div>
+
+<div class="card">
+<h3>Concrete: w=7.5 step-by-step</h3>
+<div class="math">
+<span class="line cmt">// Say at one denoising step, for a single pixel (showing 3 dims):</span>
+<span class="line"><span class="lbl">ε_uncond</span> = [<span class="val">0.1</span>,  <span class="val">0.2</span>, <span class="val">-0.3</span>]  <span class="cmt">// generic "any image" direction</span></span>
+<span class="line"><span class="lbl">ε_cond</span>   = [<span class="val">0.4</span>,  <span class="val">0.8</span>,  <span class="val">0.1</span>]  <span class="cmt">// "a cat on a mat" direction</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Difference (how much text changes the prediction):</span>
+<span class="line"><span class="lbl">Δε</span>       = [<span class="val">0.3</span>,  <span class="val">0.6</span>,  <span class="val">0.4</span>]  <span class="cmt">// ε_cond − ε_uncond</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Scale by w=7.5:</span>
+<span class="line"><span class="lbl">w × Δε</span>  = [<span class="val">2.25</span>, <span class="val">4.5</span>,  <span class="val">3.0</span>]  <span class="cmt">// amplified text direction</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Final guided prediction:</span>
+<span class="line"><span class="lbl">ε_guided</span> = [0.1+2.25,  0.2+4.5,  -0.3+3.0]</span>
+<span class="line">          = <span class="hl val">[2.35, 4.7, 2.7]</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// The text direction is 7.5× stronger than the raw conditional signal</span>
+</div>
+</div>
+
+<div class="card orange">
+<h3>Guidance scale tradeoffs</h3>
+<table>
+<tr><th>w value</th><th>Effect</th><th>Use case</th></tr>
+<tr><td>w = 1</td><td>No amplification (ε_guided = ε_cond)</td><td>Raw conditional generation</td></tr>
+<tr><td>w = 3–5</td><td>Mild guidance — diverse, somewhat prompt-adherent</td><td>Creative exploration</td></tr>
+<tr><td>w = 7.5</td><td>Strong guidance — vivid, prompt-adherent, less diverse</td><td>Stable Diffusion default</td></tr>
+<tr><td>w = 15+</td><td>Oversaturated, artifacts, less realistic</td><td>Not recommended</td></tr>
+</table>
+<p style="margin-top:8px">CFG costs 2× compute per step (two network evaluations), but is considered essential for practical quality. It's used in virtually every production diffusion system.</p>
+</div>
+
+<button class="nx" onclick="go(4)">Latent Diffusion</button>
+</div>
+
+<!-- PAGE 4 -->
+<div class="page" data-t="4. Latent Diffusion">
+<h2>Latent Diffusion — Running Diffusion in Compressed Space</h2>
+
+<div class="card blue">
+<h3>The compute problem with pixel-space diffusion</h3>
+<p>Running DDPM on a 512×512 image requires a U-Net that operates on 512×512 feature maps. Each denoising step is expensive — and you need 1000 of them. Generating a single image takes minutes. <span class="key">Latent diffusion</span> solves this by running the entire diffusion process in a much smaller compressed space.</p>
+</div>
+
+<div class="card purple">
+<h3>The three-stage pipeline</h3>
+<div class="math">
+<span class="line cmt">// Stage 1: Compress with VAE encoder (done once per training image)</span>
+<span class="line"><span class="lbl">image</span>:  512×512×3  pixels</span>
+<span class="line"><span class="lbl">VAE encoder</span>:  512×512×3  →  <span class="val">64×64×4</span>  latent</span>
+<span class="line cmt">// 8× spatial downsampling → 64× fewer elements (512²×3 vs 64²×4)</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Stage 2: Run diffusion in latent space (the expensive part)</span>
+<span class="line"><span class="lbl">diffusion</span>: 1000 denoising steps on <span class="val">64×64×4</span> latent</span>
+<span class="line cmt">// U-Net operates on 64×64, NOT 512×512 → dramatically cheaper</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Stage 3: Decode with VAE decoder (done once at inference)</span>
+<span class="line"><span class="lbl">VAE decoder</span>:  64×64×4  →  <span class="val">512×512×3</span>  image</span>
+<span class="line cmt">// Single forward pass — fast</span>
+</div>
+</div>
+
+<div class="card green">
+<h3>Compute comparison: pixel vs latent space</h3>
+<div class="math">
+<span class="line cmt">// Cost of one U-Net forward pass (approximate FLOPs):</span>
+<span class="line"><span class="lbl">Pixel DDPM on 512×512</span>:  ~1.2 GFLOP  per denoising step</span>
+<span class="line"><span class="lbl">Latent on 64×64</span>:        ~0.019 GFLOP per denoising step</span>
+<span class="line"><span class="lbl">Speedup per step</span>:        ~<span class="hl val">63×</span> faster</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Total inference (1000 steps):</span>
+<span class="line"><span class="lbl">Pixel DDPM</span>:  1000 × 1.2   = <span class="val">1200 GFLOP</span></span>
+<span class="line"><span class="lbl">Latent</span>:      1000 × 0.019 = <span class="val">  19 GFLOP</span>  (+tiny VAE overhead)</span>
+<span class="line cmt">// Stable Diffusion 1.5 generates 512×512 in ~2 sec on a GPU</span>
+<span class="line cmt">// Pixel-space equivalent would take ~2 minutes</span>
+</div>
+</div>
+
+<div class="card">
+<h3>Why doesn't the VAE bottleneck hurt quality?</h3>
+<p>A naive compression (e.g., JPEG artifacts) would destroy fine details. The VAE is trained with a <strong>perceptual loss</strong>: it learns to preserve features that matter visually — edges, textures, semantic regions — rather than minimizing per-pixel error. The 64×64×4 latent space is high enough capacity to represent a 512×512 image's perceptually important content.</p>
+<p style="margin-top:8px">Diffusion then operates on this perceptually-aligned latent, so each denoising step directly shapes meaningful image features, not individual pixels. The quality is preserved because the VAE's encoding/decoding is deterministic and high-fidelity.</p>
+</div>
+
+<div class="card orange">
+<h3>Summary: the full Stable Diffusion pipeline</h3>
+<table>
+<tr><th>Component</th><th>Role</th><th>Cost</th></tr>
+<tr><td>CLIP text encoder</td><td>Text → 77×768 embeddings</td><td>Once per prompt</td></tr>
+<tr><td>VAE encoder</td><td>512×512×3 → 64×64×4</td><td>Once per training image</td></tr>
+<tr><td>U-Net (latent diffusion)</td><td>Denoise 64×64×4 latents + CFG</td><td>2 × N steps</td></tr>
+<tr><td>VAE decoder</td><td>64×64×4 → 512×512×3</td><td>Once per generated image</td></tr>
+</table>
+</div>
+
+<button class="nx" onclick="go(5)">Summary</button>
+</div>
+
+<!-- PAGE 5 -->
+<div class="page" data-t="5. Summary">
+<h2>Chapter 3 Summary — U-Net and CFG</h2>
+
+<div class="card blue">
+<table>
+<tr><th>Component</th><th>What it does</th><th>Key mechanism</th></tr>
+<tr><td>U-Net</td><td>Encoder-decoder for same-size in/out</td><td>Skip connections preserve spatial detail</td></tr>
+<tr><td>Timestep embedding</td><td>Tells the network the noise level</td><td>Sinusoidal → MLP → add to features</td></tr>
+<tr><td>Text conditioning</td><td>Guides generation with a prompt</td><td>Cross-attention: Q=image, K/V=text</td></tr>
+<tr><td>CFG</td><td>Amplifies text guidance</td><td>ε_guided = ε_uncond + w×(ε_cond−ε_uncond)</td></tr>
+<tr><td>Latent diffusion</td><td>Runs diffusion in compressed space</td><td>VAE 512→64 → 63× fewer FLOPs/step</td></tr>
+</table>
+</div>
+
+<div class="card green">
+<h3>Key numbers to remember</h3>
+<div class="math">
+<span class="line"><span class="lbl">CFG scale</span>    w = 7.5       <span class="cmt">// Stable Diffusion default</span></span>
+<span class="line"><span class="lbl">Text dropout</span>   10%          <span class="cmt">// for learning unconditional prediction</span></span>
+<span class="line"><span class="lbl">VAE compression</span> 512→64       <span class="cmt">// 8× spatial, latent is 64×64×4</span></span>
+<span class="line"><span class="lbl">Speedup</span>        ~63×         <span class="cmt">// latent vs pixel space per step</span></span>
+<span class="line"><span class="lbl">CFG cost</span>       2× per step  <span class="cmt">// two network passes (cond + uncond)</span></span>
+</div>
+</div>
+
+<div class="card orange">
+<h3>What comes next</h3>
+<p>Chapter 4: Flow Matching — a newer, cleaner approach that replaces curved stochastic diffusion paths with straight deterministic ones. Same quality, 50× fewer steps. Used in Stable Diffusion 3, Flux, and Meta's Movie Gen.</p>
+</div>
+</div>
+
+<script>
+const pages=document.querySelectorAll('.page'),nav=document.getElementById('nav');
+pages.forEach((p,i)=>{const b=document.createElement('button');b.textContent=p.dataset.t;b.onclick=()=>go(i);if(i===0)b.classList.add('on');nav.appendChild(b);});
+function go(n){pages.forEach((p,i)=>p.classList.toggle('on',i===n));nav.querySelectorAll('button').forEach((b,i)=>{b.classList.remove('on');if(i<n)b.classList.add('done');else b.classList.remove('done');if(i===n)b.classList.add('on');});window.scrollTo({top:0,behavior:'smooth'});}
+</script>
+</body>
+</html>

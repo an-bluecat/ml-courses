@@ -1,0 +1,757 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RL Policy Gradient — Step-by-Step Code Walkthrough</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0a0a1a; color: #e0e0e0; padding: 20px; line-height: 1.6; }
+  h1 { text-align: center; color: #fff; margin-bottom: 8px; font-size: 1.6em; }
+  .subtitle { text-align: center; color: #888; margin-bottom: 30px; font-size: 0.95em; }
+
+  /* Navigation */
+  .step-nav { display: flex; justify-content: center; gap: 6px; margin-bottom: 24px; flex-wrap: wrap; }
+  .step-btn { padding: 8px 14px; border: 2px solid #333; background: #111; color: #888; border-radius: 8px; cursor: pointer; font-size: 0.85em; transition: all 0.2s; }
+  .step-btn:hover { border-color: #555; color: #ccc; }
+  .step-btn.active { border-color: #4fc3f7; color: #4fc3f7; background: #0d2137; }
+  .step-btn.done { border-color: #4caf50; color: #4caf50; }
+
+  /* Steps */
+  .step { display: none; max-width: 900px; margin: 0 auto; }
+  .step.active { display: block; }
+  .step h2 { color: #4fc3f7; margin-bottom: 12px; font-size: 1.3em; }
+  .step h3 { color: #ffb74d; margin: 16px 0 8px; font-size: 1.05em; }
+
+  /* Cards */
+  .card { background: #12122a; border: 1px solid #2a2a4a; border-radius: 12px; padding: 20px; margin-bottom: 16px; }
+  .card.highlight { border-color: #4fc3f7; background: #0d1b2a; }
+  .card.warn { border-color: #ff9800; background: #1a1400; }
+  .card.success { border-color: #4caf50; background: #0a1a0a; }
+
+  /* Code blocks */
+  pre { background: #1a1a2e; border: 1px solid #333; border-radius: 8px; padding: 16px; overflow-x: auto; margin: 12px 0; font-size: 0.9em; line-height: 1.5; }
+  code { font-family: 'Fira Code', 'Consolas', monospace; }
+  .comment { color: #6a9955; }
+  .keyword { color: #c586c0; }
+  .number { color: #b5cea8; }
+  .string { color: #ce9178; }
+  .var { color: #9cdcfe; }
+  .func { color: #dcdcaa; }
+  .op { color: #d4d4d4; }
+  .highlight-line { background: #264f78; display: inline-block; width: 100%; padding: 0 4px; margin: 0 -4px; border-radius: 3px; }
+
+  /* Diagrams */
+  .diagram { display: flex; align-items: center; justify-content: center; gap: 12px; margin: 16px 0; flex-wrap: wrap; }
+  .box { padding: 12px 18px; border-radius: 10px; text-align: center; font-weight: 600; font-size: 0.95em; }
+  .box-blue { background: #1a3a5c; border: 2px solid #4fc3f7; color: #4fc3f7; }
+  .box-orange { background: #3a2a0a; border: 2px solid #ffb74d; color: #ffb74d; }
+  .box-green { background: #0a3a0a; border: 2px solid #4caf50; color: #4caf50; }
+  .box-red { background: #3a0a0a; border: 2px solid #ef5350; color: #ef5350; }
+  .box-purple { background: #2a0a3a; border: 2px solid #ce93d8; color: #ce93d8; }
+  .arrow { color: #666; font-size: 1.5em; }
+
+  /* Comparison */
+  .compare { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 12px 0; }
+  @media (max-width: 600px) { .compare { grid-template-columns: 1fr; } }
+
+  /* Prob bar */
+  .prob-bar { display: flex; height: 40px; border-radius: 8px; overflow: hidden; margin: 12px 0; font-weight: 700; font-size: 0.9em; }
+  .prob-squatch { background: #e65100; display: flex; align-items: center; justify-content: center; transition: width 0.5s; }
+  .prob-norm { background: #1565c0; display: flex; align-items: center; justify-content: center; transition: width 0.5s; }
+
+  /* Interactive */
+  .controls { display: flex; gap: 12px; align-items: center; margin: 12px 0; flex-wrap: wrap; }
+  .controls label { color: #aaa; font-size: 0.9em; }
+  .controls input[type=range] { width: 200px; }
+  .val { color: #4fc3f7; font-weight: 700; font-size: 1.1em; min-width: 50px; }
+  button.run { padding: 10px 24px; background: #4fc3f7; color: #000; border: none; border-radius: 8px; cursor: pointer; font-weight: 700; font-size: 0.95em; }
+  button.run:hover { background: #81d4fa; }
+  button.next { padding: 10px 24px; background: #4caf50; color: #000; border: none; border-radius: 8px; cursor: pointer; font-weight: 700; font-size: 0.95em; margin-top: 16px; }
+  button.next:hover { background: #66bb6a; }
+
+  /* Table */
+  table { width: 100%; border-collapse: collapse; margin: 12px 0; }
+  th, td { padding: 8px 12px; border: 1px solid #333; text-align: center; }
+  th { background: #1a1a3a; color: #4fc3f7; }
+  td { background: #12122a; }
+
+  .emoji { font-size: 1.5em; }
+  .key-insight { color: #ffb74d; font-weight: 600; }
+  .math { font-family: 'Times New Roman', serif; font-style: italic; color: #ce93d8; font-size: 1.05em; }
+
+  /* Canvas */
+  canvas { border-radius: 8px; display: block; margin: 12px auto; }
+
+  /* Log */
+  #train-log { background: #0a0a1a; border: 1px solid #333; border-radius: 8px; padding: 12px; max-height: 300px; overflow-y: auto; font-family: monospace; font-size: 0.85em; white-space: pre; margin: 12px 0; }
+</style>
+</head>
+<body>
+<a href="../index.html" style="position:fixed;top:10px;left:14px;font-size:.75em;color:#555;text-decoration:none;z-index:999;padding:4px 8px;background:#0a0a1a;border:1px solid #333;border-radius:6px;">&larr; index</a>
+
+<h1>Policy Gradient: The Fry Shop Problem</h1>
+<p class="subtitle">StatQuest walkthrough — every line of code explained, every number shown</p>
+
+<div class="step-nav">
+  <button class="step-btn active" onclick="goStep(0)">0. The Problem</button>
+  <button class="step-btn" onclick="goStep(1)">1. No Labels</button>
+  <button class="step-btn" onclick="goStep(2)">2. Forward Pass</button>
+  <button class="step-btn" onclick="goStep(3)">3. The Guess</button>
+  <button class="step-btn" onclick="goStep(4)">4. Cross Entropy</button>
+  <button class="step-btn" onclick="goStep(5)">5. The Derivative</button>
+  <button class="step-btn" onclick="goStep(6)">6. The Reward</button>
+  <button class="step-btn" onclick="goStep(7)">7. The Update</button>
+  <button class="step-btn" onclick="goStep(8)">8. Full Training</button>
+</div>
+
+<!-- ==================== STEP 0: THE PROBLEM ==================== -->
+<div class="step active" id="step-0">
+  <h2>Step 0: What Are We Actually Solving?</h2>
+
+  <div class="card">
+    <p><strong>You're hungry. There are two fry shops:</strong></p>
+    <div class="diagram">
+      <div class="box box-orange"><span class="emoji">&#x1F35F;</span><br>Squatch's Fry Shack<br><small>Sometimes big, sometimes small servings</small></div>
+      <div class="box box-blue"><span class="emoji">&#x1F35F;</span><br>Norm's Fry Hut<br><small>Sometimes big, sometimes small servings</small></div>
+    </div>
+    <p>The <strong>hidden truth</strong> (you don't know this):</p>
+    <ul style="margin:8px 0 0 20px;">
+      <li>When you're <strong>not hungry</strong> (hunger=0) → Squatch gives small fries (good!), Norm gives big fries (bad, wasteful)</li>
+      <li>When you're <strong>very hungry</strong> (hunger=1) → Norm gives big fries (good!), Squatch gives small fries (bad, not enough)</li>
+    </ul>
+  </div>
+
+  <div class="card highlight">
+    <h3>The Goal</h3>
+    <p>Build a neural network that takes <strong>hunger level</strong> as input and outputs <strong>which shop to visit</strong>.</p>
+    <div class="diagram">
+      <div class="box box-purple">Hunger<br>(0.0 to 1.0)</div>
+      <span class="arrow">→</span>
+      <div class="box box-blue">Neural Net<br>(1 weight + 1 bias)</div>
+      <span class="arrow">→</span>
+      <div class="box box-green">P(Norm)<br>P(Squatch) = 1 - P(Norm)</div>
+    </div>
+  </div>
+
+  <div class="card warn">
+    <h3>Why Not Just Use Supervised Learning?</h3>
+    <p>In supervised learning, you'd have a dataset like:</p>
+    <table>
+      <tr><th>Hunger</th><th>Correct Shop (Label)</th></tr>
+      <tr><td>0.0</td><td>Squatch's</td></tr>
+      <tr><td>0.5</td><td>???</td></tr>
+      <tr><td>1.0</td><td>Norm's</td></tr>
+    </table>
+    <p style="margin-top:8px;"><span class="key-insight">But you don't have labels!</span> Nobody tells you the right answer. You have to <em>go there, order fries, and find out</em>. That's why this is RL.</p>
+  </div>
+  <button class="next" onclick="goStep(1)">Next: Why no labels? →</button>
+</div>
+
+<!-- ==================== STEP 1: NO LABELS ==================== -->
+<div class="step" id="step-1">
+  <h2>Step 1: Supervised Learning vs RL — The Key Difference</h2>
+
+  <div class="compare">
+    <div class="card">
+      <h3 style="color:#4caf50;">Supervised Learning</h3>
+<pre><code><span class="comment"># You HAVE the answer</span>
+<span class="var">X</span> = [cat_photo, dog_photo]
+<span class="var">y</span> = [<span class="string">"cat"</span>, <span class="string">"dog"</span>]  <span class="comment"># ← LABELS</span>
+
+<span class="comment"># Training:</span>
+<span class="var">pred</span> = <span class="func">model</span>(<span class="var">X</span>)
+<span class="var">loss</span> = <span class="func">cross_entropy</span>(<span class="var">pred</span>, <span class="var">y</span>)
+<span class="var">loss</span>.<span class="func">backward</span>()  <span class="comment"># gradient always correct</span>
+</code></pre>
+      <p>Label tells you the right answer → gradient points the right way → done.</p>
+    </div>
+    <div class="card">
+      <h3 style="color:#ff9800;">Reinforcement Learning</h3>
+<pre><code><span class="comment"># You DON'T have the answer</span>
+<span class="var">hunger</span> = <span class="number">0.0</span>
+<span class="var">y</span> = ???  <span class="comment"># ← NO LABEL</span>
+
+<span class="comment"># Training:</span>
+<span class="var">pred</span> = <span class="func">model</span>(<span class="var">hunger</span>)
+<span class="var">action</span> = <span class="func">sample</span>(<span class="var">pred</span>) <span class="comment"># pick randomly</span>
+<span class="var">reward</span> = <span class="func">go_eat</span>(<span class="var">action</span>) <span class="comment"># +1 or -1</span>
+<span class="comment"># now what??</span>
+</code></pre>
+      <p>No label → you <strong>guess</strong> → go try it → reward tells you if guess was right or wrong.</p>
+    </div>
+  </div>
+
+  <div class="card highlight">
+    <h3>The RL Trick (the whole idea)</h3>
+    <div style="font-size:1.1em; margin:8px 0;">
+      <p><strong>1.</strong> Compute the gradient <em>as if your guess was correct</em> (pretend it's supervised)</p>
+      <p><strong>2.</strong> Multiply gradient by the reward</p>
+      <p><strong>3.</strong> If reward = +1 → gradient stays the same → push toward guess</p>
+      <p><strong>4.</strong> If reward = -1 → gradient flips direction → push <em>away</em> from guess</p>
+    </div>
+<pre><code><span class="comment"># THE ENTIRE ALGORITHM IN 4 LINES:</span>
+<span class="var">gradient</span> = <span class="func">compute_gradient</span>(<span class="var">pred</span>, <span class="var">guess</span>)  <span class="comment"># pretend guess is the label</span>
+<span class="var">gradient</span> = <span class="var">gradient</span> * <span class="var">reward</span>              <span class="comment"># reward confirms or flips it</span>
+<span class="var">bias</span> = <span class="var">bias</span> - <span class="var">lr</span> * <span class="var">gradient</span>              <span class="comment"># standard gradient descent</span>
+<span class="comment"># That's it. That's policy gradient.</span>
+</code></pre>
+  </div>
+  <button class="next" onclick="goStep(2)">Next: Forward pass with real numbers →</button>
+</div>
+
+<!-- ==================== STEP 2: FORWARD PASS ==================== -->
+<div class="step" id="step-2">
+  <h2>Step 2: Forward Pass — Running the Network</h2>
+
+  <div class="card">
+    <h3>The Network (tiny: 1 input, 1 weight, 1 bias, sigmoid)</h3>
+<pre><code><span class="comment"># Our "neural network"</span>
+<span class="var">weight</span> = <span class="number">0.0</span>   <span class="comment"># starts at 0</span>
+<span class="var">bias</span>   = <span class="number">0.0</span>   <span class="comment"># starts at 0 ← THIS is what we're training</span>
+
+<span class="keyword">def</span> <span class="func">sigmoid</span>(<span class="var">x</span>):
+    <span class="keyword">return</span> <span class="number">1</span> / (<span class="number">1</span> + <span class="func">exp</span>(-<span class="var">x</span>))
+
+<span class="keyword">def</span> <span class="func">forward</span>(<span class="var">hunger</span>):
+    <span class="var">x</span> = <span class="var">hunger</span> * <span class="var">weight</span> + <span class="var">bias</span>    <span class="comment"># linear combination</span>
+    <span class="var">p_norm</span> = <span class="func">sigmoid</span>(<span class="var">x</span>)           <span class="comment"># squash to [0, 1]</span>
+    <span class="var">p_squatch</span> = <span class="number">1</span> - <span class="var">p_norm</span>       <span class="comment"># probabilities sum to 1</span>
+    <span class="keyword">return</span> <span class="var">p_norm</span>, <span class="var">p_squatch</span>
+</code></pre>
+  </div>
+
+  <div class="card highlight">
+    <h3>Let's run it: hunger = 0.0</h3>
+<pre><code><span class="var">hunger</span> = <span class="number">0.0</span>
+
+<span class="comment"># Step 1: linear combination</span>
+<span class="var">x</span> = <span class="number">0.0</span> * <span class="number">0.0</span> + <span class="number">0.0</span>   <span class="comment"># = 0.0</span>
+
+<span class="comment"># Step 2: sigmoid</span>
+<span class="var">p_norm</span> = <span class="number">1</span> / (<span class="number">1</span> + exp(-<span class="number">0.0</span>))
+       = <span class="number">1</span> / (<span class="number">1</span> + <span class="number">1.0</span>)
+       = <span class="number">1</span> / <span class="number">2</span>
+       = <span class="number">0.5</span>             <span class="comment"># 50% chance go to Norm's</span>
+
+<span class="comment"># Step 3: complement</span>
+<span class="var">p_squatch</span> = <span class="number">1</span> - <span class="number">0.5</span>
+          = <span class="number">0.5</span>          <span class="comment"># 50% chance go to Squatch's</span>
+</code></pre>
+  </div>
+
+  <p style="text-align:center; margin:12px 0; color:#aaa;">The network says: "I have no idea. 50/50."</p>
+  <div class="prob-bar">
+    <div class="prob-squatch" style="width:50%;">Squatch 50%</div>
+    <div class="prob-norm" style="width:50%;">Norm 50%</div>
+  </div>
+
+  <div class="card">
+    <h3>Now sample an action</h3>
+<pre><code><span class="comment"># Pick a random number between 0 and 1</span>
+<span class="var">rand</span> = <span class="number">0.2</span>   <span class="comment"># (imagine this came from random.random())</span>
+
+<span class="comment"># 0.2 < 0.5, so we land in Squatch's region</span>
+<span class="keyword">if</span> <span class="var">rand</span> < <span class="var">p_squatch</span>:
+    <span class="var">action</span> = <span class="string">"squatch"</span>   <span class="comment"># ← we're going here</span>
+<span class="keyword">else</span>:
+    <span class="var">action</span> = <span class="string">"norm"</span>
+
+<span class="comment"># We chose Squatch's. But was it the right choice? We don't know yet.</span>
+</code></pre>
+  </div>
+  <button class="next" onclick="goStep(3)">Next: The guess →</button>
+</div>
+
+<!-- ==================== STEP 3: THE GUESS ==================== -->
+<div class="step" id="step-3">
+  <h2>Step 3: The "Guess" — Making a Fake Label</h2>
+
+  <div class="card warn">
+    <h3>This is the weird part</h3>
+    <p>We picked Squatch's randomly. Now we <strong>pretend that was the right answer</strong>.</p>
+    <p>We create a <strong>fake label</strong>: "the ideal probability for Squatch should be 1.0"</p>
+<pre><code><span class="comment"># We sampled: action = "squatch"</span>
+<span class="comment"># Now PRETEND this is the correct label:</span>
+<span class="var">ideal_p_squatch</span> = <span class="number">1.0</span>   <span class="comment"># ← our GUESS (fake label)</span>
+<span class="var">actual_p_squatch</span> = <span class="number">0.5</span>  <span class="comment"># ← what the network said</span>
+
+<span class="comment"># Gap: the network said 0.5 but "should" say 1.0</span>
+<span class="comment"># We'll use this gap to compute a gradient.</span>
+<span class="comment"># BUT the gradient might be WRONG if the guess is wrong.</span>
+<span class="comment"># That's OK — the reward will fix it later.</span>
+</code></pre>
+  </div>
+
+  <div class="card highlight">
+    <h3>Why does this work?</h3>
+    <div class="compare">
+      <div class="card success">
+        <p><strong>If guess was RIGHT</strong><br>(Squatch really was the right choice)</p>
+        <p>reward = +1<br>gradient stays → push toward Squatch</p>
+      </div>
+      <div class="card" style="border-color:#ef5350;">
+        <p><strong>If guess was WRONG</strong><br>(Squatch was actually a bad choice)</p>
+        <p>reward = -1<br>gradient flips → push AWAY from Squatch</p>
+      </div>
+    </div>
+    <p style="margin-top:8px;">The guess can be wrong. The reward corrects it. <strong>You never need true labels.</strong></p>
+  </div>
+  <button class="next" onclick="goStep(4)">Next: Measuring the gap →</button>
+</div>
+
+<!-- ==================== STEP 4: CROSS ENTROPY ==================== -->
+<div class="step" id="step-4">
+  <h2>Step 4: Cross Entropy — How Wrong Is the Network?</h2>
+
+  <div class="card">
+    <h3>What is cross entropy?</h3>
+    <p>It measures: "how surprised am I that the network gave probability P to the thing that happened?"</p>
+    <p class="math" style="text-align:center; font-size:1.3em; margin:12px 0;">C = -log(P<sub>chosen</sub>)</p>
+    <table>
+      <tr><th>P(chosen action)</th><th>-log(P)</th><th>Meaning</th></tr>
+      <tr><td>1.0 (certain)</td><td>0.0</td><td>Not surprised at all</td></tr>
+      <tr><td>0.5 (coin flip)</td><td>0.69</td><td>Somewhat surprised</td></tr>
+      <tr><td>0.1 (unlikely)</td><td>2.30</td><td>Very surprised</td></tr>
+      <tr><td>0.01</td><td>4.60</td><td>Shocked</td></tr>
+    </table>
+  </div>
+
+  <div class="card highlight">
+    <h3>Our calculation</h3>
+<pre><code><span class="keyword">import</span> math
+
+<span class="comment"># We chose Squatch's, so we need P(Squatch)</span>
+<span class="var">p_squatch</span> = <span class="number">0.5</span>
+
+<span class="comment"># Cross entropy: how far is the network from our guess?</span>
+<span class="var">C</span> = -math.<span class="func">log</span>(<span class="var">p_squatch</span>)
+  = -math.<span class="func">log</span>(<span class="number">0.5</span>)
+  = -(-<span class="number">0.693</span>)
+  = <span class="number">0.693</span>
+
+<span class="comment"># Interpretation: the network gave 50% to our choice.</span>
+<span class="comment"># If it believed us fully, C would be 0.</span>
+<span class="comment"># We want to minimize C → push P(Squatch) toward 1.0</span>
+</code></pre>
+  </div>
+
+  <div class="card">
+    <h3>Rewrite in terms of P(Norm) — because that's the network's actual output</h3>
+<pre><code><span class="comment"># Since P(Squatch) = 1 - P(Norm):</span>
+<span class="var">C_squatch</span> = -math.<span class="func">log</span>(<span class="number">1</span> - <span class="var">p_norm</span>)
+           = -math.<span class="func">log</span>(<span class="number">1</span> - <span class="number">0.5</span>)
+           = -math.<span class="func">log</span>(<span class="number">0.5</span>)
+           = <span class="number">0.693</span>
+
+<span class="comment"># This form is what we'll take the derivative of.</span>
+</code></pre>
+  </div>
+  <button class="next" onclick="goStep(5)">Next: The derivative (chain rule) →</button>
+</div>
+
+<!-- ==================== STEP 5: THE DERIVATIVE ==================== -->
+<div class="step" id="step-5">
+  <h2>Step 5: The Derivative — Chain Rule Step by Step</h2>
+
+  <div class="card">
+    <h3>The chain of dependencies</h3>
+    <div class="diagram">
+      <div class="box box-red">C<sub>squatch</sub><br><small>-log(1-p_norm)</small></div>
+      <span class="arrow">←</span>
+      <div class="box box-blue">p_norm<br><small>sigmoid(x)</small></div>
+      <span class="arrow">←</span>
+      <div class="box box-orange">x<br><small>hunger*w + b</small></div>
+      <span class="arrow">←</span>
+      <div class="box box-green">bias<br><small>what we train</small></div>
+    </div>
+    <p style="text-align:center; margin-top:8px;">
+      <span class="math">dC/dBias = dC/dp_norm  ×  dp_norm/dx  ×  dx/dBias</span>
+    </p>
+  </div>
+
+  <div class="card highlight">
+    <h3>Term 1: dC/dp_norm</h3>
+<pre><code><span class="comment"># C_squatch = -log(1 - p_norm)</span>
+<span class="comment"># Using chain rule: d/dp[-log(1-p)] = 1/(1-p)</span>
+
+<span class="var">dC_dp</span> = <span class="number">1</span> / (<span class="number">1</span> - <span class="var">p_norm</span>)
+      = <span class="number">1</span> / (<span class="number">1</span> - <span class="number">0.5</span>)
+      = <span class="number">1</span> / <span class="number">0.5</span>
+      = <span class="number">2.0</span>
+</code></pre>
+  </div>
+
+  <div class="card highlight">
+    <h3>Term 2: dp_norm/dx (sigmoid derivative)</h3>
+<pre><code><span class="comment"># The famous sigmoid derivative: σ(x) * (1 - σ(x))</span>
+
+<span class="var">dp_dx</span> = <span class="var">p_norm</span> * (<span class="number">1</span> - <span class="var">p_norm</span>)
+      = <span class="number">0.5</span> * (<span class="number">1</span> - <span class="number">0.5</span>)
+      = <span class="number">0.5</span> * <span class="number">0.5</span>
+      = <span class="number">0.25</span>
+</code></pre>
+  </div>
+
+  <div class="card highlight">
+    <h3>Term 3: dx/dBias</h3>
+<pre><code><span class="comment"># x = hunger * weight + bias</span>
+<span class="comment"># dx/dBias = 1 (bias is just added, so derivative is 1)</span>
+
+<span class="var">dx_db</span> = <span class="number">1.0</span>
+</code></pre>
+  </div>
+
+  <div class="card success">
+    <h3>Multiply all three together</h3>
+<pre><code><span class="var">dC_dBias</span> = <span class="var">dC_dp</span> * <span class="var">dp_dx</span> * <span class="var">dx_db</span>
+         = <span class="number">2.0</span>  *  <span class="number">0.25</span>  *  <span class="number">1.0</span>
+         = <span class="number">0.5</span>
+
+<span class="comment"># This derivative says: "to reduce C, shift bias to the LEFT"</span>
+<span class="comment"># Which means: "make P(Squatch) bigger"</span>
+<span class="comment"># Which means: "go to Squatch's more often"</span>
+<span class="comment">#</span>
+<span class="comment"># BUT WAIT — this is based on the GUESS that Squatch is right.</span>
+<span class="comment"># What if the guess is wrong? That's where the reward comes in.</span>
+</code></pre>
+  </div>
+  <button class="next" onclick="goStep(6)">Next: The reward decides everything →</button>
+</div>
+
+<!-- ==================== STEP 6: THE REWARD ==================== -->
+<div class="step" id="step-6">
+  <h2>Step 6: The Reward — Confirm or Flip the Gradient</h2>
+
+  <div class="card">
+    <h3>Go to Squatch's and order fries</h3>
+    <p>We're <strong>not hungry</strong> (hunger = 0.0). Squatch gives us a <strong>small</strong> order.</p>
+    <p>Small fries when not hungry = exactly what we wanted!</p>
+<pre><code><span class="comment"># We went to Squatch's when not hungry.</span>
+<span class="comment"># Squatch gave small fries → perfect for not being hungry!</span>
+<span class="var">reward</span> = +<span class="number">1.0</span>   <span class="comment"># correct guess!</span>
+
+<span class="comment"># If Squatch had given us HUGE fries (and we're not hungry):</span>
+<span class="comment"># reward = -1.0  # wrong guess! too much food!</span>
+</code></pre>
+  </div>
+
+  <div class="card highlight">
+    <h3>Multiply gradient by reward</h3>
+<pre><code><span class="var">gradient</span> = <span class="number">0.5</span>       <span class="comment"># from Step 5</span>
+<span class="var">reward</span>   = <span class="number">1.0</span>       <span class="comment"># correct guess</span>
+
+<span class="highlight-line"><span class="var">updated_gradient</span> = <span class="var">gradient</span> * <span class="var">reward</span> = <span class="number">0.5</span> * <span class="number">1.0</span> = <span class="number">0.5</span></span>
+
+<span class="comment"># Reward = +1 → gradient unchanged → shift bias to the left</span>
+<span class="comment"># This makes P(Squatch) bigger. Correct!</span>
+</code></pre>
+  </div>
+
+  <div class="card warn">
+    <h3>What if the reward had been -1?</h3>
+<pre><code><span class="var">gradient</span> = <span class="number">0.5</span>
+<span class="var">reward</span>   = -<span class="number">1.0</span>      <span class="comment"># wrong guess!</span>
+
+<span class="highlight-line"><span class="var">updated_gradient</span> = <span class="number">0.5</span> * (-<span class="number">1.0</span>) = -<span class="number">0.5</span></span>
+
+<span class="comment"># FLIPPED! Now the gradient points RIGHT instead of LEFT.</span>
+<span class="comment"># This makes P(Squatch) SMALLER. "Don't go there again!"</span>
+</code></pre>
+  </div>
+
+  <div class="card success">
+    <h3>This is the entire insight of policy gradients</h3>
+    <table>
+      <tr><th>Scenario</th><th>Gradient</th><th>Reward</th><th>Updated Gradient</th><th>Effect</th></tr>
+      <tr><td>Right guess</td><td>+0.5</td><td>+1</td><td>+0.5</td><td>More Squatch</td></tr>
+      <tr><td>Wrong guess</td><td>+0.5</td><td>-1</td><td>-0.5</td><td>Less Squatch</td></tr>
+    </table>
+    <p style="margin-top:8px;">The gradient assumes the guess is right. The reward confirms or corrects. <strong>No labels needed.</strong></p>
+  </div>
+  <button class="next" onclick="goStep(7)">Next: Update the bias →</button>
+</div>
+
+<!-- ==================== STEP 7: THE UPDATE ==================== -->
+<div class="step" id="step-7">
+  <h2>Step 7: The Update — Gradient Descent</h2>
+
+  <div class="card highlight">
+    <h3>Standard gradient descent, nothing new here</h3>
+<pre><code><span class="var">lr</span> = <span class="number">1.0</span>              <span class="comment"># learning rate</span>
+<span class="var">updated_gradient</span> = <span class="number">0.5</span> <span class="comment"># from Step 6</span>
+
+<span class="comment"># Step size</span>
+<span class="var">step_size</span> = <span class="var">lr</span> * <span class="var">updated_gradient</span>
+          = <span class="number">1.0</span> * <span class="number">0.5</span>
+          = <span class="number">0.5</span>
+
+<span class="comment"># New bias</span>
+<span class="var">bias_new</span> = <span class="var">bias_old</span> - <span class="var">step_size</span>
+         = <span class="number">0.0</span> - <span class="number">0.5</span>
+         = -<span class="number">0.5</span>
+</code></pre>
+  </div>
+
+  <div class="card">
+    <h3>Did it work? Run forward pass again with new bias:</h3>
+<pre><code><span class="comment"># Same input: hunger = 0.0, weight = 0.0, NEW bias = -0.5</span>
+<span class="var">x</span> = <span class="number">0.0</span> * <span class="number">0.0</span> + (-<span class="number">0.5</span>) = -<span class="number">0.5</span>
+<span class="var">p_norm</span> = <span class="func">sigmoid</span>(-<span class="number">0.5</span>) = <span class="number">0.378</span>
+<span class="var">p_squatch</span> = <span class="number">1</span> - <span class="number">0.378</span> = <span class="number">0.622</span>
+</code></pre>
+  </div>
+
+  <p style="text-align:center; color:#aaa; margin:8px 0;">Before update:</p>
+  <div class="prob-bar">
+    <div class="prob-squatch" style="width:50%;">Squatch 50%</div>
+    <div class="prob-norm" style="width:50%;">Norm 50%</div>
+  </div>
+  <p style="text-align:center; color:#aaa; margin:8px 0;">After update:</p>
+  <div class="prob-bar">
+    <div class="prob-squatch" style="width:62%;">Squatch 62%</div>
+    <div class="prob-norm" style="width:38%;">Norm 38%</div>
+  </div>
+
+  <div class="card success">
+    <p><strong>It worked!</strong> One update and the network already leans toward Squatch's when not hungry. After many more rounds (with different hunger levels), the bias converges to ~-10 and the network fully learns the right policy.</p>
+  </div>
+  <button class="next" onclick="goStep(8)">Next: Watch full training live →</button>
+</div>
+
+<!-- ==================== STEP 8: FULL TRAINING ==================== -->
+<div class="step" id="step-8">
+  <h2>Step 8: Full Training — Watch It Learn</h2>
+
+  <div class="card">
+    <h3>The complete algorithm, all at once</h3>
+<pre><code><span class="keyword">import</span> math, random
+
+<span class="var">weight</span> = <span class="number">0.0</span>
+<span class="var">bias</span>   = <span class="number">0.0</span>
+<span class="var">lr</span>     = <span class="number">1.0</span>
+
+<span class="keyword">for</span> <span class="var">episode</span> <span class="keyword">in</span> <span class="func">range</span>(<span class="number">200</span>):
+    <span class="var">hunger</span> = random.<span class="func">random</span>()                          <span class="comment"># random hunger 0-1</span>
+    <span class="var">x</span> = <span class="var">hunger</span> * <span class="var">weight</span> + <span class="var">bias</span>                          <span class="comment"># linear</span>
+    <span class="var">p_norm</span> = <span class="number">1</span> / (<span class="number">1</span> + math.<span class="func">exp</span>(-<span class="var">x</span>))                    <span class="comment"># sigmoid</span>
+
+    <span class="comment"># SAMPLE action</span>
+    <span class="var">went_to_norm</span> = random.<span class="func">random</span>() < <span class="var">p_norm</span>
+
+    <span class="comment"># GET REWARD (the hidden truth)</span>
+    <span class="keyword">if</span> <span class="var">went_to_norm</span>:
+        <span class="var">reward</span> = +<span class="number">1</span> <span class="keyword">if</span> <span class="var">hunger</span> > <span class="number">0.5</span> <span class="keyword">else</span> -<span class="number">1</span>          <span class="comment"># Norm good when hungry</span>
+    <span class="keyword">else</span>:
+        <span class="var">reward</span> = +<span class="number">1</span> <span class="keyword">if</span> <span class="var">hunger</span> <= <span class="number">0.5</span> <span class="keyword">else</span> -<span class="number">1</span>         <span class="comment"># Squatch good when not</span>
+
+    <span class="comment"># COMPUTE GRADIENT (assuming our choice was correct)</span>
+    <span class="keyword">if</span> <span class="var">went_to_norm</span>:
+        <span class="var">dC_db</span> = -(<span class="number">1</span> - <span class="var">p_norm</span>)                           <span class="comment"># derivative for Norm</span>
+    <span class="keyword">else</span>:
+        <span class="var">dC_db</span> = <span class="var">p_norm</span>                                   <span class="comment"># derivative for Squatch</span>
+
+    <span class="comment"># REWARD CORRECTS THE GRADIENT</span>
+    <span class="highlight-line"><span class="var">dC_db</span> = <span class="var">dC_db</span> * <span class="var">reward</span>                               <span class="comment"># ← THE KEY LINE</span></span>
+
+    <span class="comment"># UPDATE</span>
+    <span class="var">bias</span> = <span class="var">bias</span> - <span class="var">lr</span> * <span class="var">dC_db</span>
+</code></pre>
+  </div>
+
+  <div class="card highlight">
+    <h3>Interactive: run it and watch</h3>
+    <div class="controls">
+      <label>Learning rate:</label>
+      <input type="range" id="lr-slider" min="0.1" max="2.0" step="0.1" value="1.0">
+      <span class="val" id="lr-val">1.0</span>
+      <button class="run" onclick="runTraining()">Train 200 episodes</button>
+    </div>
+    <canvas id="train-canvas" width="860" height="280"></canvas>
+    <div id="train-log"></div>
+  </div>
+
+  <div class="card success">
+    <h3>The complete map (what you just learned)</h3>
+    <table>
+      <tr><th>RL Concept</th><th>In This Example</th><th>In Code</th></tr>
+      <tr><td>State</td><td>How hungry you are</td><td><code>hunger</code></td></tr>
+      <tr><td>Action</td><td>Which shop to visit</td><td><code>went_to_norm</code></td></tr>
+      <tr><td>Policy</td><td>Network's probability output</td><td><code>p_norm, p_squatch</code></td></tr>
+      <tr><td>Reward</td><td>Was the fry size appropriate?</td><td><code>+1 or -1</code></td></tr>
+      <tr><td>No label</td><td>Guess + reward instead</td><td><code>dC_db * reward</code></td></tr>
+      <tr><td>Gradient</td><td>Chain rule through sigmoid</td><td><code>dC_db</code></td></tr>
+      <tr><td>Policy gradient</td><td>gradient * reward</td><td><code>dC_db *= reward</code></td></tr>
+    </table>
+  </div>
+</div>
+
+<script>
+// Step navigation
+function goStep(n) {
+  document.querySelectorAll('.step').forEach((s, i) => {
+    s.classList.toggle('active', i === n);
+  });
+  document.querySelectorAll('.step-btn').forEach((b, i) => {
+    b.classList.remove('active');
+    if (i < n) b.classList.add('done');
+    else b.classList.remove('done');
+    if (i === n) b.classList.add('active');
+  });
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// LR slider
+const lrSlider = document.getElementById('lr-slider');
+const lrVal = document.getElementById('lr-val');
+lrSlider.addEventListener('input', () => { lrVal.textContent = parseFloat(lrSlider.value).toFixed(1); });
+
+// Sigmoid
+function sigmoid(x) {
+  if (x > 500) return 1;
+  if (x < -500) return 0;
+  return 1 / (1 + Math.exp(-x));
+}
+
+// Training visualization
+function runTraining() {
+  const lr = parseFloat(lrSlider.value);
+  const canvas = document.getElementById('train-canvas');
+  const ctx = canvas.getContext('2d');
+  const log = document.getElementById('train-log');
+
+  let weight = 0;
+  let bias = 0;
+  const episodes = 200;
+  const biasHistory = [bias];
+  const rewardHistory = [];
+  let logText = '';
+  let totalCorrect = 0;
+
+  for (let ep = 0; ep < episodes; ep++) {
+    const hunger = Math.random();
+    const x = hunger * weight + bias;
+    const p_norm = sigmoid(x);
+
+    const wentToNorm = Math.random() < p_norm;
+    let reward;
+    if (wentToNorm) {
+      reward = hunger > 0.5 ? 1 : -1;
+    } else {
+      reward = hunger <= 0.5 ? 1 : -1;
+    }
+    if (reward > 0) totalCorrect++;
+
+    let dC_db;
+    if (wentToNorm) {
+      dC_db = -(1 - p_norm);
+    } else {
+      dC_db = p_norm;
+    }
+    dC_db *= reward;
+
+    bias = bias - lr * dC_db;
+    biasHistory.push(bias);
+    rewardHistory.push(reward);
+
+    if (ep < 5 || ep % 20 === 19) {
+      const shop = wentToNorm ? "Norm" : "Squatch";
+      const rStr = reward > 0 ? "+1 correct" : "-1 wrong  ";
+      logText += `Ep ${String(ep+1).padStart(3)}: hunger=${hunger.toFixed(2)} → ${shop.padEnd(7)} reward=${rStr}  bias=${bias.toFixed(3)}  P(Sq)=${(1-sigmoid(hunger*weight+bias)).toFixed(3)}\n`;
+    }
+  }
+  logText += `\nFinal bias: ${bias.toFixed(3)}`;
+  logText += `\nAccuracy (last 50): ${rewardHistory.slice(-50).filter(r => r > 0).length}/50`;
+
+  // Show final decision boundary
+  const x_half = hunger => sigmoid(hunger * weight + bias);
+  logText += `\n\nFinal policy:`;
+  logText += `\n  hunger=0.0 → P(Squatch)=${(1-x_half(0)).toFixed(3)}  P(Norm)=${x_half(0).toFixed(3)}`;
+  logText += `\n  hunger=0.5 → P(Squatch)=${(1-x_half(0.5)).toFixed(3)}  P(Norm)=${x_half(0.5).toFixed(3)}`;
+  logText += `\n  hunger=1.0 → P(Squatch)=${(1-x_half(1)).toFixed(3)}  P(Norm)=${x_half(1).toFixed(3)}`;
+  log.textContent = logText;
+
+  // Draw bias over time
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = '#12122a';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  const pad = { l: 60, r: 20, t: 30, b: 40 };
+  const w = canvas.width - pad.l - pad.r;
+  const h = canvas.height - pad.t - pad.b;
+
+  // Find y range
+  const minB = Math.min(...biasHistory, -1);
+  const maxB = Math.max(...biasHistory, 1);
+  const range = maxB - minB || 1;
+
+  // Grid
+  ctx.strokeStyle = '#2a2a4a';
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const y = pad.t + (h * i / 4);
+    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(pad.l + w, y); ctx.stroke();
+    ctx.fillStyle = '#666';
+    ctx.font = '11px monospace';
+    ctx.textAlign = 'right';
+    ctx.fillText((maxB - range * i / 4).toFixed(1), pad.l - 8, y + 4);
+  }
+
+  // Zero line
+  const zeroY = pad.t + h * (maxB / range);
+  if (zeroY > pad.t && zeroY < pad.t + h) {
+    ctx.strokeStyle = '#555';
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath(); ctx.moveTo(pad.l, zeroY); ctx.lineTo(pad.l + w, zeroY); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // Bias line
+  ctx.strokeStyle = '#4fc3f7';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  for (let i = 0; i < biasHistory.length; i++) {
+    const px = pad.l + (i / episodes) * w;
+    const py = pad.t + h * ((maxB - biasHistory[i]) / range);
+    if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+  }
+  ctx.stroke();
+
+  // Reward dots
+  for (let i = 0; i < rewardHistory.length; i++) {
+    const px = pad.l + ((i + 1) / episodes) * w;
+    const py = pad.t + h * ((maxB - biasHistory[i + 1]) / range);
+    ctx.fillStyle = rewardHistory[i] > 0 ? '#4caf5088' : '#ef535088';
+    ctx.beginPath(); ctx.arc(px, py, 3, 0, Math.PI * 2); ctx.fill();
+  }
+
+  // Labels
+  ctx.fillStyle = '#4fc3f7';
+  ctx.font = 'bold 13px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('Bias value over training episodes', pad.l + w / 2, 18);
+  ctx.fillStyle = '#888';
+  ctx.font = '11px sans-serif';
+  ctx.fillText('Episode', pad.l + w / 2, canvas.height - 5);
+  ctx.save();
+  ctx.translate(14, pad.t + h / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.fillText('Bias', 0, 0);
+  ctx.restore();
+
+  // Legend
+  ctx.fillStyle = '#4caf50';
+  ctx.beginPath(); ctx.arc(pad.l + w - 160, 18, 4, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#aaa'; ctx.font = '11px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText('correct', pad.l + w - 152, 22);
+  ctx.fillStyle = '#ef5350';
+  ctx.beginPath(); ctx.arc(pad.l + w - 100, 18, 4, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#aaa';
+  ctx.fillText('wrong', pad.l + w - 92, 22);
+}
+
+// Run on load
+window.addEventListener('load', () => { runTraining(); });
+</script>
+</body>
+</html>

@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Transformer Ch2: Multi-Head Attention</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0a0a1a;color:#e0e0e0;padding:20px 20px 80px;line-height:1.7}
+h1{text-align:center;color:#fff;margin-bottom:4px;font-size:1.5em}
+.sub{text-align:center;color:#888;margin-bottom:24px;font-size:.88em}
+.nav{display:flex;justify-content:center;gap:6px;margin-bottom:20px;flex-wrap:wrap}
+.nav button{padding:7px 13px;border:2px solid #333;background:#111;color:#888;border-radius:8px;cursor:pointer;font-size:.78em;transition:.2s}
+.nav button:hover{border-color:#555;color:#ccc}
+.nav button.on{border-color:#4fc3f7;color:#4fc3f7;background:#0d2137}
+.nav button.done{border-color:#4caf50;color:#4caf50}
+.page{display:none;max-width:860px;margin:0 auto}
+.page.on{display:block}
+.page h2{color:#4fc3f7;margin-bottom:12px;font-size:1.2em}
+.card{background:#12122a;border:1px solid #2a2a4a;border-radius:12px;padding:18px;margin-bottom:14px}
+.card.blue{border-color:#4fc3f7;background:#0d1b2a}
+.card.green{border-color:#4caf50;background:#0a1a0a}
+.card.orange{border-color:#ff9800;background:#1a1400}
+.card.red{border-color:#ef5350;background:#1a0a0a}
+.card.purple{border-color:#ce93d8;background:#1a0a2a}
+.card h3{color:#ffb74d;margin-bottom:8px;font-size:1em}
+button.nx{padding:10px 24px;background:#4caf50;color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:.9em;margin-top:14px}
+button.nx:hover{background:#66bb6a}
+table{width:100%;border-collapse:collapse;margin:10px 0}
+th,td{padding:8px 12px;border:1px solid #333;text-align:center;font-size:.88em}
+th{background:#1a1a3a;color:#4fc3f7}
+td{text-align:left}
+.math{background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:14px;margin:10px 0;font-family:'Fira Code',Consolas,monospace;font-size:.85em;line-height:1.8}
+.math .line{margin:2px 0;display:block}
+.math .hl{background:#264f78;padding:2px 6px;border-radius:4px;display:inline-block}
+.math .cmt{color:#6a9955}
+.math .val{color:#b5cea8}
+.math .lbl{color:#9cdcfe}
+.key{color:#ffb74d;font-weight:600}
+.vs{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:10px 0}
+@media(max-width:650px){.vs{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<a href="../index.html" style="position:fixed;top:10px;left:14px;font-size:.75em;color:#555;text-decoration:none;z-index:999;padding:4px 8px;background:#0a0a1a;border:1px solid #333;border-radius:6px;">&larr; index</a>
+
+<h1>Transformer Ch2: Multi-Head Attention</h1>
+<p class="sub">Why one attention head isn't enough</p>
+
+<div class="nav" id="nav"></div>
+
+<!-- PAGE 0 -->
+<div class="page on" data-t="0. One Head Problem">
+<h2>0. The Problem with One Attention Head</h2>
+
+<div class="card red">
+<h3>One head, many jobs — impossible</h3>
+<p>Consider the sentence: <span class="key">"The lawyer hired the assistant who was brilliant."</span></p>
+<p style="margin-top:8px">Understanding this sentence requires tracking several <em>simultaneous</em> relationships:</p>
+</div>
+
+<table>
+<tr><th>Relationship type</th><th>Example in the sentence</th><th>Which words must attend to which?</th></tr>
+<tr><td>Subject-verb agreement</td><td>"lawyer hired"</td><td>"hired" → "lawyer" (singular subject)</td></tr>
+<tr><td>Coreference</td><td>"who" = "assistant"</td><td>"brilliant" → "assistant" (not "lawyer")</td></tr>
+<tr><td>Object identification</td><td>"hired" → "assistant"</td><td>"hired" → "assistant" (direct object)</td></tr>
+<tr><td>Relative clause</td><td>"who was brilliant"</td><td>"was" → "assistant" (relative clause head)</td></tr>
+</table>
+
+<div class="card red">
+<h3>The conflict</h3>
+<p>A single attention head produces one set of attention weights for each token. The word "was" must simultaneously:</p>
+<ul style="margin-left:16px;margin-top:8px">
+<li>Attend to "assistant" for subject agreement</li>
+<li>Attend to "hired" to understand the clause structure</li>
+<li>Attend to "brilliant" as a predicate</li>
+</ul>
+<p style="margin-top:8px">These pull in different directions. One head <span class="key">can't do them all well</span> — it has to average, and averaging is a compromise.</p>
+</div>
+
+<div class="card blue">
+<h3>Empirical evidence</h3>
+<p>When researchers visualize attention heads in BERT (12 heads per layer), they find specialization:</p>
+<ul style="margin-left:16px;margin-top:8px">
+<li>Some heads track syntactic dependencies</li>
+<li>Some heads track coreference</li>
+<li>Some heads attend mainly to adjacent tokens (local context)</li>
+<li>Some heads attend to the [CLS] token or sentence delimiters</li>
+</ul>
+<p style="margin-top:8px">This <span class="key">emerged from training</span> — the model learned to allocate different relationship types to different heads.</p>
+</div>
+
+<button class="nx" onclick="go(1)">Next: Multiple Heads →</button>
+</div>
+
+<!-- PAGE 1 -->
+<div class="page" data-t="1. Multiple Heads">
+<h2>1. Multiple Heads in Parallel</h2>
+
+<div class="card blue">
+<h3>The idea: run h attention computations in parallel</h3>
+<p>Instead of one large attention head with d_k = d_model, use <span class="key">h smaller heads</span> each with d_k = d_model / h. Total compute stays the same, but now each head can specialize.</p>
+<div class="math">
+  <span class="line"><span class="cmt">// Original paper: d_model = 512, h = 8 heads</span></span>
+  <span class="line"><span class="lbl">d_k per head</span> = <span class="val">512</span> / <span class="val">8</span> = <span class="hl">64</span></span>
+  <span class="line"><span class="cmt">// Each head sees 64 dims — parallel, specialized views</span></span>
+</div>
+</div>
+
+<div class="vs">
+<div class="card orange">
+<h3>Head 1 might learn...</h3>
+<p>Subject-verb agreement.</p>
+<p style="margin-top:8px">In "The cats <em>sleep</em>", "sleep" strongly attends to "cats" to verify plural agreement.</p>
+<p style="margin-top:8px">W_Q^(1), W_K^(1), W_V^(1) get tuned to detect noun-verb dependencies.</p>
+</div>
+<div class="card purple">
+<h3>Head 2 might learn...</h3>
+<p>Pronoun antecedents.</p>
+<p style="margin-top:8px">In "John said <em>he</em> was tired", "he" strongly attends to "John".</p>
+<p style="margin-top:8px">W_Q^(2), W_K^(2), W_V^(2) get tuned to detect coreference links.</p>
+</div>
+</div>
+
+<div class="card green">
+<h3>Each head has its own weight matrices</h3>
+<div class="math">
+  <span class="line"><span class="cmt">// For each head i from 1 to h:</span></span>
+  <span class="line"><span class="lbl">Q_i</span> = X · <span class="val">W_Q^(i)</span>   <span class="cmt">// shape: T × d_k</span></span>
+  <span class="line"><span class="lbl">K_i</span> = X · <span class="val">W_K^(i)</span>   <span class="cmt">// shape: T × d_k</span></span>
+  <span class="line"><span class="lbl">V_i</span> = X · <span class="val">W_V^(i)</span>   <span class="cmt">// shape: T × d_v</span></span>
+  <span class="line"><span class="lbl">head_i</span> = Attention(<span class="val">Q_i</span>, <span class="val">K_i</span>, <span class="val">V_i</span>)  <span class="cmt">// shape: T × d_v</span></span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// Concatenate all heads:</span></span>
+  <span class="line"><span class="lbl">concat</span> = [head_1 | head_2 | ... | head_h]  <span class="cmt">// shape: T × (h·d_v)</span></span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// Project back to d_model:</span></span>
+  <span class="line"><span class="lbl">Output</span> = concat · <span class="val">W_O</span>  <span class="cmt">// shape: T × d_model</span></span>
+</div>
+</div>
+
+<button class="nx" onclick="go(2)">Next: The Math →</button>
+</div>
+
+<!-- PAGE 2 -->
+<div class="page" data-t="2. The Math">
+<h2>2. Full Worked Example: h=2, d_model=4, d_k=2</h2>
+
+<div class="card">
+<h3>Setup</h3>
+<div class="math">
+  <span class="line"><span class="cmt">// 2 tokens, d_model = 4</span></span>
+  <span class="line"><span class="lbl">X</span> = [[<span class="val">1</span>, <span class="val">0</span>, <span class="val">1</span>, <span class="val">0</span>],   <span class="cmt">// "cat"</span></span>
+  <span class="line">      [<span class="val">0</span>, <span class="val">1</span>, <span class="val">0</span>, <span class="val">1</span>]]  <span class="cmt">// "sat"</span></span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// h = 2 heads, d_k = d_model/h = 4/2 = 2</span></span>
+  <span class="line"><span class="cmt">// Each W_Q, W_K, W_V is 4×2</span></span>
+</div>
+</div>
+
+<div class="card blue">
+<h3>Head 1 weights (4×2 each)</h3>
+<div class="math">
+  <span class="line"><span class="lbl">W_Q^(1)</span> = [[<span class="val">1</span>,<span class="val">0</span>], [<span class="val">0</span>,<span class="val">1</span>], [<span class="val">0</span>,<span class="val">0</span>], [<span class="val">0</span>,<span class="val">0</span>]]   <span class="cmt">// 4×2</span></span>
+  <span class="line"><span class="lbl">W_K^(1)</span> = [[<span class="val">0</span>,<span class="val">1</span>], [<span class="val">1</span>,<span class="val">0</span>], [<span class="val">0</span>,<span class="val">0</span>], [<span class="val">0</span>,<span class="val">0</span>]]   <span class="cmt">// 4×2</span></span>
+  <span class="line"><span class="lbl">W_V^(1)</span> = [[<span class="val">1</span>,<span class="val">0</span>], [<span class="val">0</span>,<span class="val">1</span>], [<span class="val">0</span>,<span class="val">0</span>], [<span class="val">0</span>,<span class="val">0</span>]]   <span class="cmt">// 4×2</span></span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// Q1 = X · W_Q^(1)</span></span>
+  <span class="line"><span class="lbl">q1_cat</span> = [<span class="val">1</span>·<span class="val">1</span>+<span class="val">0</span>·<span class="val">0</span>+<span class="val">1</span>·<span class="val">0</span>+<span class="val">0</span>·<span class="val">0</span>, <span class="val">1</span>·<span class="val">0</span>+<span class="val">0</span>·<span class="val">1</span>+<span class="val">1</span>·<span class="val">0</span>+<span class="val">0</span>·<span class="val">0</span>] = [<span class="hl">1</span>, <span class="hl">0</span>]</span>
+  <span class="line"><span class="lbl">q1_sat</span> = [<span class="val">0</span>·<span class="val">1</span>+<span class="val">1</span>·<span class="val">0</span>+<span class="val">0</span>·<span class="val">0</span>+<span class="val">1</span>·<span class="val">0</span>, <span class="val">0</span>·<span class="val">0</span>+<span class="val">1</span>·<span class="val">1</span>+<span class="val">0</span>·<span class="val">0</span>+<span class="val">1</span>·<span class="val">0</span>] = [<span class="hl">0</span>, <span class="hl">1</span>]</span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// K1, V1 computed similarly (same as ch1 example)</span></span>
+  <span class="line"><span class="lbl">K1</span> = [[<span class="val">0</span>,<span class="val">1</span>],[<span class="val">1</span>,<span class="val">0</span>]],  <span class="lbl">V1</span> = [[<span class="val">1</span>,<span class="val">0</span>],[<span class="val">0</span>,<span class="val">1</span>]]</span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// Attention scores (Q1·K1^T / sqrt(2)):</span></span>
+  <span class="line"><span class="lbl">scores1</span> = [[<span class="val">0</span>,<span class="val">1</span>],[<span class="val">1</span>,<span class="val">0</span>]] / <span class="val">1.414</span> = [[<span class="val">0.00</span>,<span class="val">0.71</span>],[<span class="val">0.71</span>,<span class="val">0.00</span>]]</span>
+  <span class="line"><span class="lbl">attn1</span>   = softmax → [[<span class="val">0.33</span>,<span class="val">0.67</span>],[<span class="val">0.67</span>,<span class="val">0.33</span>]]</span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// head1 = attn1 · V1:</span></span>
+  <span class="line"><span class="lbl">head1_cat</span> = <span class="val">0.33</span>·[<span class="val">1</span>,<span class="val">0</span>] + <span class="val">0.67</span>·[<span class="val">0</span>,<span class="val">1</span>] = [<span class="hl">0.33</span>, <span class="hl">0.67</span>]</span>
+  <span class="line"><span class="lbl">head1_sat</span> = <span class="val">0.67</span>·[<span class="val">1</span>,<span class="val">0</span>] + <span class="val">0.33</span>·[<span class="val">0</span>,<span class="val">1</span>] = [<span class="hl">0.67</span>, <span class="hl">0.33</span>]</span>
+</div>
+</div>
+
+<div class="card purple">
+<h3>Head 2 weights (different — different relationship learned)</h3>
+<div class="math">
+  <span class="line"><span class="lbl">W_Q^(2)</span> = [[<span class="val">0</span>,<span class="val">0</span>], [<span class="val">0</span>,<span class="val">0</span>], [<span class="val">1</span>,<span class="val">0</span>], [<span class="val">0</span>,<span class="val">1</span>]]</span>
+  <span class="line"><span class="lbl">W_K^(2)</span> = [[<span class="val">0</span>,<span class="val">0</span>], [<span class="val">0</span>,<span class="val">0</span>], [<span class="val">1</span>,<span class="val">0</span>], [<span class="val">0</span>,<span class="val">1</span>]]</span>
+  <span class="line"><span class="lbl">W_V^(2)</span> = [[<span class="val">0</span>,<span class="val">0</span>], [<span class="val">0</span>,<span class="val">0</span>], [<span class="val">0</span>,<span class="val">1</span>], [<span class="val">1</span>,<span class="val">0</span>]]</span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// Q2 = X · W_Q^(2):</span></span>
+  <span class="line"><span class="lbl">q2_cat</span> = [<span class="val">1</span>·<span class="val">0</span>+<span class="val">0</span>·<span class="val">0</span>+<span class="val">1</span>·<span class="val">1</span>+<span class="val">0</span>·<span class="val">0</span>, <span class="val">1</span>·<span class="val">0</span>+<span class="val">0</span>·<span class="val">0</span>+<span class="val">1</span>·<span class="val">0</span>+<span class="val">0</span>·<span class="val">1</span>] = [<span class="hl">1</span>, <span class="hl">0</span>]</span>
+  <span class="line"><span class="lbl">q2_sat</span> = [<span class="val">0</span>+<span class="val">0</span>+<span class="val">0</span>·<span class="val">1</span>+<span class="val">1</span>·<span class="val">0</span>, <span class="val">0</span>+<span class="val">0</span>+<span class="val">0</span>·<span class="val">0</span>+<span class="val">1</span>·<span class="val">1</span>] = [<span class="hl">0</span>, <span class="hl">1</span>]</span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// K2, V2 computed similarly:</span></span>
+  <span class="line"><span class="lbl">K2</span> = [[<span class="val">1</span>,<span class="val">0</span>],[<span class="val">0</span>,<span class="val">1</span>]],  <span class="lbl">V2</span> = [[<span class="val">0</span>,<span class="val">1</span>],[<span class="val">1</span>,<span class="val">0</span>]]</span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// Scores for head 2: q2·K2^T</span></span>
+  <span class="line"><span class="lbl">scores2[0][0]</span> = q2_cat·k2_cat = <span class="val">1</span>·<span class="val">1</span>+<span class="val">0</span>·<span class="val">0</span> = <span class="hl">1</span>  <span class="cmt">// cat→cat</span></span>
+  <span class="line"><span class="lbl">scores2[0][1]</span> = q2_cat·k2_sat = <span class="val">1</span>·<span class="val">0</span>+<span class="val">0</span>·<span class="val">1</span> = <span class="hl">0</span>  <span class="cmt">// cat→sat</span></span>
+  <span class="line"><span class="lbl">attn2</span>   = softmax → [[<span class="val">0.67</span>,<span class="val">0.33</span>],[<span class="val">0.33</span>,<span class="val">0.67</span>]]</span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// head2 = attn2 · V2:</span></span>
+  <span class="line"><span class="lbl">head2_cat</span> = <span class="val">0.67</span>·[<span class="val">0</span>,<span class="val">1</span>] + <span class="val">0.33</span>·[<span class="val">1</span>,<span class="val">0</span>] = [<span class="hl">0.33</span>, <span class="hl">0.67</span>]</span>
+  <span class="line"><span class="lbl">head2_sat</span> = <span class="val">0.33</span>·[<span class="val">0</span>,<span class="val">1</span>] + <span class="val">0.67</span>·[<span class="val">1</span>,<span class="val">0</span>] = [<span class="hl">0.67</span>, <span class="hl">0.33</span>]</span>
+</div>
+<p style="margin-top:8px">Head 2 attends mostly to itself (diagonal pattern), while head 1 attends cross-token. Two different relationships captured simultaneously.</p>
+</div>
+
+<div class="card green">
+<h3>Concatenate and project</h3>
+<div class="math">
+  <span class="line"><span class="cmt">// Concatenate head1 and head2 (dimension 2+2=4 = d_model):</span></span>
+  <span class="line"><span class="lbl">concat_cat</span> = [head1_cat | head2_cat] = [<span class="val">0.33</span>, <span class="val">0.67</span>, <span class="val">0.33</span>, <span class="val">0.67</span>]</span>
+  <span class="line"><span class="lbl">concat_sat</span> = [head1_sat | head2_sat] = [<span class="val">0.67</span>, <span class="val">0.33</span>, <span class="val">0.67</span>, <span class="val">0.33</span>]</span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// Project back to d_model=4 with W_O (4×4):</span></span>
+  <span class="line"><span class="lbl">W_O</span> = identity for simplicity</span>
+  <span class="line"><span class="lbl">output_cat</span> = [<span class="hl">0.33</span>, <span class="hl">0.67</span>, <span class="hl">0.33</span>, <span class="hl">0.67</span>]  <span class="cmt">// shape: 4 = d_model</span></span>
+  <span class="line"><span class="lbl">output_sat</span> = [<span class="hl">0.67</span>, <span class="hl">0.33</span>, <span class="hl">0.67</span>, <span class="hl">0.33</span>]  <span class="cmt">// shape: 4 = d_model</span></span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// W_O mixes information from all heads → holistic representation</span></span>
+</div>
+</div>
+
+<button class="nx" onclick="go(3)">Next: Summary →</button>
+</div>
+
+<!-- PAGE 3 -->
+<div class="page" data-t="3. Summary">
+<h2>3. Summary and Parameter Count</h2>
+
+<div class="card blue">
+<h3>The formula</h3>
+<div class="math">
+  <span class="line"><span class="lbl">head_i</span>    = Attention(X·<span class="val">W_Q^i</span>, X·<span class="val">W_K^i</span>, X·<span class="val">W_V^i</span>)</span>
+  <span class="line"><span class="lbl">MHA(X)</span>    = [head_1 | ... | head_h] · <span class="val">W_O</span></span>
+</div>
+</div>
+
+<div class="card orange">
+<h3>Parameter count for one MHA block</h3>
+<div class="math">
+  <span class="line"><span class="cmt">// For each head: 3 weight matrices of shape d_model × d_k</span></span>
+  <span class="line"><span class="lbl">params per head</span> = 3 × d_model × d_k</span>
+  <span class="line"><span class="cmt">// Plus the output projection: (h × d_v) × d_model = d_model × d_model</span></span>
+  <span class="line"><span class="lbl">W_O params</span> = d_model × d_model</span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// Total for all h heads + W_O:</span></span>
+  <span class="line"><span class="lbl">total</span> = h × (3 × d_model × d_k) + d_model²</span>
+  <span class="line"><span class="cmt">// Since d_k = d_model / h:</span></span>
+  <span class="line"><span class="lbl">total</span> = h × (3 × d_model × (d_model/h)) + d_model²</span>
+  <span class="line">       = 3 × d_model² + d_model²</span>
+  <span class="line">       = <span class="hl">4 × d_model²</span></span>
+</div>
+</div>
+
+<div class="card green">
+<h3>Concrete: GPT-3 style (h=96, d_model=12288)</h3>
+<div class="math">
+  <span class="line"><span class="cmt">// One MHA block:</span></span>
+  <span class="line"><span class="lbl">params</span> = 4 × <span class="val">12288</span>² = 4 × <span class="val">150,994,944</span> = <span class="hl">~604M</span></span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// Original paper (h=8, d_model=512):</span></span>
+  <span class="line"><span class="lbl">params</span> = 4 × <span class="val">512</span>² = 4 × <span class="val">262,144</span> = <span class="hl">~1M</span></span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// Breakdown for original paper (h=8, d_k=64):</span></span>
+  <span class="line"><span class="lbl">W_Q</span> × 8 heads = 8 × <span class="val">512</span>×<span class="val">64</span> = <span class="val">262,144</span></span>
+  <span class="line"><span class="lbl">W_K</span> × 8 heads = 8 × <span class="val">512</span>×<span class="val">64</span> = <span class="val">262,144</span></span>
+  <span class="line"><span class="lbl">W_V</span> × 8 heads = 8 × <span class="val">512</span>×<span class="val">64</span> = <span class="val">262,144</span></span>
+  <span class="line"><span class="lbl">W_O</span>           = <span class="val">512</span>×<span class="val">512</span>      = <span class="val">262,144</span></span>
+  <span class="line"><span class="lbl">Total</span>         =                  <span class="hl">1,048,576 ≈ 1M</span></span>
+</div>
+</div>
+
+<table>
+<tr><th>Symbol</th><th>Shape</th><th>Meaning</th></tr>
+<tr><td><span class="key">h</span></td><td>scalar</td><td>Number of heads (8 in original, 96 in GPT-3)</td></tr>
+<tr><td><span class="key">d_model</span></td><td>scalar</td><td>Model dimension (512 original, 12288 GPT-3)</td></tr>
+<tr><td><span class="key">d_k</span></td><td>scalar</td><td>Key/Query dim per head = d_model / h</td></tr>
+<tr><td><span class="key">d_v</span></td><td>scalar</td><td>Value dim per head = d_model / h (usually same as d_k)</td></tr>
+<tr><td><span class="key">W_Q^i, W_K^i, W_V^i</span></td><td>d_model × d_k</td><td>Per-head projection matrices (learned)</td></tr>
+<tr><td><span class="key">W_O</span></td><td>h·d_v × d_model</td><td>Output projection — mixes head outputs</td></tr>
+</table>
+
+<div class="card green">
+<h3>Why multi-head is strictly better</h3>
+<p>It's not just "more parameters". The key insight is that <span class="key">different heads operate in different subspaces</span> of the embedding. Head 1's W_Q projects into a 64-dim subspace optimized for syntactic queries. Head 2's W_Q projects into a different 64-dim subspace optimized for semantic queries. W_O then fuses all these parallel views into one coherent output.</p>
+</div>
+</div>
+
+<script>
+const pages=document.querySelectorAll('.page'),nav=document.getElementById('nav');
+pages.forEach((p,i)=>{const b=document.createElement('button');b.textContent=p.dataset.t;b.onclick=()=>go(i);if(i===0)b.classList.add('on');nav.appendChild(b);});
+function go(n){pages.forEach((p,i)=>p.classList.toggle('on',i===n));nav.querySelectorAll('button').forEach((b,i)=>{b.classList.remove('on');if(i<n)b.classList.add('done');else b.classList.remove('done');if(i===n)b.classList.add('on');});window.scrollTo({top:0,behavior:'smooth'});}
+</script>
+</body>
+</html>

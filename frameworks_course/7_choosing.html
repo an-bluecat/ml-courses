@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Choosing — the 2026 use-case map</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0a0a1a;color:#e0e0e0;padding:20px 20px 80px;line-height:1.7}
+h1{text-align:center;color:#fff;margin-bottom:4px;font-size:1.5em}
+.sub{text-align:center;color:#888;margin-bottom:24px;font-size:.88em}
+.nav{display:flex;justify-content:center;gap:6px;margin-bottom:20px;flex-wrap:wrap}
+.nav button{padding:7px 13px;border:2px solid #333;background:#111;color:#888;border-radius:8px;cursor:pointer;font-size:.78em;transition:.2s}
+.nav button:hover{border-color:#555;color:#ccc}
+.nav button.on{border-color:#4fc3f7;color:#4fc3f7;background:#0d2137}
+.nav button.done{border-color:#4caf50;color:#4caf50}
+.page{display:none;max-width:880px;margin:0 auto}
+.page.on{display:block}
+.page h2{color:#4fc3f7;margin-bottom:12px;font-size:1.2em}
+.card{background:#12122a;border:1px solid #2a2a4a;border-radius:12px;padding:18px;margin-bottom:14px}
+.card.blue{border-color:#4fc3f7;background:#0d1b2a}
+.card.green{border-color:#4caf50;background:#0a1a0a}
+.card.orange{border-color:#ff9800;background:#1a1400}
+.card.red{border-color:#ef5350;background:#1a0a0a}
+.card.purple{border-color:#ce93d8;background:#1a0a2a}
+.card h3{color:#ffb74d;margin-bottom:8px;font-size:1em}
+button.nx{padding:10px 24px;background:#4caf50;color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:.9em;margin-top:14px}
+button.nx:hover{background:#66bb6a}
+a.nx{display:inline-block;padding:10px 24px;background:#4caf50;color:#000;border-radius:8px;font-weight:700;font-size:.9em;margin-top:14px;text-decoration:none}
+table{width:100%;border-collapse:collapse;margin:10px 0}
+th,td{padding:8px 10px;border:1px solid #333;text-align:left;font-size:.84em}
+th{background:#1a1a3a;color:#4fc3f7}
+.math{background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:14px;margin:10px 0;font-family:'Fira Code',Consolas,monospace;font-size:.84em;line-height:1.8;overflow-x:auto}
+.math .line{margin:2px 0;display:block;white-space:pre}
+.math .cmt{color:#6a9955}
+.math .val{color:#b5cea8}
+.math .lbl{color:#9cdcfe}
+.math .kw{color:#c586c0}
+.math .fn{color:#dcdcaa}
+.math.out{border-left:3px solid #4caf50;background:#0d1a12}
+.outlabel{display:block;font-size:.72em;color:#4caf50;letter-spacing:.08em;text-transform:uppercase;margin-bottom:6px}
+.key{color:#ffb74d;font-weight:600}
+.inline{font-family:'Fira Code',Consolas,monospace;background:#1a1a2e;border:1px solid #333;border-radius:4px;padding:1px 6px;font-size:.86em;color:#9cdcfe}
+.faded{color:#888;font-size:.86em}
+ul{margin-left:20px;margin-top:6px}
+li{margin:4px 0}
+details{margin-top:12px}
+details summary{cursor:pointer;color:#888;font-size:.85em;padding:8px 12px;background:#12122a;border:1px solid #333;border-radius:8px}
+details summary:hover{color:#ccc;border-color:#555}
+details[open] summary{color:#4fc3f7;border-color:#4fc3f7}
+.fw{display:inline-block;font-weight:700;padding:1px 8px;border-radius:4px;font-size:.82em;border:1px solid}
+.fw.np{color:#4fc3f7;border-color:rgba(79,195,247,.4);background:rgba(79,195,247,.08)}
+.fw.tf{color:#ff9800;border-color:rgba(255,152,0,.4);background:rgba(255,152,0,.08)}
+.fw.pt{color:#ef5350;border-color:rgba(239,83,80,.4);background:rgba(239,83,80,.08)}
+.fw.jx{color:#ce93d8;border-color:rgba(206,147,216,.4);background:rgba(206,147,216,.08)}
+</style>
+</head>
+<body>
+<a href="../index.html" style="position:fixed;top:10px;left:14px;font-size:.75em;color:#555;text-decoration:none;z-index:999;padding:4px 8px;background:#0a0a1a;border:1px solid #333;border-radius:6px;">&larr; index</a>
+
+<h1><span style="font-size:.7em;vertical-align:middle;color:#ff9800;border:1px solid rgba(255,152,0,.4);border-radius:4px;padding:1px 8px;background:rgba(255,152,0,.08);font-weight:700">Part 2</span> Choosing — the 2026 use-case map</h1>
+<p class="sub">Hardware, deployment, scale, interop — where each framework actually earns its keep. Everything dated July 2026, sourced.</p>
+
+<div class="nav" id="nav"></div>
+
+<!-- PAGE 0 -->
+<div class="page on" data-t="0. Hardware">
+<h2>Frameworks are half software, half hardware alliance</h2>
+
+<div class="card">
+<h3>The 2026 hardware map</h3>
+<table>
+<tr><th>Silicon</th><th><span class="fw pt">PyTorch</span></th><th><span class="fw jx">JAX</span></th><th><span class="fw tf">TF</span></th></tr>
+<tr><td><span class="key">NVIDIA GPUs</span> (the default world)</td><td>first-class, co-designed — torch.compile emits Triton kernels; day-1 support for new architectures</td><td>first-class and growing — NVIDIA ships official JAX containers, runs CI on Blackwell; MaxText trains at NVFP4 4-bit on B200s</td><td>supported, no longer the showcase</td></tr>
+<tr><td><span class="key">Google TPUs</span> (Ironwood GA Apr 2026; 8th gen announced)</td><td>possible: torch/xla; notably vLLM's TPU backend lowers PyTorch <em>through JAX</em></td><td><span class="key">native home</span> — the reason JAX exists</td><td>the original tenant; still served</td></tr>
+<tr><td>AMD ROCm</td><td>supported (foundation member)</td><td>supported (AMD publishes JAX/MaxText guides)</td><td>weak</td></tr>
+<tr><td>Apple silicon (this laptop)</td><td><span class="key">MPS backend</span> — real: <span class="inline">mps available: True</span>, ops expanding each release</td><td>dead — jax-metal unmaintained; CPU only</td><td>plugin exists, dated</td></tr>
+<tr><td>Amazon Trainium, etc.</td><td>via torch-neuronx</td><td>via OpenXLA path</td><td>legacy paths</td></tr>
+</table>
+<p>The deep pattern: <span class="key">PyTorch is wedded to the CUDA ecosystem, JAX to the XLA/TPU ecosystem</span> — and each is courting the other's hardware through the compiler layer (OpenXLA/StableHLO as the shared IR). Your hardware often chooses your framework before you do: TPU shop → JAX; CUDA cluster → PyTorch; a MacBook → PyTorch (MPS) or NumPy.</p>
+</div>
+
+<div class="card blue">
+<h3>Kernels, when the library isn't enough</h3>
+<p>Custom-kernel escape hatches mirror the alliance: <span class="fw pt">torch</span> → <span class="key">Triton</span> (write Python-ish tiles, get GPU kernels — also what Inductor generates); <span class="fw jx">jax</span> → <span class="key">Pallas</span> (same idea, lowers to Triton on GPU and Mosaic on TPU). Both exist because the era of hand-written CUDA C++ for every idea (FlashAttention's origin story) didn't scale to the research population.</p>
+</div>
+<button class="nx" onclick="go(1)">Next: deployment paths</button>
+</div>
+
+<!-- PAGE 1 -->
+<div class="page" data-t="1. Deployment">
+<h2>Getting a model OUT of Python, 2026 edition</h2>
+
+<div class="card">
+<h3>Match the target to the path</h3>
+<table>
+<tr><th>Target</th><th>Best 2026 path</th><th>Notes</th></tr>
+<tr><td>LLM serving on GPUs</td><td><span class="key">vLLM / SGLang</span> (PyTorch world)</td><td>the de facto standard; PagedAttention, continuous batching; serve models from any training stack via safetensors weights</td></tr>
+<tr><td>Android / embedded</td><td><span class="key">LiteRT</span> (né TFLite, Google AI Edge)</td><td>the 2.7-billion-device incumbent — and now converts from PyTorch and JAX, not just TF</td></tr>
+<tr><td>PyTorch-native mobile/edge</td><td><span class="key">ExecuTorch 1.0</span> (GA Oct 2025)</td><td>built on torch.export; Arm/Qualcomm backends; the young challenger</td></tr>
+<tr><td>C++ server, no Python</td><td>torch.export + <span class="key">AOTInductor</span> → .so; or TF SavedModel + TF Serving</td><td>TorchScript is deprecated (2.10) and TorchServe archived — don't start new work on them</td></tr>
+<tr><td>Browser</td><td>TF.js (frozen) or ONNX Runtime Web</td><td>the one niche where TF's artifact still has no real heir</td></tr>
+<tr><td>TPU serving</td><td>jax.export / AOT compilation</td><td>server-side only; strong version-compat guarantees (StableHLO)</td></tr>
+</table>
+<p>The historical irony: <span class="key">TF's "graph as artifact" thesis won completely</span> — every framework now exports a compiled, Python-free artifact — just as TF itself stopped being the place you'd build the model.</p>
+</div>
+
+<div class="card orange">
+<h3>Weights became the real interchange format</h3>
+<p>Note what actually travels between systems in 2026: not graphs — <span class="key">weights</span> (safetensors files) plus architecture code reimplemented per framework. Llama weights train in PyTorch, serve in vLLM, quantize into LiteRT, get ported to MaxText/JAX. The model IS the checkpoint; the program is rewritten per venue. This is why Chapter 6's "state as data" perspective matters beyond JAX.</p>
+</div>
+<button class="nx" onclick="go(2)">Next: training at scale</button>
+</div>
+
+<!-- PAGE 2 -->
+<div class="page" data-t="2. Scale">
+<h2>Distributed training: libraries vs the compiler</h2>
+
+<div class="card">
+<h3>Two philosophies, one goal</h3>
+<table>
+<tr><th></th><th><span class="fw pt">PyTorch: explicit libraries</span></th><th><span class="fw jx">JAX: compiler partitioning</span></th></tr>
+<tr><td>data parallel</td><td>DDP — replicate, all-reduce grads</td><td rowspan="3">annotate array shardings on a device mesh; <span class="key">GSPMD/Shardy propagates</span> and inserts collectives (you ran the 8-device demo in Ch. 4); <span class="inline">shard_map</span> for manual control</td></tr>
+<tr><td>shard params/optimizer</td><td>FSDP2 — per-parameter sharding on DTensor</td></tr>
+<tr><td>tensor/pipeline/4-D</td><td>DTensor + torchtitan reference stack</td></tr>
+<tr><td>reference LLM stack</td><td>torchtitan (Llama-class demos on 512+ H100s)</td><td>MaxText (TPU + GPU)</td></tr>
+<tr><td>character</td><td>imperative: you place, wrap, and schedule</td><td>declarative: you describe placement, the compiler schedules</td></tr>
+<tr><td><span class="fw tf">TF?</span></td><td colspan="2">tf.distribute strategies unchanged for years; DTensor-for-TF experimental and being removed — no new frontier runs publicly attribute to TF</td></tr>
+</table>
+</div>
+
+<div class="card green">
+<h3>Who actually trains what on what (public, sourced)</h3>
+<table>
+<tr><th>Model / org</th><th>Stack</th></tr>
+<tr><td>Meta Llama 3 family</td><td><span class="fw pt">PyTorch</span> + FSDP on 2 × 24,576-H100 clusters (Llama 3.1 405B: ~16k H100)</td></tr>
+<tr><td>OpenAI</td><td>standardized on <span class="fw pt">PyTorch</span> (Jan 2020, official); current internals not public</td></tr>
+<tr><td>Google Gemini</td><td><span class="fw jx">JAX</span> + ML Pathways on TPU pods (model cards)</td></tr>
+<tr><td>Apple foundation models</td><td>AXLearn (<span class="fw jx">JAX</span>/XLA), 8,192 TPUv4 for the server model (their paper)</td></tr>
+<tr><td>xAI Grok-1</td><td>custom <span class="fw jx">JAX</span> + Rust stack (release notes); later stack not public</td></tr>
+<tr><td>Anthropic Claude</td><td>multi-hardware — TPUs (up to ~1M-chip deal, 2025), Trainium, NVIDIA; Claude 3 model card lists PyTorch, JAX &amp; Triton</td></tr>
+<tr><td>the open-model long tail</td><td>overwhelmingly <span class="fw pt">PyTorch</span> (HF Transformers v5 is PyTorch-only)</td></tr>
+</table>
+<p class="faded">Clean split: <span class="key">GPU world trains on PyTorch; TPU world trains on JAX</span>; the biggest labs hedge across both.</p>
+</div>
+<button class="nx" onclick="go(3)">Next: interop &amp; the decision table</button>
+</div>
+
+<!-- PAGE 3 -->
+<div class="page" data-t="3. Decide">
+<h2>You rarely have to marry one — then decide anyway</h2>
+
+<div class="card blue">
+<h3>The escape hatches, proven live</h3>
+<p><span class="key">Zero-copy tensor exchange (DLPack)</span> — all four share buffers without copying:</p>
+<div class="math out"><span class="outlabel">output — real run</span>
+<span class="line">torch.from_numpy shares the buffer: npa = [99.  1.  2.  3.]  &lt;- torch write visible in numpy</span>
+<span class="line">jax -> torch via dlpack: tensor([0., 1., 2., 3.])</span>
+<span class="line">torch -> jax via dlpack: [0. 1. 2. 3.]</span>
+</div>
+<p><span class="key">One Keras model, three engines</span> — the same script, changing only <span class="inline">KERAS_BACKEND</span>:</p>
+<div class="math out"><span class="outlabel">output — real run, same file, three processes</span>
+<span class="line">backend=tensorflow   final loss=0.000042 preds=[0.01 0.99 0.99 0.01]</span>
+<span class="line">backend=jax          final loss=0.000079 preds=[0.01 0.99 0.99 0.01]</span>
+<span class="line">backend=torch        final loss=0.000064 preds=[0.01 0.99 0.99 0.01]</span>
+</div>
+<p>All three learned XOR (losses differ slightly — different backend RNG streams, same recipe). Add the <span class="key">Array API standard</span> (write array code once, run on numpy/torch/jax/cupy — scikit-learn now does this) and <span class="key">safetensors weights</span>, and lock-in is at an all-time low.</p>
+</div>
+
+<div class="card">
+<h3>The decision table, 2026</h3>
+<table>
+<tr><th>You are…</th><th>Use</th><th>Because</th></tr>
+<tr><td>fine-tuning / serving open LLMs</td><td><span class="fw pt">PyTorch</span> (+ vLLM)</td><td>the entire tooling universe assumes it</td></tr>
+<tr><td>doing applied DL, product ML, research with the community</td><td><span class="fw pt">PyTorch</span></td><td>default ecosystem, hiring pool, debuggability</td></tr>
+<tr><td>on TPUs / at a frontier-scale lab</td><td><span class="fw jx">JAX</span></td><td>compiler-driven scaling is the whole game</td></tr>
+<tr><td>doing differentiable science, meta-learning, per-sample-grad work</td><td><span class="fw jx">JAX</span> (or torch.func)</td><td>transformations are the native idiom</td></tr>
+<tr><td>shipping to billions of Android/edge devices</td><td>train anywhere → <span class="fw tf">LiteRT</span></td><td>the install base; conversion now accepts all frameworks</td></tr>
+<tr><td>maintaining an existing TF production system</td><td><span class="fw tf">TF</span></td><td>it works; migrate on your schedule, not Twitter's</td></tr>
+<tr><td>preprocessing, metrics, classical ML, glue</td><td><span class="fw np">NumPy</span> (+ pandas/sklearn)</td><td>simplest correct tool; everything interops with it</td></tr>
+<tr><td>writing a library for <em>all</em> users</td><td>Array API + Keras 3 / framework-neutral core</td><td>let callers bring their engine</td></tr>
+</table>
+</div>
+
+<div class="card purple">
+<h3>What should <em>you</em> learn, in order (2026)?</h3>
+<ul>
+<li><span class="key">NumPy deeply</span> — it's the grammar of the other three (you're most of the way there after Chapter 1).</li>
+<li><span class="key">PyTorch as your daily driver</span> — every job posting, paper and library assumes it.</li>
+<li><span class="key">JAX as your second language</span> — it teaches the functional/compiler mental model that PyTorch itself is drifting toward (torch.func, compile), and it's the ticket to TPU-scale work. Part 3 finishes this.</li>
+<li><span class="key">TF as reading knowledge</span> — enough to maintain legacy systems and export to LiteRT; don't start new projects in it without a reason.</li>
+</ul>
+<p>Part 2 complete. Now we stop comparing and start building.</p>
+</div>
+<a class="nx" href="8_autodiff_from_scratch.html">Part 3 begins: build the engine yourself →</a>
+</div>
+
+<script>
+const pages=document.querySelectorAll('.page'),nav=document.getElementById('nav');
+pages.forEach((p,i)=>{
+  const b=document.createElement('button');
+  b.textContent=p.dataset.t;
+  b.onclick=()=>go(i);
+  if(i===0)b.classList.add('on');
+  nav.appendChild(b);
+});
+function go(n){
+  pages.forEach((p,i)=>p.classList.toggle('on',i===n));
+  nav.querySelectorAll('button').forEach((b,i)=>{
+    b.classList.remove('on');
+    if(i<n)b.classList.add('done');
+    else b.classList.remove('done');
+    if(i===n)b.classList.add('on');
+  });
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+</script>
+</body>
+</html>

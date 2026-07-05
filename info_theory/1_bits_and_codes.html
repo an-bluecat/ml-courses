@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chapter 1: Bits and Codes</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0a0a1a;color:#e0e0e0;padding:20px 20px 80px;line-height:1.7}
+h1{text-align:center;color:#fff;margin-bottom:4px;font-size:1.5em}
+.sub{text-align:center;color:#888;margin-bottom:24px;font-size:.88em}
+.nav{display:flex;justify-content:center;gap:6px;margin-bottom:20px;flex-wrap:wrap}
+.nav button{padding:7px 13px;border:2px solid #333;background:#111;color:#888;border-radius:8px;cursor:pointer;font-size:.78em;transition:.2s}
+.nav button:hover{border-color:#555;color:#ccc}
+.nav button.on{border-color:#4fc3f7;color:#4fc3f7;background:#0d2137}
+.nav button.done{border-color:#4caf50;color:#4caf50}
+.page{display:none;max-width:860px;margin:0 auto}
+.page.on{display:block}
+.page h2{color:#4fc3f7;margin-bottom:12px;font-size:1.2em}
+.card{background:#12122a;border:1px solid #2a2a4a;border-radius:12px;padding:18px;margin-bottom:14px}
+.card.blue{border-color:#4fc3f7;background:#0d1b2a}
+.card.green{border-color:#4caf50;background:#0a1a0a}
+.card.orange{border-color:#ff9800;background:#1a1400}
+.card.purple{border-color:#ce93d8;background:#1a0a2a}
+.card h3{color:#ffb74d;margin-bottom:8px;font-size:1em}
+button.nx{padding:10px 24px;background:#4caf50;color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:.9em;margin-top:14px}
+button.nx:hover{background:#66bb6a}
+table{width:100%;border-collapse:collapse;margin:10px 0}
+th,td{padding:8px 12px;border:1px solid #333;text-align:center;font-size:.88em}
+th{background:#1a1a3a;color:#4fc3f7}
+.math{background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:14px;margin:10px 0;font-family:'Fira Code',monospace;font-size:.85em;line-height:1.8}
+.math .line{margin:2px 0}
+.math .hl{background:#264f78;padding:2px 6px;border-radius:4px;display:inline-block}
+.math .cmt{color:#6a9955}
+.math .val{color:#b5cea8}
+.math .lbl{color:#9cdcfe}
+.key{color:#ffb74d;font-weight:600}
+</style>
+</head>
+<body>
+<a href="../index.html" style="position:fixed;top:10px;left:14px;font-size:.75em;color:#555;text-decoration:none;z-index:999;padding:4px 8px;background:#0a0a1a;border:1px solid #333;border-radius:6px;">&larr; index</a>
+<h1>Chapter 1: Bits and Codes</h1>
+<p class="sub">How to send messages with 0s and 1s — and why some codes are better than others</p>
+<p style="max-width:860px;margin:0 auto 16px;font-size:.82em;color:#666;text-align:center">Based on <a href="https://colah.github.io/posts/2015-09-Visual-Information/" style="color:#4fc3f7" target="_blank">Visual Information Theory — colah's blog</a></p>
+
+<div class="nav" id="nav"></div>
+
+<!-- PAGE 0 -->
+<div class="page on" data-t="0. The Problem">
+<h2>You Need to Send a Message</h2>
+<div class="card blue">
+<h3>Setup</h3>
+<p>Bob talks about 4 animals: <strong>dog, cat, fish, bird</strong>. He sends you one animal name at a time over a wire. The wire can only carry <strong>0s and 1s</strong>. You need a code to translate animals into binary.</p>
+</div>
+
+<div class="card">
+<h3>Simplest code: give every animal the same length</h3>
+<p>4 animals → need 2 bits to tell them apart (2 bits = 4 combinations):</p>
+<table>
+<tr><th>Animal</th><th>Code</th><th>Length</th></tr>
+<tr><td>dog</td><td style="font-family:monospace">00</td><td>2 bits</td></tr>
+<tr><td>cat</td><td style="font-family:monospace">01</td><td>2 bits</td></tr>
+<tr><td>fish</td><td style="font-family:monospace">10</td><td>2 bits</td></tr>
+<tr><td>bird</td><td style="font-family:monospace">11</td><td>2 bits</td></tr>
+</table>
+<p>Every message costs 2 bits. Simple. But can we do better?</p>
+</div>
+
+<div class="card orange">
+<h3>Bob talks about dogs A LOT</h3>
+<div style="display:flex;align-items:flex-end;gap:30px;margin:16px 0;flex-wrap:wrap">
+  <!-- Stacked bar -->
+  <div style="display:flex;flex-direction:column;width:120px">
+    <div style="font-size:.75em;color:#888;display:flex;align-items:center;height:0"><span style="position:relative;left:-30px">p(x)</span></div>
+    <div style="background:#c8b4e8;height:160px;display:flex;align-items:center;justify-content:center;font-weight:700;color:#333;border:1px solid #a89cc8;border-radius:4px 4px 0 0;position:relative">
+      "dog"
+      <span style="position:absolute;left:-32px;font-size:.8em;color:#ccc">1/2</span>
+    </div>
+    <div style="background:#a8c8e8;height:80px;display:flex;align-items:center;justify-content:center;font-weight:700;color:#333;border:1px solid #88a8c8;position:relative">
+      "cat"
+      <span style="position:absolute;left:-32px;font-size:.8em;color:#ccc">1/4</span>
+    </div>
+    <div style="background:#e8d888;height:40px;display:flex;align-items:center;justify-content:center;font-weight:700;color:#333;font-size:.85em;border:1px solid #c8b868;position:relative">
+      "fish"
+      <span style="position:absolute;left:-32px;font-size:.8em;color:#ccc">1/8</span>
+    </div>
+    <div style="background:#a8e8a8;height:40px;display:flex;align-items:center;justify-content:center;font-weight:700;color:#333;font-size:.85em;border:1px solid #88c888;border-radius:0 0 4px 4px;position:relative">
+      "bird"
+      <span style="position:absolute;left:-32px;font-size:.8em;color:#ccc">1/8</span>
+    </div>
+  </div>
+  <!-- Label -->
+  <div style="color:#aaa;font-size:.95em;line-height:1.6">
+    <strong style="color:#ffb74d">Dog Lover's<br>Word Frequency</strong><br><br>
+    Half of all messages are "dog".<br>
+    Shouldn't "dog" get the <em>shortest</em> code?
+  </div>
+</div>
+</div>
+<button class="nx" onclick="go(1)">Next: Variable-length codes &#x2192;</button>
+</div>
+
+<!-- PAGE 1 -->
+<div class="page" data-t="1. Variable Codes">
+<h2>Short Codes for Common Words</h2>
+<div class="card blue">
+<h3>A better code</h3>
+<table>
+<tr><th>Animal</th><th>Probability</th><th>Code</th><th>Length</th></tr>
+<tr><td>dog</td><td>1/2</td><td style="font-family:monospace;color:#4caf50;font-weight:700">0</td><td style="color:#4caf50">1 bit</td></tr>
+<tr><td>cat</td><td>1/4</td><td style="font-family:monospace">10</td><td>2 bits</td></tr>
+<tr><td>fish</td><td>1/8</td><td style="font-family:monospace">110</td><td>3 bits</td></tr>
+<tr><td>bird</td><td>1/8</td><td style="font-family:monospace">111</td><td>3 bits</td></tr>
+</table>
+<p>"dog" = just <code>0</code>. One bit! Half the cost of the fixed code.</p>
+</div>
+
+<div class="card">
+<h3>Does it actually save bits? Let's count.</h3>
+<p>Say Bob sends 800 messages following his usual distribution:</p>
+<div class="math">
+<div class="line"><span class="cmt">// Fixed-length code (2 bits each):</span></div>
+<div class="line">800 messages &times; 2 bits = <span class="val">1600 bits</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// Variable-length code:</span></div>
+<div class="line">400 dogs  &times; 1 bit  = 400</div>
+<div class="line">200 cats  &times; 2 bits = 400</div>
+<div class="line">100 fish  &times; 3 bits = 300</div>
+<div class="line">100 birds &times; 3 bits = 300</div>
+<div class="line">Total = <span class="val">1400 bits</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="hl">Saved 200 bits! Average = 1400/800 = <span class="val">1.75 bits/message</span></span></div>
+</div>
+</div>
+
+<div class="card green">
+<h3>Average message length, as a formula</h3>
+<div class="math">
+<div class="line"><span class="cmt">// Weight each codeword length by how often it's used:</span></div>
+<div class="line">average = (1/2)&times;1 + (1/4)&times;2 + (1/8)&times;3 + (1/8)&times;3</div>
+<div class="line">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; = 0.5 + 0.5 + 0.375 + 0.375</div>
+<div class="line">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; = <span class="val">1.75 bits</span></div>
+</div>
+<p>This 1.75 is going to become <strong>entropy</strong> in Chapter 2. But first we need to understand <em>why</em> these particular code lengths are optimal.</p>
+</div>
+<button class="nx" onclick="go(2)">Next: Cost of a codeword &#x2192;</button>
+</div>
+
+<!-- PAGE 2 -->
+<div class="page" data-t="2. Cost of a Code">
+<h2>Every Codeword Has a Cost</h2>
+
+<div class="card blue">
+<h3>Why can't every animal have a 1-bit code?</h3>
+<p>If dog = <code>0</code> and cat = <code>1</code>, you've used up all possible 1-bit strings. There's no room left for fish or bird. <strong>Short codes are expensive</strong> — they use up code space.</p>
+</div>
+
+<div class="card">
+<h3>The cost of a codeword of length L</h3>
+<p>Think of code space as a pie of size 1. A codeword of length L eats a slice of size:</p>
+<div class="math">
+<div class="line"><span class="hl">cost = 1 / 2<sup>L</sup></span></div>
+</div>
+<table>
+<tr><th>Length L</th><th>Codeword example</th><th>Cost = 1/2<sup>L</sup></th><th>Fraction of code space used</th></tr>
+<tr><td>1 bit</td><td><code>0</code></td><td><strong>1/2</strong></td><td>50% of all possible codes</td></tr>
+<tr><td>2 bits</td><td><code>10</code></td><td><strong>1/4</strong></td><td>25% of all possible codes</td></tr>
+<tr><td>3 bits</td><td><code>110</code></td><td><strong>1/8</strong></td><td>12.5%</td></tr>
+<tr><td>3 bits</td><td><code>111</code></td><td><strong>1/8</strong></td><td>12.5%</td></tr>
+<tr><th colspan="2">Total</th><th colspan="2">1/2 + 1/4 + 1/8 + 1/8 = <strong>1.0</strong> (pie is full!)</th></tr>
+</table>
+<p>The costs must sum to &le; 1. You can't overspend your code space.</p>
+</div>
+
+<div class="card orange">
+<h3>Notice something?</h3>
+<table>
+<tr><th>Animal</th><th>Probability</th><th>Code cost (1/2<sup>L</sup>)</th></tr>
+<tr><td>dog</td><td><strong>1/2</strong></td><td><strong>1/2</strong></td></tr>
+<tr><td>cat</td><td><strong>1/4</strong></td><td><strong>1/4</strong></td></tr>
+<tr><td>fish</td><td><strong>1/8</strong></td><td><strong>1/8</strong></td></tr>
+<tr><td>bird</td><td><strong>1/8</strong></td><td><strong>1/8</strong></td></tr>
+</table>
+<p><span class="key">The cost of each codeword equals the probability of the animal.</span> That's the optimal code: spend code space in proportion to how often each symbol appears.</p>
+</div>
+<button class="nx" onclick="go(3)">Next: Inverting cost &#x2192; length &#x2192;</button>
+</div>
+
+<!-- PAGE 3 -->
+<div class="page" data-t="3. Cost → Length">
+<h2>From Cost to Length: The Inversion</h2>
+
+<div class="card blue">
+<h3>We know: cost = 1/2<sup>L</sup></h3>
+<h3>Question: if I decide to spend a certain cost, what length codeword does that buy me?</h3>
+</div>
+
+<div class="card">
+<h3>Solve for L, step by step</h3>
+<div class="math">
+<div class="line"><span class="cmt">// Start with:</span></div>
+<div class="line">cost = 1 / 2<sup>L</sup></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// Flip both sides:</span></div>
+<div class="line">2<sup>L</sup> = 1 / cost</div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// Take log base 2 of both sides:</span></div>
+<div class="line"><span class="hl">L = log&#x2082;(1 / cost)</span></div>
+</div>
+</div>
+
+<div class="card green">
+<h3>Verify with actual numbers</h3>
+<div class="math">
+<div class="line"><span class="cmt">// dog: cost = 1/2</span></div>
+<div class="line">L = log&#x2082;(1 / (1/2)) = log&#x2082;(2) = <span class="val">1 bit</span> &#x2714;</div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// cat: cost = 1/4</span></div>
+<div class="line">L = log&#x2082;(1 / (1/4)) = log&#x2082;(4) = <span class="val">2 bits</span> &#x2714;</div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// fish: cost = 1/8</span></div>
+<div class="line">L = log&#x2082;(1 / (1/8)) = log&#x2082;(8) = <span class="val">3 bits</span> &#x2714;</div>
+</div>
+<p>Every number checks out against our code table from page 1.</p>
+</div>
+
+<div class="card purple">
+<h3>Now the key step: plug in p(x) for cost</h3>
+<p>We showed that the optimal cost for animal x equals its probability p(x). So:</p>
+<div class="math">
+<div class="line"><span class="cmt">// Optimal codeword length for symbol x:</span></div>
+<div class="line"><span class="hl">L(x) = log&#x2082;(1 / p(x))</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// Verify:</span></div>
+<div class="line">dog:  L = log&#x2082;(1 / (1/2)) = log&#x2082;(2)  = 1 bit  &#x2714;</div>
+<div class="line">cat:  L = log&#x2082;(1 / (1/4)) = log&#x2082;(4)  = 2 bits &#x2714;</div>
+<div class="line">fish: L = log&#x2082;(1 / (1/8)) = log&#x2082;(8)  = 3 bits &#x2714;</div>
+<div class="line">bird: L = log&#x2082;(1 / (1/8)) = log&#x2082;(8)  = 3 bits &#x2714;</div>
+</div>
+<p><span class="key">This formula is the bridge to entropy.</span> Optimal length = log&#x2082;(1/p(x)). Chapter 2 just averages this.</p>
+</div>
+<button class="nx" onclick="go(4)">Summary &#x2192;</button>
+</div>
+
+<!-- PAGE 4 -->
+<div class="page" data-t="4. Summary">
+<h2>What We Built</h2>
+<div class="card blue">
+<table>
+<tr><th>Concept</th><th>Formula</th><th>Example (dog, p=1/2)</th></tr>
+<tr><td>Cost of codeword length L</td><td>cost = 1/2<sup>L</sup></td><td>1/2<sup>1</sup> = 1/2</td></tr>
+<tr><td>Length from cost</td><td>L = log&#x2082;(1/cost)</td><td>log&#x2082;(2) = 1 bit</td></tr>
+<tr><td>Optimal cost = probability</td><td>cost(x) = p(x)</td><td>cost(dog) = 1/2</td></tr>
+<tr><td>Optimal length</td><td>L(x) = log&#x2082;(1/p(x))</td><td>log&#x2082;(2) = 1 bit</td></tr>
+<tr><td>Average message length</td><td>Σ p(x) · L(x) = ?</td><td>→ Chapter 2: Entropy</td></tr>
+</table>
+</div>
+</div>
+
+<script>
+const pages=document.querySelectorAll('.page');const nav=document.getElementById('nav');
+pages.forEach((p,i)=>{const b=document.createElement('button');b.textContent=p.dataset.t;b.onclick=()=>go(i);if(i===0)b.classList.add('on');nav.appendChild(b);});
+function go(n){pages.forEach((p,i)=>p.classList.toggle('on',i===n));nav.querySelectorAll('button').forEach((b,i)=>{b.classList.remove('on');if(i<n)b.classList.add('done');else b.classList.remove('done');if(i===n)b.classList.add('on');});window.scrollTo({top:0,behavior:'smooth'});}
+</script>
+</body></html>

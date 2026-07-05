@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LLM Eval Ch5: Building Your Own Eval</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0a0a1a;color:#e0e0e0;padding:20px 20px 80px;line-height:1.7}
+h1{text-align:center;color:#fff;margin-bottom:4px;font-size:1.5em}
+.sub{text-align:center;color:#888;margin-bottom:24px;font-size:.88em}
+.nav{display:flex;justify-content:center;gap:6px;margin-bottom:20px;flex-wrap:wrap}
+.nav button{padding:7px 13px;border:2px solid #333;background:#111;color:#888;border-radius:8px;cursor:pointer;font-size:.78em;transition:.2s}
+.nav button:hover{border-color:#555;color:#ccc}
+.nav button.on{border-color:#4fc3f7;color:#4fc3f7;background:#0d2137}
+.nav button.done{border-color:#4caf50;color:#4caf50}
+.page{display:none;max-width:880px;margin:0 auto}
+.page.on{display:block}
+.page h2{color:#4fc3f7;margin-bottom:12px;font-size:1.2em}
+.card{background:#12122a;border:1px solid #2a2a4a;border-radius:12px;padding:18px;margin-bottom:14px}
+.card.blue{border-color:#4fc3f7;background:#0d1b2a}
+.card.green{border-color:#4caf50;background:#0a1a0a}
+.card.orange{border-color:#ff9800;background:#1a1400}
+.card.red{border-color:#ef5350;background:#1a0a0a}
+.card.purple{border-color:#ce93d8;background:#1a0a2a}
+.card h3{color:#ffb74d;margin-bottom:8px;font-size:1em}
+button.nx{padding:10px 24px;background:#4caf50;color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:.9em;margin-top:14px}
+button.nx:hover{background:#66bb6a}
+table{width:100%;border-collapse:collapse;margin:10px 0}
+th,td{padding:8px 12px;border:1px solid #333;text-align:center;font-size:.86em}
+th{background:#1a1a3a;color:#4fc3f7}
+td{text-align:left}
+td.n{text-align:right;font-variant-numeric:tabular-nums}
+.math{background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:14px;margin:10px 0;font-family:'Fira Code',Consolas,monospace;font-size:.85em;line-height:1.8;overflow-x:auto}
+.math.out{border-color:#2e7d32;background:#0c1a0e}
+.math .line{margin:2px 0;display:block;white-space:pre}
+.math .hl{background:#264f78;padding:2px 6px;border-radius:4px;display:inline-block}
+.math .cmt{color:#6a9955}.math .val{color:#b5cea8}.math .lbl{color:#9cdcfe}.math .win{color:#4caf50;font-weight:700}.math .bad{color:#ef5350;font-weight:700}
+.key{color:#ffb74d;font-weight:600}
+.src{color:#777;font-size:.78em;margin-top:6px}
+details.more{background:#0d0d20;border:1px solid #333;border-left:3px solid #ce93d8;border-radius:8px;padding:10px 14px;margin:12px 0}
+details.more summary{cursor:pointer;color:#ce93d8;font-size:.86em;font-weight:600;outline:none}
+details.more[open] summary{margin-bottom:10px}
+details.more p,details.more .math{font-size:.85em}
+@media(max-width:650px){}
+</style>
+</head>
+<body>
+<a href="../index.html" style="position:fixed;top:10px;left:14px;font-size:.75em;color:#555;text-decoration:none;z-index:999;padding:4px 8px;background:#0a0a1a;border:1px solid #333;border-radius:6px;">&larr; index</a>
+<h1>LLM Eval Ch5: Building Your Own Eval</h1>
+<p class="sub">No leaderboard measures your product. The full loop — eval set, grader, paired comparison, and the statistics that say whether v2 is actually better. One captured run carried through.</p>
+<div class="nav" id="nav"></div>
+
+<!-- PAGE 0 -->
+<div class="page on" data-t="0. Why build one">
+<h2>The eval nobody will run for you</h2>
+
+<div class="card blue">
+<h3>The course question, made personal</h3>
+<p><em>The model produced an answer — how do you turn that into a number you can trust?</em> You've shipped a support chatbot on top of a frontier model. MMLU can't tell you if it answers <em>your</em> customers correctly; Arena Elo can't tell you if last night's prompt change broke refunds. Every technique in Chapters 1–4 now points inward, at a task only you can define.</p>
+</div>
+
+<div class="card">
+<h3>The five decisions, mapped to earlier chapters</h3>
+<table>
+<tr><th>Decision</th><th>The question</th><th>From</th></tr>
+<tr><td>Eval set</td><td>Which inputs? How many?</td><td>Ch1 (a benchmark is its dataset)</td></tr>
+<tr><td>Grader</td><td>Exact-match, or LLM-judge?</td><td>Ch1 channels / Ch2 judge</td></tr>
+<tr><td>Debiasing</td><td>Swap orders, control length</td><td>Ch2 position/length bias</td></tr>
+<tr><td>Comparison</td><td>Is v2 &gt; v1, or is it noise?</td><td>this chapter, page 3</td></tr>
+<tr><td>Guarding</td><td>What stops silent regressions?</td><td>this chapter, page 4</td></tr>
+</table>
+<p>We'll build a tiny but complete harness and carry <em>one captured run</em> through all five, ending with the statistics that decide whether a change ships.</p>
+</div>
+
+<div class="card purple">
+<h3>The trap this chapter exists to prevent</h3>
+<p>The most common eval mistake isn't a bad metric — it's declaring victory on 10 examples. "v2 scored 80% vs v1's 60%, ship it" sounds decisive and, as page 3 proves with a real run, can be a coin flip. Building the harness is easy; knowing when its numbers mean something is the actual skill.</p>
+</div>
+
+<button class="nx" onclick="go(1)">Next: the eval set &amp; grader &#x2192;</button>
+</div>
+
+<!-- PAGE 1 -->
+<div class="page" data-t="1. Set + grader">
+<h2>Step 1–2: an eval set and a grader</h2>
+
+<div class="card blue">
+<h3>The eval set is 10 real support questions</h3>
+<p>The single most important artifact — and the one people skimp on. Each case pairs an input with a <em>checkable</em> definition of success. Here, success = the answer contains the key fact a correct reply must mention:</p>
+<div class="math">
+<span class="line"><span class="cmt"># cases = (question, required substring that a correct answer must contain)</span></span>
+<span class="line">("How do I reset my password?",       "settings")</span>
+<span class="line">("Is there a free trial?",            "14 days")</span>
+<span class="line">("How do I add a team member?",       "invite")</span>
+<span class="line">("How do I cancel my subscription?",  "billing page")</span>
+<span class="line">("Do you have an API?",               "rest api")</span>
+<span class="line"><span class="cmt"># …10 total</span></span>
+</div>
+<p>Curating these <em>is</em> the eval — like Ch1's benchmark authors writing MMLU questions, or Ch3's XSTest authors choosing homonyms. Garbage cases, garbage number, no matter how good the grader.</p>
+</div>
+
+<div class="card green">
+<h3>The grader: start with the cheapest that works</h3>
+<p>Ch1 taught three channels. For a fielded product you usually want the cheapest deterministic check first, escalating to an LLM-judge only for the open-ended cases:</p>
+<div class="math">
+<span class="line"><span class="lbl">def</span> <span class="val">grade</span>(answer, required):</span>
+<span class="line">    <span class="lbl">return</span> required <span class="lbl">in</span> answer.lower()     <span class="cmt"># substring = "channel 2", exact-ish</span></span>
+</div>
+<p>Substring matching is crude but has a decisive virtue over an LLM-judge: it is <span class="key">deterministic and free of the biases from Ch2</span>. No position bias, no verbosity bias, no self-preference — reserve the expensive, biased judge for questions substring-matching can't grade (tone, correctness of free-form explanations), and debias <em>those</em> with order-swapping.</p>
+</div>
+
+<div class="card orange">
+<h3>The grader is itself something you must evaluate</h3>
+<p>Before trusting any grader on thousands of cases, check it against human labels on a sample — exactly Ch2's "GPT-4-judge agrees with humans 85%" validation, done for your task. A substring grader has a known failure: it marks "we do <em>not</em> offer a free trial" as a pass for required-substring "trial". If your grader and a human disagree too often, fix the grader before you trust its verdicts. <span class="key">An unvalidated grader is an opinion with a percent sign.</span></p>
+</div>
+
+<button class="nx" onclick="go(2)">Next: run v1 vs v2 &#x2192;</button>
+</div>
+
+<!-- PAGE 2 -->
+<div class="page" data-t="2. The run">
+<h2>Step 3: run two versions, read the diff</h2>
+
+<div class="card green">
+<h3>Captured run — v2 changed 4 prompts vs v1</h3>
+<div class="math out">
+<span class="line"><span class="cmt">// captured run — s8_harness.py</span></span>
+<span class="line">case  v1    v2</span>
+<span class="line">  0   pass  pass</span>
+<span class="line">  1   pass  pass</span>
+<span class="line">  2   pass  pass</span>
+<span class="line">  3   pass  pass</span>
+<span class="line">  4   pass  <span class="bad">FAIL</span>   ← v2 REGRESSED (dropped "14 days" from trial answer)</span>
+<span class="line">  5   <span class="bad">FAIL</span>  pass   ← v2 fixed</span>
+<span class="line">  6   pass  pass</span>
+<span class="line">  7   <span class="bad">FAIL</span>  pass   ← v2 fixed</span>
+<span class="line">  8   <span class="bad">FAIL</span>  <span class="bad">FAIL</span>   ← both wrong</span>
+<span class="line">  9   <span class="bad">FAIL</span>  pass   ← v2 fixed</span>
+<span class="line"></span>
+<span class="line">v1: <span class="val">6/10 = 60%</span>      v2: <span class="win">8/10 = 80%</span></span>
+</div>
+<p>80% vs 60%. Twenty points. Ship v2, obviously — right? Hold on: look at <em>case 4</em>. The aggregate went up, but v2 <span class="key">broke something that worked</span>. The single headline number hid a regression. That's the first reason to look at the diff, not the average.</p>
+</div>
+
+<div class="card blue">
+<h3>Only the disagreements carry information</h3>
+<p>Six cases (0,1,2,3,6,8) scored identically for both versions — they tell you nothing about <em>which version is better</em>. All the signal lives in the four <span class="key">discordant</span> cases where v1 and v2 differ:</p>
+<div class="math">
+<span class="line">v2 wins (v1 fail → v2 pass):  cases 5, 7, 9   → b = <span class="val">3</span></span>
+<span class="line">v1 wins (v1 pass → v2 fail):  case 4          → c = <span class="val">1</span></span>
+<span class="line">ties (no signal):             cases 0,1,2,3,6,8</span>
+</div>
+<p>This is the paired view: instead of comparing two independent 60% and 80% rates, compare the versions <em>case by case</em> and keep only where they diverge. It's the McNemar setup — and it's far more sensitive than comparing the aggregates, because the 6 shared outcomes stop adding their noise. Miller's "Adding Error Bars to Evals" makes exactly this point: paired question-level differences give "a free reduction in estimator variance."</p>
+<p class="src">Source: Miller (Anthropic) 2024, "Adding Error Bars to Evals", arXiv:2411.00640.</p>
+</div>
+
+<button class="nx" onclick="go(3)">Next: is 80% &gt; 60% real? &#x2192;</button>
+</div>
+
+<!-- PAGE 3 -->
+<div class="page" data-t="3. Significance">
+<h2>Step 4: is the win real, or is it noise?</h2>
+
+<div class="card red">
+<h3>The 20-point "improvement" is a coin flip</h3>
+<p>If the two versions were truly equal, each discordant case would fall either way with probability ½. We saw b=3 wins out of n=4 discordant cases. How surprising is 3-or-more heads in 4 fair flips?</p>
+<div class="math out">
+<span class="line"><span class="cmt">// captured run — exact two-sided binomial (sign/McNemar) test</span></span>
+<span class="line">discordant n = 4,  v2 wins b = 3</span>
+<span class="line">P(≥3 of 4 | p=0.5) = [C(4,3)+C(4,4)] / 2^4 = 5/16 = 0.3125</span>
+<span class="line">two-sided p-value  = 2 × 0.3125 = <span class="bad">0.625</span></span>
+</div>
+<p><span class="key">p = 0.625.</span> You would see a gap this large or larger about 62% of the time from pure chance, even if v2 were no better than v1. The "80% vs 60%, obviously ship" is statistically indistinguishable from a tie. Ten examples cannot resolve a 3-versus-1 split — full stop.</p>
+</div>
+
+<div class="card green">
+<h3>Same effect, 10× the data — now it's real</h3>
+<p>Keep the identical 3:1 win <em>ratio</em>, but on a 100-case eval set so ~40 cases are discordant (30 v2-wins, 10 v1-wins):</p>
+<div class="math out">
+<span class="line"><span class="cmt">// captured run — same 3:1 pattern, 40 discordant cases</span></span>
+<span class="line">P(≥30 of 40 | p=0.5), two-sided = <span class="win">0.0022</span></span>
+</div>
+<p>Same effect size, p drops from 0.625 to 0.0022 — now below any reasonable threshold. <span class="key">The effect didn't change; the sample size did.</span> Significance is about how much evidence you gathered, not how big the percentage looks.</p>
+</div>
+
+<div class="card blue">
+<h3>How big must the eval set be? Wilson intervals</h3>
+<p>The width of the confidence interval on a single pass rate tells you directly. For an observed 80% pass rate (captured run):</p>
+<table>
+<tr><th>n (cases)</th><th>95% interval for "80%"</th><th>± width</th></tr>
+<tr><td class="n">10</td><td class="n">[49.0%, 94.3%]</td><td class="n">45pp</td></tr>
+<tr><td class="n">30</td><td class="n">[62.7%, 90.5%]</td><td class="n">28pp</td></tr>
+<tr><td class="n">100</td><td class="n">[71.1%, 86.7%]</td><td class="n">16pp</td></tr>
+<tr><td class="n">300</td><td class="n">[75.1%, 84.1%]</td><td class="n">9pp</td></tr>
+<tr><td class="n">1000</td><td class="n">[77.4%, 82.4%]</td><td class="n">5pp</td></tr>
+</table>
+<p>At n=10 your "80%" honestly means "somewhere between 49% and 94%" — useless for detecting a 20-point change. This is precisely why Miller's paper concludes "new evals should contain at least 1,000 questions" to reliably detect the small deltas between modern models. Ch2's Arena needs millions of votes for the same reason: the top models are ~30 Elo apart.</p>
+<p class="src">Source: Miller 2024, arXiv:2411.00640 (power analysis, ≥1000-question guidance).</p>
+</div>
+
+<details class="more"><summary>Why the paired test beats comparing two proportions</summary>
+<p>Naively you'd two-sample-test 6/10 vs 8/10 — but those share 6 identical cases, so most of the apparent variance is noise that cancels. The paired (McNemar) test throws out the ties and asks only about the b vs c split, using each case as its own control. With positively-correlated per-case outcomes (the same hard cases trip both versions), pairing can cut the variance substantially — Miller quantifies it as a "free" reduction. Rule of thumb: always pair when the two systems run on the <em>same</em> inputs.</p>
+</details>
+
+<button class="nx" onclick="go(4)">Next: regression guards &amp; tooling &#x2192;</button>
+</div>
+
+<!-- PAGE 4 -->
+<div class="page" data-t="4. Guard + tools">
+<h2>Step 5: from one-off run to a guardrail</h2>
+
+<div class="card orange">
+<h3>Aggregates hide regressions — assert per-case</h3>
+<p>Remember case 4: v2's average went <em>up</em> while it broke a case that worked. A rising headline number is not proof nothing regressed. The fix is a per-case guard in CI, not a threshold on the mean:</p>
+<div class="math">
+<span class="line"><span class="lbl">def</span> <span class="val">gate</span>(baseline_results, new_results):</span>
+<span class="line">    regressions = [i <span class="lbl">for</span> i <span class="lbl">in</span> cases</span>
+<span class="line">                   <span class="lbl">if</span> baseline_results[i] <span class="lbl">and</span> <span class="lbl">not</span> new_results[i]]</span>
+<span class="line">    <span class="lbl">assert</span> <span class="lbl">not</span> regressions, f<span class="val">"v2 broke: {regressions}"</span></span>
+<span class="line">    <span class="cmt"># our run would FAIL here on case 4 — exactly what you want</span></span>
+</div>
+<p>Track two numbers every run: overall pass rate (is it trending up?) <em>and</em> the regression list (did any passing case start failing?). The second is what turns an eval from a report into a <span class="key">guardrail</span> — the same discipline as Ch3's held-out reward model and Ch1's contamination check: never let the aggregate paper over a specific break.</p>
+</div>
+
+<div class="card blue">
+<h3>Don't build the plumbing — the 2025 landscape</h3>
+<p>Everything above is the <em>concepts</em>; these maintained tools are the plumbing (all verified active, 2026-07):</p>
+<table>
+<tr><th>Tool</th><th>What it is</th></tr>
+<tr><td><strong>lm-evaluation-harness</strong> (EleutherAI)</td><td>60+ academic benchmarks; backend of the HF Open LLM Leaderboard. The Ch1/Ch4 scoring you traced by hand.</td></tr>
+<tr><td><strong>Inspect</strong> (UK AI Security Institute)</td><td>Eval framework, 200+ prebuilt evals; the tooling behind government model evaluations.</td></tr>
+<tr><td><strong>promptfoo</strong></td><td>CLI/library for eval + red-teaming of LLM <em>apps</em> — closest to this chapter's product-eval use case.</td></tr>
+<tr><td><strong>OpenAI Evals</strong></td><td>Framework + registry; now surfaced through the OpenAI dashboard.</td></tr>
+<tr><td><strong>Braintrust / LangSmith</strong></td><td>Hosted eval + tracing platforms — run graded evals against logged production traffic.</td></tr>
+</table>
+<p>Pick one instead of hand-rolling runners and stat tests. Your irreplaceable work is the eval <em>set</em> and the <em>grader</em> — the parts no tool can write for you, because only you know what "correct" means for your product.</p>
+<p class="src">Sources: github.com/EleutherAI/lm-evaluation-harness; github.com/UKGovernmentBEIS/inspect_ai; promptfoo.dev; github.com/openai/evals; braintrust.dev; langchain.com/langsmith (all verified 2026-07).</p>
+</div>
+
+<div class="card purple">
+<h3>The whole course, in one workflow</h3>
+<p>Building your product eval reuses every chapter: the <strong>grading channels</strong> of <a href="1_benchmarks.html" style="color:#ce93d8">Ch1</a>, the <strong>judge and its biases</strong> from <a href="2_preference_eval.html" style="color:#ce93d8">Ch2</a>, the <strong>two-sided framing</strong> of <a href="3_alignment_eval.html" style="color:#ce93d8">Ch3</a> (helpful-vs-safe is your product's 2×2 too), the <strong>loss intuition</strong> from <a href="4_bits_per_byte.html" style="color:#ce93d8">Ch4</a>, and the statistics here that separate signal from noise. The one lesson under all of them: <span class="key">a number is only as trustworthy as the eval set, grader, and sample size behind it</span> — and now you can build all three.</p>
+</div>
+
+<button class="nx" onclick="go(0)">Start over &#x21ba;</button>
+</div>
+
+<script>
+const pages=document.querySelectorAll('.page'),nav=document.getElementById('nav');
+pages.forEach((p,i)=>{const b=document.createElement('button');b.textContent=p.dataset.t;b.onclick=()=>go(i);if(i===0)b.classList.add('on');nav.appendChild(b);});
+function go(n){pages.forEach((p,i)=>p.classList.toggle('on',i===n));nav.querySelectorAll('button').forEach((b,i)=>{b.classList.remove('on');if(i<n)b.classList.add('done');else b.classList.remove('done');if(i===n)b.classList.add('on');});window.scrollTo({top:0,behavior:'smooth'});}
+</script>
+</body>
+</html>

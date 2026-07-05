@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LLM Eval Ch4: Perplexity and Bits-Per-Byte</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0a0a1a;color:#e0e0e0;padding:20px 20px 80px;line-height:1.7}
+h1{text-align:center;color:#fff;margin-bottom:4px;font-size:1.5em}
+.sub{text-align:center;color:#888;margin-bottom:24px;font-size:.88em}
+.nav{display:flex;justify-content:center;gap:6px;margin-bottom:20px;flex-wrap:wrap}
+.nav button{padding:7px 13px;border:2px solid #333;background:#111;color:#888;border-radius:8px;cursor:pointer;font-size:.78em;transition:.2s}
+.nav button:hover{border-color:#555;color:#ccc}
+.nav button.on{border-color:#4fc3f7;color:#4fc3f7;background:#0d2137}
+.nav button.done{border-color:#4caf50;color:#4caf50}
+.page{display:none;max-width:880px;margin:0 auto}
+.page.on{display:block}
+.page h2{color:#4fc3f7;margin-bottom:12px;font-size:1.2em}
+.card{background:#12122a;border:1px solid #2a2a4a;border-radius:12px;padding:18px;margin-bottom:14px}
+.card.blue{border-color:#4fc3f7;background:#0d1b2a}
+.card.green{border-color:#4caf50;background:#0a1a0a}
+.card.orange{border-color:#ff9800;background:#1a1400}
+.card.red{border-color:#ef5350;background:#1a0a0a}
+.card.purple{border-color:#ce93d8;background:#1a0a2a}
+.card h3{color:#ffb74d;margin-bottom:8px;font-size:1em}
+button.nx{padding:10px 24px;background:#4caf50;color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:.9em;margin-top:14px}
+button.nx:hover{background:#66bb6a}
+table{width:100%;border-collapse:collapse;margin:10px 0}
+th,td{padding:8px 12px;border:1px solid #333;text-align:center;font-size:.86em}
+th{background:#1a1a3a;color:#4fc3f7}
+td{text-align:left}
+td.n{text-align:right;font-variant-numeric:tabular-nums}
+.math{background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:14px;margin:10px 0;font-family:'Fira Code',Consolas,monospace;font-size:.85em;line-height:1.8;overflow-x:auto}
+.math.out{border-color:#2e7d32;background:#0c1a0e}
+.math .line{margin:2px 0;display:block;white-space:pre}
+.math .hl{background:#264f78;padding:2px 6px;border-radius:4px;display:inline-block}
+.math .cmt{color:#6a9955}.math .val{color:#b5cea8}.math .lbl{color:#9cdcfe}.math .win{color:#4caf50;font-weight:700}
+.key{color:#ffb74d;font-weight:600}
+.src{color:#777;font-size:.78em;margin-top:6px}
+details.more{background:#0d0d20;border:1px solid #333;border-left:3px solid #ce93d8;border-radius:8px;padding:10px 14px;margin:12px 0}
+details.more summary{cursor:pointer;color:#ce93d8;font-size:.86em;font-weight:600;outline:none}
+details.more[open] summary{margin-bottom:10px}
+details.more p,details.more .math{font-size:.85em}
+.vs{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:10px 0}
+@media(max-width:650px){.vs{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<a href="../index.html" style="position:fixed;top:10px;left:14px;font-size:.75em;color:#555;text-decoration:none;z-index:999;padding:4px 8px;background:#0a0a1a;border:1px solid #333;border-radius:6px;">&larr; index</a>
+<h1>LLM Eval Ch4: Perplexity and Bits-Per-Byte</h1>
+<p class="sub">The number training optimizes — traced token by token on two real models. Every number here is from a captured run on this laptop or a cited paper.</p>
+<div class="nav" id="nav"></div>
+
+<!-- PAGE 0 -->
+<div class="page on" data-t="0. The setup">
+<h2>The number training optimizes</h2>
+
+<div class="card blue">
+<h3>The course question, at its root</h3>
+<p>This whole course asks one thing: <em>the model produced an answer — how do you turn that into a number you can trust?</em> Before benchmarks, judges, or safety tests existed, there was already one number: the <span class="key">loss</span>. A language model's entire training signal is "how much probability did you put on the token that actually came next?" This chapter measures that number for real, on two real models, and shows exactly where it stops being enough.</p>
+</div>
+
+<div class="card">
+<h3>The two lab models (both run on this laptop, CPU)</h3>
+<table>
+<tr><th>Model</th><th>Params</th><th>Year</th><th>Tokenizer vocab</th></tr>
+<tr><td><strong>GPT-2</strong> (small)</td><td class="n">124M</td><td class="n">2019</td><td class="n">50,257</td></tr>
+<tr><td><strong>SmolLM2-135M</strong> (base)</td><td class="n">135M</td><td class="n">2024</td><td class="n">49,152</td></tr>
+</table>
+<p>Same size class, five years apart, <em>different tokenizers</em> — that difference becomes the whole point on page 3. Everything below is float32, greedy, torch 2.8.0 in this repo's <code>.venv</code>.</p>
+</div>
+
+<div class="card">
+<h3>The measurement is ~10 lines</h3>
+<p>Feed the model a sentence. At every position it outputs a probability for each of its ~50K vocabulary tokens. We look up the probability it gave to the token that <em>actually</em> came next:</p>
+<div class="math">
+<span class="line">ids    = tok(<span class="val">"The cat sat on the mat."</span>, return_tensors=<span class="val">"pt"</span>).input_ids</span>
+<span class="line">logits = model(ids).logits                 <span class="cmt"># [1, T, vocab]</span></span>
+<span class="line">logp   = log_softmax(logits, dim=-1)</span>
+<span class="line"></span>
+<span class="line"><span class="lbl">for</span> i <span class="lbl">in</span> range(1, T):                     <span class="cmt"># token 0 has no prefix — can't be scored</span></span>
+<span class="line">    nll_i = -logp[0, i-1, ids[0, i]]       <span class="cmt"># logits at i-1 predict token i</span></span>
+<span class="line"></span>
+<span class="line">mean_nll = sum(nll) / len(nll)             <span class="cmt"># cross-entropy, nats per token</span></span>
+<span class="line">ppl      = exp(mean_nll)                   <span class="cmt"># perplexity</span></span>
+</div>
+<p>That's the entire eval. No judge, no rubric, no answer key — the text itself is the answer key, one token at a time.</p>
+</div>
+
+<div class="card purple">
+<h3>Where this connects</h3>
+<p>−log P is the code length from information theory: a token the model gave probability 0.5 costs 1 bit to encode, probability 0.25 costs 2 bits. If that's rusty, the <a href="../info_theory/1_entropy.html" style="color:#ce93d8">info theory course</a> derives it; this chapter just uses it.</p>
+</div>
+
+<button class="nx" onclick="go(1)">Next: the trace &#x2192;</button>
+</div>
+
+<!-- PAGE 1 -->
+<div class="page" data-t="1. The trace">
+<h2>One sentence, every number</h2>
+
+<div class="card green">
+<h3>GPT-2 reads "The cat sat on the mat."</h3>
+<div class="math out">
+<span class="line"><span class="cmt">// captured run — gpt2 (124M), .venv torch 2.8.0, CPU float32</span></span>
+<span class="line"><span class="cmt">// tokens: ['The', ' cat', ' sat', ' on', ' the', ' mat', '.']</span></span>
+<span class="line"> i  token    P(token | prefix)   −log P (nats)</span>
+<span class="line"> 1  ' cat'          0.0001          9.1956   <span class="cmt">// after just "The" — no idea</span></span>
+<span class="line"> 2  ' sat'          0.0007          7.2592</span>
+<span class="line"> 3  ' on'           0.2240          1.4962   <span class="cmt">// "The cat sat" → "on" is likely</span></span>
+<span class="line"> 4  ' the'          <span class="val">0.4537</span>          0.7903   <span class="cmt">// most confident step</span></span>
+<span class="line"> 5  ' mat'          0.0040          5.5106   <span class="cmt">// knows a noun comes, not which</span></span>
+<span class="line"> 6  '.'             0.0631          2.7632</span>
+<span class="line"></span>
+<span class="line">mean NLL = (9.1956+7.2592+1.4962+0.7903+5.5106+2.7632) / 6 = <span class="val">4.5025</span> nats/token</span>
+<span class="line">PPL      = exp(4.5025) = <span class="val">90.24</span></span>
+</div>
+<p>Read the middle column like a story: the model is nearly blind at ' cat' (P=0.0001), then context accumulates and by ' the' it's putting 45% on a single token out of 50,257. The loss is just the average of the right-hand column.</p>
+</div>
+
+<div class="card blue">
+<h3>Now the formula — every symbol is a number you just saw</h3>
+<div class="math">
+<span class="line">PPL = exp( − 1/N &Sigma;&#7522; log P(w&#7522; | w&#8321;…w&#7522;&#8331;&#8321;) )</span>
+<span class="line"></span>
+<span class="line">N = <span class="val">6</span> scored tokens     log P(w&#8324;|…) = log(0.4537) = <span class="val">−0.7903</span></span>
+<span class="line">−1/N &Sigma; = <span class="val">4.5025</span>          exp(4.5025) = <span class="val">90.24</span></span>
+</div>
+<p><span class="key">What exp buys you:</span> a PPL of 90.24 means GPT-2 was, on average, as uncertain as if it were choosing uniformly among <strong>~90 tokens</strong> at each step. PPL 1 = certain; PPL 50,257 = uniform over the whole vocabulary. It's the model's effective branching factor on this text.</p>
+</div>
+
+<div class="card green">
+<h3>Same sentence, 2024 model</h3>
+<div class="math out">
+<span class="line"><span class="cmt">// captured run — SmolLM2-135M, same sentence, same 7-token split</span></span>
+<span class="line"> i  token    P(token | prefix)   −log P (nats)      <span class="cmt">// gpt2 for comparison</span></span>
+<span class="line"> 1  ' cat'          0.0001          8.8427           <span class="cmt">// 9.1956</span></span>
+<span class="line"> 2  ' sat'          0.0031          5.7611           <span class="cmt">// 7.2592</span></span>
+<span class="line"> 3  ' on'           0.2317          1.4623           <span class="cmt">// 1.4962</span></span>
+<span class="line"> 4  ' the'          0.5973          0.5154           <span class="cmt">// 0.7903</span></span>
+<span class="line"> 5  ' mat'          0.0062          5.0854           <span class="cmt">// 5.5106</span></span>
+<span class="line"> 6  '.'             0.1412          1.9577           <span class="cmt">// 2.7632</span></span>
+<span class="line"></span>
+<span class="line">mean NLL = <span class="val">3.9374</span> nats/token   →   PPL = <span class="win">51.29</span>  (gpt2: 90.24)</span>
+</div>
+<p>Every single row improved — the 2024 model is less surprised at every position. Five years of better data and training, visible token by token. Hold that thought: on page 3 this comparison turns out to be <em>rigged</em>, and fixing the rig is the whole point of bits-per-byte.</p>
+</div>
+
+<details class="more"><summary>Nats, bits, and why we keep saying "nats"</summary>
+<p>PyTorch's <code>log_softmax</code> uses natural log, so −log P comes out in <strong>nats</strong>. Divide by ln 2 = 0.6931 to get <strong>bits</strong>: GPT-2's 4.5025 nats/token = 6.50 bits/token. Perplexity is the same either way — exp(nats) = 2^(bits) = 90.24. Papers mix conventions freely; the unit only matters when you start counting bits per byte on page 3.</p>
+</details>
+
+<button class="nx" onclick="go(2)">Next: PPL depends on the text &#x2192;</button>
+</div>
+
+<!-- PAGE 2 -->
+<div class="page" data-t="2. Whose text?">
+<h2>Perplexity is a property of (model, text) — never of the model alone</h2>
+
+<div class="card green">
+<h3>Same GPT-2, three texts</h3>
+<div class="math out">
+<span class="line"><span class="cmt">// captured runs — gpt2, three ~200-byte texts</span></span>
+<span class="line">news paragraph        49 tok   CE 2.696 nats/tok   PPL <span class="val">14.8</span></span>
+<span class="line">python code          113 tok   CE 2.400 nats/tok   PPL <span class="val">11.0</span>   <span class="cmt">// ?!</span></span>
+<span class="line">same news, shuffled   30 tok   CE 7.283 nats/tok   PPL <span class="val">1456</span></span>
+</div>
+<p>The shuffled row is the clean lesson: <span class="key">identical words</span>, order destroyed → perplexity explodes 14.8 → 1456. The model isn't scoring vocabulary, it's scoring <em>structure</em>. This is why PPL measures "distribution match": text from far outside the training distribution is expensive to predict even when every word is common.</p>
+</div>
+
+<div class="card red">
+<h3>The trap in the code row</h3>
+<p>Python code got PPL <strong>11.0</strong> — "easier" than news at 14.8? GPT-2 barely saw code in WebText. The catch is the token count: the code is <strong>113 tokens</strong> for ~190 bytes (≈1.7 bytes/token — GPT-2's tokenizer shreds code into tiny pieces), the news is 49 tokens for 235 bytes (4.8 bytes/token). Many tiny predictable steps (indentation, <code>=</code>, newlines) drag the per-token average down while the per-<em>byte</em> cost is awful:</p>
+<div class="math">
+<span class="line">per token:  code 2.400 nats  &lt;  news 2.696 nats   <span class="cmt">// code looks better</span></span>
+<span class="line">per byte:   code <span class="val">2.020</span> bits  &gt;&gt;  news <span class="val">0.794</span> bits   <span class="cmt">// code is 2.5× worse</span></span>
+</div>
+<p><span class="key">Per-token perplexity is not comparable across texts that tokenize differently</span> — even for a single model. Page 3 fixes this properly.</p>
+</div>
+
+<div class="card blue">
+<h3>The GPT-2 paper says the same thing, at scale</h3>
+<p>The original paper never reports "GPT-2's perplexity." It reports one number <em>per corpus</em> (all zero-shot):</p>
+<table>
+<tr><th>Eval corpus</th><th>GPT-2 117M*</th><th>GPT-2 1.5B</th></tr>
+<tr><td>WikiText-2</td><td class="n">29.41</td><td class="n">18.34</td></tr>
+<tr><td>WikiText-103</td><td class="n">37.50</td><td class="n">17.48</td></tr>
+<tr><td>Penn Treebank</td><td class="n">65.85</td><td class="n">35.76</td></tr>
+<tr><td>1BW (news)</td><td class="n">75.20</td><td class="n">42.16</td></tr>
+</table>
+<p>Same 1.5B model: 17.48 or 42.16 depending on the corpus. And scale helps smoothly everywhere (117M → 1.5B roughly halves PPL on every row). Any sentence of the form "model X has perplexity Y" is meaningless until you append "on corpus Z".</p>
+<p class="src">Source: Radford et al. 2019, "Language Models are Unsupervised Multitask Learners", Table 3. *The paper says 117M; the released checkpoint is 124M — OpenAI later documented the parameter-count error in the openai/gpt-2 README.</p>
+</div>
+
+<button class="nx" onclick="go(3)">Next: bits-per-byte &#x2192;</button>
+</div>
+
+<!-- PAGE 3 -->
+<div class="page" data-t="3. Bits-per-byte">
+<h2>Bits-per-byte — the tokenizer-proof ruler</h2>
+
+<div class="card red">
+<h3>Why the page-1 comparison was rigged</h3>
+<p>GPT-2 and SmolLM2 have <em>different tokenizers</em>. Give both the same 235-byte news paragraph:</p>
+<div class="math">
+<span class="line">gpt2      : 49 tokens   → 4.80 bytes per prediction step</span>
+<span class="line">SmolLM2   : 55 tokens   → 4.27 bytes per prediction step</span>
+</div>
+<p>SmolLM2 takes <em>more, smaller</em> steps through the same text. Smaller steps are individually easier — so its per-token numbers get a head start that has nothing to do with model quality. A model with a character-level tokenizer would "win" any perplexity contest while being terrible. The fix: stop normalizing by tokens (model-dependent) and normalize by <span class="key">bytes of text</span> (model-independent).</p>
+</div>
+
+<div class="card green">
+<h3>Deriving BPB from the run — no new measurement needed</h3>
+<div class="math out">
+<span class="line"><span class="cmt">// captured run — same 235-byte news paragraph through both models</span></span>
+<span class="line"><span class="lbl">gpt2</span>     48 scored tok × 2.6960 nats = 129.41 nats total</span>
+<span class="line">         129.41 / ln2 = 186.71 bits  ÷ 235 bytes = <span class="win">0.794 BPB</span></span>
+<span class="line"></span>
+<span class="line"><span class="lbl">SmolLM2</span>  54 scored tok × 2.8515 nats = 153.98 nats total</span>
+<span class="line">         153.98 / ln2 = 222.15 bits  ÷ 235 bytes = <span class="val">0.945 BPB</span></span>
+<span class="line"></span>
+<span class="line"><span class="hl">BPB = (total NLL in nats) / ln2 / (bytes of text)</span></span>
+</div>
+<p>Total bits to encode the text, divided by its size. The tokenizer disappears from the units: however a model chops the text, it must pay for all 235 bytes. This is exactly the formula lm-evaluation-harness ships (<code>bits_per_byte = -weighted_mean(loglikelihoods)/ln 2</code>, weights = byte counts), and the Pile benchmark's stated reason for using BPB: "invariance to different tokenization schemes."</p>
+<p class="src">Sources: EleutherAI lm-evaluation-harness, lm_eval/api/metrics.py; Gao et al. 2020, "The Pile", §3.1.</p>
+</div>
+
+<div class="card orange">
+<h3>And the winner is… whichever text you evaluate on</h3>
+<p>On this fair ruler, GPT-2 <em>beats</em> the 2024 model on news — the opposite of page 1's sentence result. So which model is better? We ran one more paragraph (simple educational text — SmolLM2's training diet is FineWeb-Edu):</p>
+<table>
+<tr><th>Eval text (captured runs)</th><th>GPT-2 BPB</th><th>SmolLM2 BPB</th><th>winner</th></tr>
+<tr><td>news paragraph (235 B)</td><td class="n">0.794</td><td class="n">0.945</td><td><strong>GPT-2</strong></td></tr>
+<tr><td>educational paragraph (263 B)</td><td class="n">0.796</td><td class="n"><strong>0.496</strong></td><td><strong>SmolLM2</strong></td></tr>
+</table>
+<p>GPT-2 is flat (~0.79) on both — WebText was a broad scrape. SmolLM2 swings 0.945 → 0.496: nearly 2× better on text that looks like its training data, worse on text that doesn't. <span class="key">There is no model-only answer to "which is better" — your eval set decides your winner.</span> This refrain returns in every chapter of this course.</p>
+</div>
+
+<div class="card blue">
+<h3>Anchors: what BPB values mean in the wild</h3>
+<table>
+<tr><th>System, eval text</th><th>BPB</th><th>Source</th></tr>
+<tr><td>Uniform over 256 bytes (floor of ignorance)</td><td class="n">8.00</td><td>log&#8322;256, definitional</td></tr>
+<tr><td>GPT-2 XL, the Pile (zero-shot)</td><td class="n">1.0468</td><td>Pile paper, Table 2</td></tr>
+<tr><td>GPT-3 Davinci, the Pile (zero-shot)</td><td class="n">0.7177</td><td>Pile paper, Table 2</td></tr>
+<tr><td>Llama-3.1-405B base, Pile-test</td><td class="n">0.542</td><td>DeepSeek-V3 report, Table 3</td></tr>
+<tr><td>DeepSeek-V3 base, Pile-test</td><td class="n">0.548</td><td>DeepSeek-V3 report, Table 3</td></tr>
+<tr><td>Humans predicting English letters (Shannon 1951)</td><td class="n">0.6–1.3*</td><td>Shannon, BSTJ 1951</td></tr>
+</table>
+<p>2019 → 2024 frontier: roughly <strong>half the bits</strong>. And note DeepSeek chose BPB precisely because its competitor uses a different tokenizer — the 2020 Pile argument is standard practice in frontier reports now.</p>
+<p class="src">*Shannon's unit is bits per <em>letter</em> over a 27-symbol alphabet (a–z + space), estimated from humans guessing the next letter with N=100 context — an upper/lower bound sandwich, not a byte measurement. Comparable in spirit, not in decimals.</p>
+</div>
+
+<details class="more"><summary>Why Shannon's number isn't directly comparable</summary>
+<p>Shannon had subjects guess the next letter of text from a single book; the 1.3 upper / 0.6 lower bounds come from guess-count statistics, with (his words) "considerable sampling error". His alphabet strips case, punctuation, and digits — all things byte-level models must pay for. So "GPT-3 ≈ human entropy" claims built on this table are vibes, not measurement. The honest statement: modern LLMs are in the same range on clean English prose.</p>
+</details>
+
+<button class="nx" onclick="go(4)">Next: what loss can't see &#x2192;</button>
+</div>
+
+<!-- PAGE 4 -->
+<div class="page" data-t="4. The limits">
+<h2>What the loss can't see</h2>
+
+<div class="card blue">
+<h3>Low loss is necessary, not sufficient</h3>
+<p>SmolLM2 halves GPT-2's bits on educational text — real progress, honestly measured. Now ask it a question. From Chapter 1's captured run, prompted with a real MMLU question ending in "Answer:", it generates:</p>
+<div class="math out">
+<span class="line"><span class="cmt">// captured run — SmolLM2-135M, greedy, after "…Answer:"</span></span>
+<span class="line">' A\n\nThe ancient Indian civilization was'   <span class="cmt">// wrong letter, then rambling</span></span>
+</div>
+<p>A model can be an excellent next-token predictor of its training distribution and still not follow instructions, not know when it's wrong, and not stop rambling. Those are different properties, and <em>none of them appear in the loss</em>. That gap is why Chapters 1–3 of this course exist.</p>
+</div>
+
+<div class="card orange">
+<h3>Post-training breaks the metric on purpose — the "alignment tax"</h3>
+<p>InstructGPT (the RLHF recipe behind ChatGPT) documented this precisely. After RLHF, labelers preferred the <strong>1.3B</strong> InstructGPT over the <strong>175B</strong> GPT-3 — a 100× smaller model winning on usefulness. But the same training caused what the paper names an <em>alignment tax</em>: "performance regressions compared to GPT-3" on SQuAD, DROP, HellaSwag, and WMT fr→en, mitigated by mixing pretraining gradients back in (PPO-ptx). The GPT-4 report adds another cost: "after the post-training process, the calibration is reduced" — the base model's token probabilities tracked correctness; the tuned model's don't.</p>
+<p><span class="key">RLHF deliberately moves the model away from the pretraining distribution.</span> After post-training, raw LM metrics stop being the target, and comparing chat models by perplexity stops meaning much.</p>
+<p class="src">Sources: Ouyang et al. 2022 (arXiv:2203.02155), abstract + §4; GPT-4 Technical Report (arXiv:2303.08774), Fig. 8.</p>
+</div>
+
+<div class="card green">
+<h3>Yet loss remains the compass of pretraining</h3>
+<p>Inside the lab, before any benchmark is run, loss is still the number that steers everything:</p>
+<ul style="margin:8px 0 0 18px;line-height:2">
+<li><strong>Llama 3</strong> picked its flagship's size with a two-stage scaling law: predict downstream <em>negative log-likelihood</em> from compute, then predict task accuracy from that NLL. Loss is the bridge between FLOPs and benchmarks.</li>
+<li><strong>DeepSeek-V3</strong> reports Pile-test <em>BPB</em> head-to-head against Qwen and Llama "to guarantee fair comparison among models using different tokenizers" — the exact argument from page 3, in a 2024 frontier report.</li>
+</ul>
+<p class="src">Sources: Llama 3 report (arXiv:2407.21783), §3.2.1; DeepSeek-V3 report (arXiv:2412.19437), §4.4.1 + Table 3.</p>
+</div>
+
+<div class="card purple">
+<h3>Where this chapter leaves you</h3>
+<p>You can now compute the one metric that needs no labels, no judge, and no benchmark — and you know its two failure modes: it's only defined relative to an eval text (news vs edu flipped the winner), and it can't see instruction-following, honesty, or safety at all. Everything else in this course is machinery built to measure what the loss can't: <a href="1_benchmarks.html" style="color:#ce93d8">Ch1</a> when ground truth exists, <a href="2_preference_eval.html" style="color:#ce93d8">Ch2</a> when it doesn't, <a href="3_alignment_eval.html" style="color:#ce93d8">Ch3</a> when the model is being attacked, <a href="5_building_evals.html" style="color:#ce93d8">Ch5</a> when the thing you care about is your own product.</p>
+</div>
+
+<button class="nx" onclick="go(0)">Start over &#x21ba;</button>
+</div>
+
+<script>
+const pages=document.querySelectorAll('.page'),nav=document.getElementById('nav');
+pages.forEach((p,i)=>{const b=document.createElement('button');b.textContent=p.dataset.t;b.onclick=()=>go(i);if(i===0)b.classList.add('on');nav.appendChild(b);});
+function go(n){pages.forEach((p,i)=>p.classList.toggle('on',i===n));nav.querySelectorAll('button').forEach((b,i)=>{b.classList.remove('on');if(i<n)b.classList.add('done');else b.classList.remove('done');if(i===n)b.classList.add('on');});window.scrollTo({top:0,behavior:'smooth'});}
+</script>
+</body>
+</html>

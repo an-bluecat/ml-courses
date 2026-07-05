@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Diffusion Ch2: Score Matching</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0a0a1a;color:#e0e0e0;padding:20px 20px 80px;line-height:1.7}
+h1{text-align:center;color:#fff;margin-bottom:4px;font-size:1.5em}
+.sub{text-align:center;color:#888;margin-bottom:24px;font-size:.88em}
+.nav{display:flex;justify-content:center;gap:6px;margin-bottom:20px;flex-wrap:wrap}
+.nav button{padding:7px 13px;border:2px solid #333;background:#111;color:#888;border-radius:8px;cursor:pointer;font-size:.78em;transition:.2s}
+.nav button:hover{border-color:#555;color:#ccc}
+.nav button.on{border-color:#4fc3f7;color:#4fc3f7;background:#0d2137}
+.nav button.done{border-color:#4caf50;color:#4caf50}
+.page{display:none;max-width:860px;margin:0 auto}
+.page.on{display:block}
+.page h2{color:#4fc3f7;margin-bottom:12px;font-size:1.2em}
+.card{background:#12122a;border:1px solid #2a2a4a;border-radius:12px;padding:18px;margin-bottom:14px}
+.card.blue{border-color:#4fc3f7;background:#0d1b2a}
+.card.green{border-color:#4caf50;background:#0a1a0a}
+.card.orange{border-color:#ff9800;background:#1a1400}
+.card.red{border-color:#ef5350;background:#1a0a0a}
+.card.purple{border-color:#ce93d8;background:#1a0a2a}
+.card h3{color:#ffb74d;margin-bottom:8px;font-size:1em}
+button.nx{padding:10px 24px;background:#4caf50;color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:.9em;margin-top:14px}
+button.nx:hover{background:#66bb6a}
+table{width:100%;border-collapse:collapse;margin:10px 0}
+th,td{padding:8px 12px;border:1px solid #333;text-align:center;font-size:.88em}
+th{background:#1a1a3a;color:#4fc3f7}
+td{text-align:left}
+.math{background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:14px;margin:10px 0;font-family:'Fira Code',Consolas,monospace;font-size:.85em;line-height:1.8}
+.math .line{margin:2px 0;display:block}
+.math .hl{background:#264f78;padding:2px 6px;border-radius:4px;display:inline-block}
+.math .cmt{color:#6a9955}
+.math .val{color:#b5cea8}
+.math .lbl{color:#9cdcfe}
+.key{color:#ffb74d;font-weight:600}
+.vs{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:10px 0}
+@media(max-width:650px){.vs{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<a href="../index.html" style="position:fixed;top:10px;left:14px;font-size:.75em;color:#555;text-decoration:none;z-index:999;padding:4px 8px;background:#0a0a1a;border:1px solid #333;border-radius:6px;">&larr; index</a>
+
+<h1>Diffusion Ch2: Score Matching</h1>
+<p class="sub">The math behind why noise prediction works</p>
+
+<div class="nav" id="nav"></div>
+
+<!-- PAGE 0 -->
+<div class="page on" data-t="0. Score Functions">
+<h2>Score Functions — Gradients of Probability</h2>
+
+<div class="card blue">
+<h3>What is a score function?</h3>
+<div class="math">
+<span class="line cmt">// The score is the gradient of the log probability with respect to x</span>
+<span class="line"><span class="lbl">s(x)</span> = ∇_x log p(x)</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// p(x) is the probability density of the data (e.g., images)</span>
+<span class="line cmt">// log p(x) is higher for more probable inputs (real images)</span>
+<span class="line cmt">// ∇_x is the gradient with respect to the image pixels</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Interpretation: the score points in the direction that</span>
+<span class="line cmt">// makes x look more like a real image.</span>
+</div>
+</div>
+
+<div class="card green">
+<h3>Concrete: 1D Gaussian score</h3>
+<div class="math">
+<span class="line cmt">// Suppose p(x) = N(μ=2, σ²=1) — data centered at 2</span>
+<span class="line"><span class="lbl">log p(x)</span> = −0.5 × (x − 2)² + const</span>
+<span class="line"><span class="lbl">score s(x)</span> = d/dx log p(x) = <span class="hl">−(x − 2) / 1</span> = <span class="hl">2 − x</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Evaluate at different x values:</span>
+<span class="line"><span class="lbl">x = 0</span>:   s(0)   = 2 − 0   = <span class="val">+2.0</span>  <span class="cmt">// points right toward μ=2</span></span>
+<span class="line"><span class="lbl">x = 1</span>:   s(1)   = 2 − 1   = <span class="val">+1.0</span>  <span class="cmt">// points right, weaker</span></span>
+<span class="line"><span class="lbl">x = 2</span>:   s(2)   = 2 − 2   = <span class="val"> 0.0</span>  <span class="cmt">// at the mode — no gradient</span></span>
+<span class="line"><span class="lbl">x = 3</span>:   s(3)   = 2 − 3   = <span class="val">−1.0</span>  <span class="cmt">// points left back to μ=2</span></span>
+<span class="line"><span class="lbl">x = 5</span>:   s(5)   = 2 − 5   = <span class="val">−3.0</span>  <span class="cmt">// far from mode: strong pull</span></span>
+</div>
+<p style="margin-top:8px">The score always points toward the region of highest probability. If you follow the score function, you walk toward the most likely values.</p>
+</div>
+
+<div class="card">
+<h3>Langevin dynamics — generating samples by following the score</h3>
+<div class="math">
+<span class="line cmt">// If you know s(x) = ∇_x log p(x), you can generate samples:</span>
+<span class="line"><span class="lbl">x_{t+1}</span> = x_t + η × s(x_t) + sqrt(2η) × z</span>
+<span class="line">                              where z ~ N(0, I)</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// η = step size (small). First term: follow the score (toward high p).</span>
+<span class="line cmt">// Second term: add noise to explore and avoid getting stuck.</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Concrete: start at x=5, η=0.1, s(x)=2−x (Gaussian score)</span>
+<span class="line"><span class="lbl">step 1</span>: x = 5.0 + 0.1×(−3.0) + noise = 5.0 − 0.30 + noise = <span class="val">4.7 + noise</span></span>
+<span class="line"><span class="lbl">step 2</span>: x ≈ 4.7 + 0.1×(−2.7) + noise = <span class="val">4.43 + noise</span></span>
+<span class="line"><span class="lbl">step 10</span>: x ≈ <span class="val">2.6</span>  <span class="cmt">// getting close to μ=2</span></span>
+<span class="line"><span class="lbl">step 100</span>: x ≈ <span class="val">2.05</span> <span class="cmt">// converged, with fluctuations around μ=2</span></span>
+</div>
+</div>
+
+<div class="card orange">
+<h3>The catch: we can't compute the score of real image data</h3>
+<p>p(x) for natural images is an incredibly complex, unknown distribution over millions of dimensions. We have samples (the training images), but we can't write down p(x) explicitly, so we can't compute ∇_x log p(x) directly. Score matching is a way to <strong>estimate the score from data</strong>.</p>
+</div>
+
+<button class="nx" onclick="go(1)">Denoising score matching</button>
+</div>
+
+<!-- PAGE 1 -->
+<div class="page" data-t="1. The Problem">
+<h2>Denoising Score Matching — Estimating Scores from Data</h2>
+
+<div class="card blue">
+<h3>The score of a Gaussian is simple</h3>
+<div class="math">
+<span class="line cmt">// For noisy data: x_noisy = x_0 + σ × ε,  ε ~ N(0,I)</span>
+<span class="line cmt">// The conditional distribution: p(x_noisy | x_0) = N(x_0, σ²I)</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Score of this conditional:</span>
+<span class="line"><span class="lbl">∇_x log p(x_noisy|x_0)</span> = (x_0 − x_noisy) / σ²</span>
+<span class="line">                         = −ε / σ  <span class="cmt">// negative noise divided by std</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Concrete: x_0=0.8, σ=0.5, ε=0.4, x_noisy=0.8+0.5×0.4=1.0</span>
+<span class="line"><span class="lbl">score</span> = (0.8 − 1.0) / 0.5² = −0.2 / 0.25 = <span class="val">−0.8</span></span>
+<span class="line cmt">// Points left (−0.8) back toward the clean x_0=0.8 ✓</span>
+</div>
+</div>
+
+<div class="card green">
+<h3>Denoising score matching — the key theorem</h3>
+<p>Vincent (2011) showed: to estimate the score of the data distribution, it's enough to train a network to <strong>denoise noisy samples</strong>. Minimizing the denoising error is equivalent to minimizing the score matching objective.</p>
+<div class="math">
+<span class="line cmt">// Score matching objective (what we want, but can't compute):</span>
+<span class="line">L_SM = E[||s_θ(x) − ∇_x log p(x)||²]</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Denoising score matching (equivalent, computable!):</span>
+<span class="line">L_DSM = E[||s_θ(x_noisy, σ) − (x_0 − x_noisy)/σ²||²]</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// They differ by a constant — minimizing one minimizes the other</span>
+<span class="line cmt">// We can compute L_DSM because we made the noise ourselves</span>
+</div>
+</div>
+
+<div class="card">
+<h3>Connecting score to noise</h3>
+<div class="math">
+<span class="line cmt">// From DDPM: x_t = sqrt(ᾱ_t)×x_0 + sqrt(1−ᾱ_t)×ε</span>
+<span class="line cmt">// Rearrange: x_0 − x_t = -(sqrt(1−ᾱ_t)/sqrt(ᾱ_t)) × ε + (1 - sqrt(ᾱ_t))×x_0</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// The key relationship:</span>
+<span class="line"><span class="lbl">score ∝ −ε / sqrt(1−ᾱ_t)</span>  <span class="cmt">// score is proportional to negative noise</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Predicting score ↔ predicting noise (up to a known scaling factor)</span>
+<span class="line cmt">// s_θ(x_t, t) = −ε_θ(x_t, t) / sqrt(1−ᾱ_t)</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Concrete: t=500, ᾱ_500=0.1, predicted ε̂=0.43</span>
+<span class="line"><span class="lbl">score estimate</span> = −0.43 / sqrt(1−0.1) = −0.43 / <span class="val">0.949</span> = <span class="val">−0.453</span></span>
+<span class="line cmt">// This points toward cleaner images (away from the noise direction)</span>
+</div>
+</div>
+
+<div class="card orange">
+<h3>Why not train the score directly?</h3>
+<p>The score function s(x) is a vector field over image space (millions of dimensions). Predicting ε (same size as the image) is equivalent but has a more concrete interpretation: "which noise vector was mixed in?" The MSE loss ||ε − ε̂||² is also simpler to optimize than the score matching loss.</p>
+</div>
+
+<button class="nx" onclick="go(2)">Why this connects to diffusion</button>
+</div>
+
+<!-- PAGE 2 -->
+<div class="page" data-t="2. Connection">
+<h2>Why DDPM Loss = Score Matching</h2>
+
+<div class="card blue">
+<h3>The DDPM loss</h3>
+<div class="math">
+<span class="line cmt">// DDPM training objective (Ho et al. 2020, simplified):</span>
+<span class="line"><span class="lbl">L_DDPM</span> = E_{t,x_0,ε}[||ε − ε_θ(x_t, t)||²]</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// This is just: for random t and random noise ε,</span>
+<span class="line cmt">// how well can the network predict the noise?</span>
+</div>
+</div>
+
+<div class="card green">
+<h3>Equivalence to score matching — step by step</h3>
+<div class="math">
+<span class="line cmt">// Score matching loss (at noise level t):</span>
+<span class="line"><span class="lbl">L_score</span> = E[||s_θ(x_t, t) − ∇_{x_t} log p(x_t | x_0)||²]</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// We know: ∇_{x_t} log p(x_t | x_0) = (x_0 − x_t) / (1−ᾱ_t)</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Substituting x_t = sqrt(ᾱ_t)×x_0 + sqrt(1−ᾱ_t)×ε:</span>
+<span class="line"><span class="lbl">x_0 − x_t</span> = −sqrt(1−ᾱ_t) × ε  (approximately)</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// So: target score = −ε / sqrt(1−ᾱ_t)</span>
+<span class="line cmt">// If s_θ = −ε_θ / sqrt(1−ᾱ_t), then:</span>
+<span class="line"><span class="lbl">L_score</span> = (1/(1−ᾱ_t)) × E[||ε − ε_θ(x_t, t)||²]</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// L_score = L_DDPM × weight(t)</span>
+<span class="line cmt">// Same minimum, same gradient direction (weight is constant for fixed t)</span>
+<span class="line cmt">// Minimizing DDPM loss = minimizing score matching loss at each t</span>
+</div>
+</div>
+
+<div class="card">
+<h3>What this means intuitively</h3>
+<p>The diffusion model simultaneously learns the score function at <strong>every noise level</strong>. A single network, trained with MSE loss on noise prediction, implicitly learns:</p>
+<ul style="margin-left:18px;margin-top:8px;line-height:2">
+  <li>At t=0 (clean): high-frequency score, sensitive to fine details</li>
+  <li>At t=500 (medium noise): medium-resolution score, captures shapes</li>
+  <li>At t=1000 (pure noise): smooth score, just says "move toward any real image"</li>
+</ul>
+<p style="margin-top:8px">Training with random t covers all noise levels simultaneously. This multi-scale score learning is why diffusion models generate such detailed, high-quality images.</p>
+</div>
+
+<div class="card orange">
+<h3>Numerical example: score at two noise levels</h3>
+<div class="math">
+<span class="line cmt">// True pixel: x_0 = 0.8 (bright)</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// At t=100 (ᾱ=0.90): x_100 = sqrt(0.90)×0.8 + sqrt(0.10)×ε</span>
+<span class="line cmt">// Say ε=0.2, so x_100 = 0.949×0.8 + 0.316×0.2 = 0.759+0.063 = 0.822</span>
+<span class="line"><span class="lbl">score(x_100)</span> = −ε / sqrt(1−ᾱ_100) = −0.2 / sqrt(0.10) = −0.2 / 0.316 = <span class="val">−0.633</span></span>
+<span class="line cmt">// Strong signal: points back toward the original (small noise → sharp score)</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// At t=900 (ᾱ=0.001): x_900 = sqrt(0.001)×0.8 + sqrt(0.999)×ε</span>
+<span class="line cmt">// Say ε=1.2, so x_900 ≈ 0.025 + 0.9995×1.2 = 1.225</span>
+<span class="line"><span class="lbl">score(x_900)</span> = −ε / sqrt(1−ᾱ_900) = −1.2 / sqrt(0.999) = −1.2 / 0.9995 = <span class="val">−1.201</span></span>
+<span class="line cmt">// Weaker relative signal: high noise level → noisy score estimate</span>
+</div>
+</div>
+
+<button class="nx" onclick="go(3)">DDPM vs DDIM</button>
+</div>
+
+<!-- PAGE 3 -->
+<div class="page" data-t="3. DDPM vs DDIM">
+<h2>DDPM vs DDIM — Stochastic vs Deterministic Sampling</h2>
+
+<div class="card blue">
+<h3>DDPM sampling — stochastic, 1000 steps</h3>
+<div class="math">
+<span class="line cmt">// DDPM reverse step (stochastic):</span>
+<span class="line"><span class="lbl">x_{t-1}</span> = (1/sqrt(α_t)) × (x_t − (β_t/sqrt(1−ᾱ_t)) × ε_θ(x_t, t))</span>
+<span class="line">          + σ_t × z    where z ~ N(0, I)</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// σ_t = sqrt(β_t) — adds fresh noise at every step</span>
+<span class="line cmt">// This maintains the correct distribution at each t</span>
+<span class="line cmt">// But requires 1000 steps → slow (minutes per image)</span>
+</div>
+</div>
+
+<div class="card green">
+<h3>Concrete DDPM step at t=10</h3>
+<div class="math">
+<span class="line cmt">// t=10, β_10=0.001, α_10=0.999, ᾱ_10≈0.990</span>
+<span class="line cmt">// x_10 = 0.85 (nearly clean, small noise)</span>
+<span class="line cmt">// Network prediction: ε̂ = 0.12</span>
+<span class="line">&nbsp;</span>
+<span class="line"><span class="lbl">mean</span> = (1/sqrt(0.999)) × (0.85 − (0.001/sqrt(0.010)) × 0.12)</span>
+<span class="line">      = 1.0005 × (0.85 − (0.001/0.100) × 0.12)</span>
+<span class="line">      = 1.0005 × (0.85 − 0.01 × 0.12)</span>
+<span class="line">      = 1.0005 × (0.85 − 0.0012) = 1.0005 × 0.8488 = <span class="val">0.8492</span></span>
+<span class="line">&nbsp;</span>
+<span class="line"><span class="lbl">σ_10</span> = sqrt(β_10) = sqrt(0.001) = <span class="val">0.0316</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Sample z ~ N(0,1), say z = 0.55:</span>
+<span class="line"><span class="lbl">x_9</span> = 0.8492 + 0.0316 × 0.55 = 0.8492 + 0.0174 = <span class="hl val">0.8666</span></span>
+<span class="line cmt">// Note: added fresh noise z → stochastic output</span>
+</div>
+</div>
+
+<div class="card purple">
+<h3>DDIM — Denoising Diffusion Implicit Models (Song et al. 2020)</h3>
+<div class="math">
+<span class="line cmt">// DDIM reverse step (deterministic, σ=0):</span>
+<span class="line"><span class="lbl">x_{t-1}</span> = sqrt(ᾱ_{t-1}) × x̂_0</span>
+<span class="line">          + sqrt(1−ᾱ_{t-1}) × ε_θ(x_t, t)</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Where: x̂_0 = (x_t − sqrt(1−ᾱ_t) × ε_θ) / sqrt(ᾱ_t)</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Key: NO z term (no fresh noise added)</span>
+<span class="line cmt">// Deterministic: same x_T always → same image</span>
+</div>
+</div>
+
+<div class="card green">
+<h3>Same DDIM step at t=10</h3>
+<div class="math">
+<span class="line cmt">// Same inputs: x_10=0.85, ε̂=0.12, ᾱ_10=0.990, ᾱ_9=0.991</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Step 1: estimate clean image x̂_0</span>
+<span class="line"><span class="lbl">x̂_0</span> = (0.85 − sqrt(1−0.990) × 0.12) / sqrt(0.990)</span>
+<span class="line">      = (0.85 − sqrt(0.010) × 0.12) / 0.995</span>
+<span class="line">      = (0.85 − 0.100 × 0.12) / 0.995</span>
+<span class="line">      = (0.85 − 0.012) / 0.995 = 0.838 / 0.995 = <span class="val">0.842</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Step 2: re-noise to level t-1=9 (ᾱ_9 ≈ 0.991)</span>
+<span class="line"><span class="lbl">x_9</span> = sqrt(0.991) × 0.842 + sqrt(1−0.991) × 0.12</span>
+<span class="line">     = 0.9955 × 0.842 + sqrt(0.009) × 0.12</span>
+<span class="line">     = <span class="val">0.838</span> + 0.0949 × 0.12</span>
+<span class="line">     = 0.838 + 0.0114 = <span class="hl val">0.849</span>  <span class="cmt">// no randomness — same every time</span></span>
+</div>
+</div>
+
+<div class="card">
+<h3>The key differences</h3>
+<table>
+<tr><th>Property</th><th>DDPM</th><th>DDIM</th></tr>
+<tr><td>Stochastic?</td><td>Yes (adds z each step)</td><td>No (deterministic)</td></tr>
+<tr><td>Steps needed</td><td>1000 (quality degrades with fewer)</td><td>50–200 (quality preserved)</td></tr>
+<tr><td>Speed</td><td>Slow (~30 sec/image)</td><td>Fast (~2 sec/image)</td></tr>
+<tr><td>Reproducible?</td><td>No (different z each run)</td><td>Yes (same x_T → same image)</td></tr>
+<tr><td>Requires retraining?</td><td>No</td><td>No — same trained model</td></tr>
+<tr><td>Used in practice</td><td>Sometimes for quality</td><td>Stable Diffusion default</td></tr>
+</table>
+<p style="margin-top:8px"><span class="key">DDIM uses the exact same trained model</span> — it just changes the sampling procedure. No retraining needed. This is why it was a huge practical breakthrough.</p>
+</div>
+
+<button class="nx" onclick="go(4)">Summary</button>
+</div>
+
+<!-- PAGE 4 -->
+<div class="page" data-t="4. Summary">
+<h2>Chapter 2 Summary — Score Matching</h2>
+<div class="card blue">
+<table>
+<tr><th>Concept</th><th>Definition</th><th>Why it matters</th></tr>
+<tr><td>Score function</td><td>∇_x log p(x)</td><td>Points toward high-probability regions</td></tr>
+<tr><td>Denoising score matching</td><td>Minimize denoising error = learn score</td><td>Tractable: we made the noise</td></tr>
+<tr><td>DDPM loss ↔ score matching</td><td>||ε − ε̂||² = score loss × weight(t)</td><td>Why noise prediction = score learning</td></tr>
+<tr><td>DDPM sampling</td><td>Stochastic, 1000 steps</td><td>High quality, slow</td></tr>
+<tr><td>DDIM sampling</td><td>Deterministic, 50 steps</td><td>Fast, reproducible, same model</td></tr>
+</table>
+</div>
+<div class="card green">
+<h3>The chain of equivalences</h3>
+<div class="math">
+<span class="line">predict noise ε_θ</span>
+<span class="line">      ↕  (scale by 1/sqrt(1−ᾱ_t))</span>
+<span class="line">estimate score ∇_x log p(x_t | x_0)</span>
+<span class="line">      ↕  (marginalize over x_0)</span>
+<span class="line">approximate score ∇_x log p(x_t)</span>
+<span class="line">      ↕  (follow score = Langevin dynamics)</span>
+<span class="line">generate samples from p(x)</span>
+</div>
+</div>
+</div>
+
+<script>
+const pages=document.querySelectorAll('.page'),nav=document.getElementById('nav');
+pages.forEach((p,i)=>{const b=document.createElement('button');b.textContent=p.dataset.t;b.onclick=()=>go(i);if(i===0)b.classList.add('on');nav.appendChild(b);});
+function go(n){pages.forEach((p,i)=>p.classList.toggle('on',i===n));nav.querySelectorAll('button').forEach((b,i)=>{b.classList.remove('on');if(i<n)b.classList.add('done');else b.classList.remove('done');if(i===n)b.classList.add('on');});window.scrollTo({top:0,behavior:'smooth'});}
+</script>
+</body>
+</html>

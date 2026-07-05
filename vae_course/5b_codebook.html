@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VAE Ch5½: Building the Codebook</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0a0a1a;color:#e0e0e0;padding:20px 20px 80px;line-height:1.7}
+h1{text-align:center;color:#fff;margin-bottom:4px;font-size:1.5em}
+.sub{text-align:center;color:#888;margin-bottom:24px;font-size:.88em}
+.nav{display:flex;justify-content:center;gap:6px;margin-bottom:20px;flex-wrap:wrap}
+.nav button{padding:7px 13px;border:2px solid #333;background:#111;color:#888;border-radius:8px;cursor:pointer;font-size:.78em;transition:.2s}
+.nav button:hover{border-color:#555;color:#ccc}
+.nav button.on{border-color:#4fc3f7;color:#4fc3f7;background:#0d2137}
+.nav button.done{border-color:#4caf50;color:#4caf50}
+.page{display:none;max-width:880px;margin:0 auto}
+.page.on{display:block}
+.page h2{color:#4fc3f7;margin-bottom:12px;font-size:1.2em}
+.card{background:#12122a;border:1px solid #2a2a4a;border-radius:12px;padding:18px;margin-bottom:14px}
+.card.blue{border-color:#4fc3f7;background:#0d1b2a}
+.card.green{border-color:#4caf50;background:#0a1a0a}
+.card.orange{border-color:#ff9800;background:#1a1400}
+.card.red{border-color:#ef5350;background:#1a0a0a}
+.card.purple{border-color:#ce93d8;background:#1a0a2a}
+.card h3{color:#ffb74d;margin-bottom:8px;font-size:1em}
+button.nx{padding:10px 24px;background:#4caf50;color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:.9em;margin-top:14px}
+button.nx:hover{background:#66bb6a}
+table{width:100%;border-collapse:collapse;margin:10px 0}
+th,td{padding:8px 12px;border:1px solid #333;text-align:center;font-size:.84em}
+th{background:#1a1a3a;color:#4fc3f7}
+td{text-align:left}
+.math{background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:14px;margin:10px 0;font-family:'Fira Code',Consolas,monospace;font-size:.85em;line-height:1.8;overflow-x:auto}
+.math .line{margin:2px 0;display:block;white-space:pre}
+.math .hl{background:#264f78;padding:2px 6px;border-radius:4px;display:inline-block}
+.math .cmt{color:#6a9955}.math .val{color:#b5cea8}.math .lbl{color:#9cdcfe}.math .win{color:#4caf50;font-weight:700}
+.key{color:#ffb74d;font-weight:600}
+.diagram{display:block;margin:14px auto;max-width:100%}
+.cap{text-align:center;color:#888;font-size:.8em;margin:-6px 0 14px}
+details.more{background:#0d0d20;border:1px solid #333;border-left:3px solid #ce93d8;border-radius:8px;padding:10px 14px;margin:12px 0}
+details.more summary{cursor:pointer;color:#ce93d8;font-size:.86em;font-weight:600;outline:none}
+details.more[open] summary{margin-bottom:10px}
+details.more p,details.more .math,details.more li{font-size:.85em}
+details.more ul{margin:6px 0 0 18px}
+.optnote{font-size:.74em;color:#ce93d8;text-align:center;margin:-4px 0 14px;opacity:.8}
+</style>
+</head>
+<body>
+<a href="../index.html" style="position:fixed;top:10px;left:14px;font-size:.75em;color:#555;text-decoration:none;z-index:999;padding:4px 8px;background:#0a0a1a;border:1px solid #333;border-radius:6px;">&larr; index</a>
+<h1>VAE Course — Chapter 5½: Building the Codebook</h1>
+<p class="sub">Where the input embeddings come from · how the codebook is actually trained · is it precomputed · and how tokenizer quality makes or breaks recommendations</p>
+<p class="optnote">◆ Optional deep-dive between Ch5 (Semantic IDs) and Ch6 (PLUM). Skip if you only want the narrative; read if you want to know exactly how the machine is built.</p>
+<div class="nav" id="nav"></div>
+
+<!-- PAGE 0 -->
+<div class="page on" data-t="0. Where embeddings come from">
+<h2>Step zero: the RQ-VAE does not see the video</h2>
+
+<div class="card orange">
+<h3>The confusion worth clearing first</h3>
+<p>The RQ-VAE never touches raw pixels or audio waveforms. By the time it runs, the video has <em>already</em> been turned into a handful of dense vectors by <strong>other, separately-trained models</strong>. The RQ-VAE's only job is to compress <em>those vectors</em> into a short tuple of integers. So there are two layers, and they are trained at different times by different teams:</p>
+<svg class="diagram" viewBox="0 0 760 250" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI,sans-serif">
+  <!-- layer A -->
+  <rect x="20" y="30" width="380" height="190" rx="10" fill="#12122a" stroke="#2a2a4a"/>
+  <text x="210" y="52" fill="#888" font-size="12" text-anchor="middle" font-weight="bold">LAYER A — feature encoders (pretrained elsewhere)</text>
+  <g font-size="10.5" text-anchor="middle">
+    <rect x="40" y="70" width="74" height="26" rx="5" fill="#0d1b2a" stroke="#4fc3f7"/><text x="77" y="87" fill="#4fc3f7">frames</text>
+    <rect x="40" y="104" width="74" height="26" rx="5" fill="#0d1b2a" stroke="#4fc3f7"/><text x="77" y="121" fill="#4fc3f7">audio</text>
+    <rect x="40" y="138" width="74" height="26" rx="5" fill="#0d1b2a" stroke="#4fc3f7"/><text x="77" y="155" fill="#4fc3f7">title+desc</text>
+    <rect x="40" y="172" width="74" height="26" rx="5" fill="#0d1b2a" stroke="#4fc3f7"/><text x="77" y="189" fill="#4fc3f7">channel</text>
+  </g>
+  <g font-size="9.5" text-anchor="middle" fill="#888">
+    <text x="170" y="87">→ vision model →</text>
+    <text x="170" y="121">→ audio model →</text>
+    <text x="170" y="155">→ text model →</text>
+    <text x="170" y="189">→ lookup →</text>
+  </g>
+  <g font-size="10" text-anchor="middle">
+    <rect x="240" y="70" width="140" height="26" rx="5" fill="#0a1a0a" stroke="#4caf50"/><text x="310" y="87" fill="#4caf50">visual emb [768]</text>
+    <rect x="240" y="104" width="140" height="26" rx="5" fill="#0a1a0a" stroke="#4caf50"/><text x="310" y="121" fill="#4caf50">audio emb [512]</text>
+    <rect x="240" y="138" width="140" height="26" rx="5" fill="#0a1a0a" stroke="#4caf50"/><text x="310" y="155" fill="#4caf50">text emb [768]</text>
+    <rect x="240" y="172" width="140" height="26" rx="5" fill="#0a1a0a" stroke="#4caf50"/><text x="310" y="189" fill="#4caf50">channel emb [64]</text>
+  </g>
+  <!-- arrow -->
+  <line x1="400" y1="125" x2="445" y2="125" stroke="#555" stroke-width="2" marker-end="url(#arz)"/>
+  <text x="423" y="116" fill="#888" font-size="9" text-anchor="middle">these</text>
+  <!-- layer B -->
+  <rect x="450" y="60" width="290" height="130" rx="10" fill="#1a0a2a" stroke="#ce93d8"/>
+  <text x="595" y="82" fill="#ce93d8" font-size="12" text-anchor="middle" font-weight="bold">LAYER B — RQ-VAE</text>
+  <text x="595" y="108" fill="#bbb" font-size="10.5" text-anchor="middle">fuse → encode → quantize</text>
+  <text x="595" y="128" fill="#bbb" font-size="10.5" text-anchor="middle">(this chapter)</text>
+  <text x="595" y="158" fill="#4caf50" font-size="13" text-anchor="middle" font-weight="bold">Semantic ID (2,7,3,1)</text>
+  <defs><marker id="arz" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#555"/></marker></defs>
+</svg>
+<p class="cap">Layer A produces the embeddings you listed. Layer B (the RQ-VAE) consumes them. This chapter is entirely about Layer B.</p>
+</div>
+
+<div class="card blue">
+<h3>Yes — those embeddings are precomputed inputs</h3>
+<p>Each modality has its own off-the-shelf encoder, trained for its own job and frozen here:</p>
+<div class="math">
+<div class="line"><span class="lbl">visual emb</span>  ← a vision model run over sampled frames/thumbnail</div>
+<div class="line"><span class="lbl">audio emb</span>   ← an audio model (speech + music + ambience)</div>
+<div class="line"><span class="lbl">text emb</span>    ← a text encoder (Sentence-T5-style) over title + description + captions</div>
+<div class="line"><span class="lbl">channel emb</span> ← an embedding for the uploader/channel/artist</div>
+</div>
+<p>The RQ-VAE treats every one of these as a fixed input vector. It does not re-learn vision or language — that work already happened. <span class="key">Its only knowledge of the video is this bundle of vectors.</span></p>
+</div>
+
+<div class="card green">
+<h3>But not everything <em>should</em> go into the ID — content vs. side features</h3>
+<p>This is the subtle design call behind your list (artist, uploader, channel, title…). Sort the features into two kinds:</p>
+<table>
+<tr><th>Kind</th><th>Examples</th><th>In the Semantic ID?</th></tr>
+<tr><td><strong>Content</strong> — what the item <em>is</em></td><td>frames, audio, title, description, topic</td><td>Yes. This is what makes cold-start work — it's available the instant the video is uploaded.</td></tr>
+<tr><td><strong>Side / identity</strong> — who/where it's from</td><td>channel, uploader, artist, language</td><td>Sometimes. Strong signal (a cooking channel uploads cooking videos), but use with care.</td></tr>
+<tr><td><strong>Behavioral</strong> — how people react</td><td>watch-time, CTR, co-watches</td><td>Usually <em>not directly</em> — a new video has none yet. (PLUM sneaks it in via a contrastive loss — Ch6.)</td></tr>
+</table>
+<p>Why the care with behavioral signals: if you bake "this video gets lots of clicks" into the ID, a brand-new video has no clicks, so its ID would be wrong — defeating the entire purpose. The semantic ID must be computable from things that exist <strong>at upload time</strong>. That's why it leans on content.</p>
+</div>
+
+<details class="more">
+<summary>◆ Optional: so where do channel / uploader / behavioral features get used, if not always in the ID?</summary>
+<p>They're still valuable — they just enter the <em>downstream</em> recommender as separate inputs rather than being folded into the tokenizer. In PLUM (Ch6) the prompt to the LLM literally includes context features — country, device, time, and identity signals — <em>alongside</em> the semantic-ID history. So the model sees "watched these SIDs, on this device, from this channel-family." The split is clean: the <strong>Semantic ID</strong> = a stable content fingerprint; <strong>context features</strong> = everything situational, passed in at serving time. Keeping behavior out of the ID is also what lets the ID stay fixed even as a video's popularity changes.</p>
+</details>
+<button class="nx" onclick="go(1)">Next: fusing many vectors into one &#x2192;</button>
+</div>
+
+<!-- PAGE 1 -->
+<div class="page" data-t="1. Fusing into one vector">
+<h2>Fusing the embeddings into a single vector</h2>
+
+<div class="card blue">
+<h3>Concat, then project</h3>
+<p>The RQ-VAE quantizes <em>one</em> vector, so the modality embeddings must first be merged. The standard recipe: stack them end-to-end (concatenate), then pass through a small learned linear layer that squeezes the stack down to the encoder's input size. Tiny traceable version with 2-D modality vectors:</p>
+<div class="math">
+<div class="line"><span class="lbl">text emb</span>  = [0.8, 0.1]    <span class="cmt">// "pasta recipe" — strong on dim 1</span></div>
+<div class="line"><span class="lbl">audio emb</span> = [0.2, 0.6]    <span class="cmt">// sizzling/kitchen sounds</span></div>
+<div class="line"> </div>
+<div class="line"><span class="cmt">// 1. concatenate → one 4-D vector:</span></div>
+<div class="line">concat = [0.8, 0.1, 0.2, 0.6]</div>
+<div class="line"> </div>
+<div class="line"><span class="cmt">// 2. project 4-D → 2-D with a learned matrix P (rows shown):</span></div>
+<div class="line">P row1 = [1, 0, 0.5, 0]  →  z₁ = 0.8 + 0.5·0.2 = <span class="val">0.9</span></div>
+<div class="line">P row2 = [0, 1, 0.5, 0]  →  z₂ = 0.1 + 0.5·0.2 = <span class="val">0.2</span></div>
+<div class="line"> </div>
+<div class="line"><span class="hl">fused z = [0.9, 0.2]</span>   <span class="cmt">// ← exactly the z we quantized in Chapter 5</span></div>
+</div>
+<p>So the <code>z=[0.9,0.2]</code> from Chapter 5 wasn't handed down from nowhere — it's the fused, projected summary of this video's text + audio (and visual, channel… in the real thing). The projection matrix <strong>P is learned jointly with the RQ-VAE</strong>: training decides how much each modality matters for reconstruction.</p>
+</div>
+
+<div class="card green">
+<h3>Why fuse <em>before</em> quantizing (one ID for the whole video)</h3>
+<div class="math">
+<div class="line"><span class="cmt">// fuse-then-quantize: one ID describes the whole item</span></div>
+<div class="line">(text+audio+visual) → z → RQ-VAE → ID (2,7,3)   <span class="cmt">// "this whole video"</span></div>
+<div class="line"> </div>
+<div class="line"><span class="cmt">// the alternative — quantize each modality separately — gives you</span></div>
+<div class="line"><span class="cmt">// three unrelated IDs and no single handle for "the video". Messier for</span></div>
+<div class="line"><span class="cmt">// the downstream generator, which wants one token-tuple per item.</span></div>
+</div>
+</div>
+
+<details class="more">
+<summary>◆ Optional: doesn't a learned projection let one loud modality drown the others?</summary>
+<p>It can — if the text embedding has a much larger norm than audio, reconstruction may "cheat" by mostly copying text and ignoring audio. Real systems guard against it by <strong>L2-normalizing each modality embedding</strong> before concatenation (so each starts on equal footing), and sometimes by weighting modalities in the reconstruction loss. The progressive-masking and multi-resolution tricks from Ch6 also push the model to use the full fused vector rather than a shortcut. The takeaway: fusion is a design knob, not a free lunch — balance it or the ID becomes a title-only ID with extra steps.</p>
+</details>
+<button class="nx" onclick="go(2)">Next: how the codebook is actually trained &#x2192;</button>
+</div>
+
+<!-- PAGE 2 -->
+<div class="page" data-t="2. Training the codebook">
+<h2>How the codebook is generated</h2>
+
+<div class="card orange">
+<h3>The thing to internalize</h3>
+<p>A codebook is not designed or hand-set. It is a <strong>list of learnable vectors</strong> — ordinary parameters — that start random and get pulled around during training until each one sits at the <span class="key">center of the cluster of inputs that snap to it</span>. That's it. The codebook is just k-means centroids that are learned alongside the encoder.</p>
+</div>
+
+<div class="card blue">
+<h3>The loop, in four moves</h3>
+<svg class="diagram" viewBox="0 0 760 200" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI,sans-serif">
+  <g text-anchor="middle" font-size="11">
+    <rect x="20" y="80" width="150" height="46" rx="8" fill="#0d1b2a" stroke="#4fc3f7"/><text x="95" y="100" fill="#4fc3f7">1. encode</text><text x="95" y="116" fill="#888" font-size="9.5">item → z</text>
+    <rect x="200" y="80" width="150" height="46" rx="8" fill="#1a0a2a" stroke="#ce93d8"/><text x="275" y="100" fill="#ce93d8">2. assign</text><text x="275" y="116" fill="#888" font-size="9.5">z → nearest code</text>
+    <rect x="380" y="80" width="150" height="46" rx="8" fill="#1a1400" stroke="#ff9800"/><text x="455" y="100" fill="#ff9800">3. reconstruct</text><text x="455" y="116" fill="#888" font-size="9.5">decode → loss</text>
+    <rect x="560" y="80" width="180" height="46" rx="8" fill="#0a1a0a" stroke="#4caf50"/><text x="650" y="100" fill="#4caf50">4. move the code</text><text x="650" y="116" fill="#888" font-size="9.5">toward its members</text>
+  </g>
+  <g stroke="#555" stroke-width="2" marker-end="url(#art)">
+    <line x1="170" y1="103" x2="198" y2="103"/><line x1="350" y1="103" x2="378" y2="103"/><line x1="530" y1="103" x2="558" y2="103"/>
+  </g>
+  <path d="M650 126 q0 50 -300 50 q-255 0 -255 -45" fill="none" stroke="#444" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#art)"/>
+  <text x="380" y="192" fill="#666" font-size="10" text-anchor="middle">repeat over millions of items until the codes stop moving</text>
+  <defs><marker id="art" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#555"/></marker></defs>
+</svg>
+</div>
+
+<div class="card green">
+<h3>Move 4, with real numbers — the heart of it</h3>
+<p>Say codebook-1 entry <code>C1[0]</code> currently sits at <code>[1.0, 0.0]</code>. During one pass, three cooking videos all snap to it (it was their nearest code). Their encoder outputs:</p>
+<div class="math">
+<div class="line">video A:  z = [0.9, 0.2]</div>
+<div class="line">video B:  z = [1.1, 0.0]</div>
+<div class="line">video C:  z = [1.0, 0.1]</div>
+<div class="line"> </div>
+<div class="line"><span class="cmt">// the code should sit at the CENTER of its members → take the mean:</span></div>
+<div class="line">new C1[0] = [ (0.9+1.1+1.0)/3 , (0.2+0.0+0.1)/3 ]</div>
+<div class="line">          = [ 3.0/3 , 0.3/3 ]</div>
+<div class="line">          = <span class="win">[1.0, 0.1]</span>   <span class="cmt">// drifted up toward where its members actually are</span></div>
+</div>
+<p>That's the whole mechanism. Each code chases the average of the vectors assigned to it; each encoder output is nudged toward its code (the <strong>commitment loss</strong>). They meet in the middle, and after enough rounds the codes settle onto the natural clusters of content — which is <em>why</em> code 0 ends up meaning "cooking." Nobody labeled it; it's just where the cooking videos piled up.</p>
+</div>
+
+<details class="more">
+<summary>◆ Optional: EMA vs. gradient, and the k-means initialization</summary>
+<p><strong>Initialization:</strong> codes are seeded by running plain <em>k-means</em> on a batch of encoder outputs, so they start on real clusters instead of pure noise (faster, more stable convergence).</p>
+<p><strong>The update.</strong> Two equivalent-in-spirit options:</p>
+<ul>
+<li><strong>EMA</strong> (most common for RQ-VAE): the "mean of members" above, but as a running average — <code>code ← decay·code + (1−decay)·(batch mean)</code>. Smooth, doesn't depend on learning rate, resists collapse. This is online k-means.</li>
+<li><strong>Gradient</strong>: a "codebook loss" term <code>‖sg[z] − code‖²</code> moves the code toward z by backprop (<code>sg</code> = stop-gradient). Simpler to code, a bit less stable.</li>
+</ul>
+<p>The encoder is always pulled the other way by the <strong>commitment loss</strong> <code>β·‖z − sg[code]‖²</code> — the VQ cousin of Chapter 2's KL term. In residual quantization this whole dance happens once per level, each level clustering the <em>residuals</em> the previous level left behind.</p>
+</details>
+
+<details class="more">
+<summary>◆ Optional: codebook collapse — when most codes die</summary>
+<p>A classic failure: a few codes win every assignment, the rest are never chosen, never updated, and stay stranded — "dead codes." Your effective vocabulary shrinks, many items collide, recommendations get coarse. Fixes: EMA updates, <strong>dead-code reinitialization</strong> (periodically respawn an unused code on top of a poorly-reconstructed input), commitment-loss tuning, and lower codebook dimensionality. PLUM's multi-resolution sizing also helps — small later codebooks are easier to keep fully utilized. This is exactly the "effective vocabulary size" metric PLUM reports (2.6×/13.24×): it's measuring how many codes are actually alive and used.</p>
+</details>
+<button class="nx" onclick="go(3)">Next: is it precomputed? &#x2192;</button>
+</div>
+
+<!-- PAGE 3 -->
+<div class="page" data-t="3. Precomputed?">
+<h2>Is it precomputed? Offline training, online lookup</h2>
+
+<div class="card blue">
+<h3>Two phases, very different cadences</h3>
+<svg class="diagram" viewBox="0 0 760 250" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI,sans-serif">
+  <!-- offline -->
+  <rect x="20" y="25" width="720" height="95" rx="10" fill="#0d1b2a" stroke="#4fc3f7"/>
+  <text x="40" y="48" fill="#4fc3f7" font-size="12" font-weight="bold">OFFLINE — occasionally (e.g. weekly/monthly)</text>
+  <g text-anchor="middle" font-size="10.5">
+    <rect x="40" y="62" width="150" height="40" rx="6" fill="#12122a" stroke="#555"/><text x="115" y="80" fill="#bbb">train RQ-VAE</text><text x="115" y="95" fill="#888" font-size="9">on a big item sample</text>
+    <rect x="250" y="62" width="160" height="40" rx="6" fill="#0a1a0a" stroke="#4caf50"/><text x="330" y="80" fill="#4caf50">FREEZE codebooks</text><text x="330" y="95" fill="#888" font-size="9">+ encoder weights</text>
+    <rect x="470" y="62" width="250" height="40" rx="6" fill="#1a0a2a" stroke="#ce93d8"/><text x="595" y="80" fill="#ce93d8">run every item through once</text><text x="595" y="95" fill="#888" font-size="9">store table: item_id → Semantic ID</text>
+  </g>
+  <g stroke="#555" stroke-width="2" marker-end="url(#arp3)"><line x1="190" y1="82" x2="248" y2="82"/><line x1="410" y1="82" x2="468" y2="82"/></g>
+  <!-- online -->
+  <rect x="20" y="140" width="720" height="95" rx="10" fill="#1a1400" stroke="#ff9800"/>
+  <text x="40" y="163" fill="#ff9800" font-size="12" font-weight="bold">ONLINE — every second, per upload</text>
+  <g text-anchor="middle" font-size="10.5">
+    <rect x="40" y="177" width="170" height="40" rx="6" fill="#12122a" stroke="#555"/><text x="125" y="195" fill="#bbb">new video uploaded</text><text x="125" y="210" fill="#888" font-size="9">get its content embeddings</text>
+    <rect x="270" y="177" width="200" height="40" rx="6" fill="#12122a" stroke="#555"/><text x="370" y="195" fill="#bbb">run FROZEN encoder+codebook</text><text x="370" y="210" fill="#888" font-size="9">no training, just nearest-code</text>
+    <rect x="530" y="177" width="190" height="40" rx="6" fill="#0a1a0a" stroke="#4caf50"/><text x="625" y="195" fill="#4caf50">Semantic ID in milliseconds</text><text x="625" y="210" fill="#888" font-size="9">ready to recommend instantly</text>
+  </g>
+  <g stroke="#555" stroke-width="2" marker-end="url(#arp3)"><line x1="210" y1="197" x2="268" y2="197"/><line x1="470" y1="197" x2="528" y2="197"/></g>
+  <defs><marker id="arp3" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#555"/></marker></defs>
+</svg>
+</div>
+
+<div class="card green">
+<h3>So, precisely: which parts are precomputed?</h3>
+<div class="math">
+<div class="line"><span class="lbl">codebooks</span>      = trained OFFLINE, then FROZEN. (the learned centroids)</div>
+<div class="line"><span class="lbl">SID of an item</span> = computed ONCE per item, then CACHED in a lookup table.</div>
+<div class="line"><span class="lbl">a NEW item</span>     = NOT retrained — just pushed through the frozen encoder</div>
+<div class="line">                 → nearest codes → its SID. Takes milliseconds.</div>
+</div>
+<p>This is the answer to "are these precomputed?": <span class="key">the codebook is precomputed (and frozen); each item's ID is precomputed once and looked up thereafter; a brand-new item gets its ID on the fly from the frozen codebook — no training in the loop.</span> That on-the-fly step is exactly what makes cold-start instant.</p>
+</div>
+
+<div class="card red">
+<h3>The catch: re-training shifts every ID</h3>
+<div class="math">
+<div class="line"><span class="cmt">// when you periodically retrain the RQ-VAE on fresh data:</span></div>
+<div class="line">old codebooks → new codebooks  ⇒  the same video may now map to a DIFFERENT SID</div>
+<div class="line"><span class="cmt">// the downstream generator learned the OLD id-language → now partly stale</span></div>
+</div>
+<p>So tokenizer retraining is disruptive: the "vocabulary" the recommender speaks changes underneath it. Teams retrain infrequently, sometimes keep codebooks fixed for long stretches, or warm-start the new codebook from the old one to minimize churn. <span class="key">Stability of the ID vocabulary is a feature, not an afterthought.</span></p>
+</div>
+
+<details class="more">
+<summary>◆ Optional: how new content can be recommended <em>before</em> it's even in the lookup table</summary>
+<p>Two complementary routes. (1) <strong>Tokenize-then-lookup</strong>: the moment a video is uploaded, encode it → SID → add the row <code>SID → video</code> to the index; now it's retrievable. (2) <strong>Generative reach</strong> (Ch5/Ch6): the transformer can <em>generate</em> a valid SID prefix like "cooking, quick" and serve whatever videos carry it — including ones uploaded after the recommender was last trained, because the model learned the <em>grammar</em> of IDs, not a fixed list of rows. The frozen codebook is the bridge that lets both happen without retraining anything heavy.</p>
+</details>
+<button class="nx" onclick="go(4)">Next: how tokenizer quality moves recommendations &#x2192;</button>
+</div>
+
+<!-- PAGE 4 -->
+<div class="page" data-t="4. Quality → recs">
+<h2>How RQ-VAE quality helps — or hurts — recommendations</h2>
+
+<div class="card orange">
+<h3>The key structural fact</h3>
+<p>The recommender sits <em>on top of</em> the semantic IDs. The tokenizer is the foundation; everything above inherits its strengths and its mistakes. <span class="key">"Similar Semantic ID" only means "similar item" to the extent the RQ-VAE learned the <em>right</em> notion of similar.</span> A great recommender on bad tokens is still a bad recommender.</p>
+</div>
+
+<div class="card blue">
+<h3>It's a tradeoff curve, not "more fidelity = better"</h3>
+<p>Your instinct ("does higher RQ-VAE quality help?") has a twist: reconstruction fidelity and recommendation quality are <em>not</em> the same axis. Push fidelity too far and you lose the very sharing that made semantic IDs useful.</p>
+<svg class="diagram" viewBox="0 0 760 215" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI,sans-serif">
+  <!-- axis -->
+  <line x1="60" y1="150" x2="700" y2="150" stroke="#555" stroke-width="2" marker-end="url(#arq)"/>
+  <text x="60" y="178" fill="#888" font-size="11">few levels / tiny codebooks</text>
+  <text x="700" y="178" fill="#888" font-size="11" text-anchor="end">many levels / huge codebooks</text>
+  <text x="380" y="200" fill="#666" font-size="11" text-anchor="middle">granularity of the Semantic ID  →</text>
+  <!-- left -->
+  <rect x="60" y="40" width="190" height="90" rx="8" fill="#1a0a0a" stroke="#ef5350"/>
+  <text x="155" y="60" fill="#ef5350" font-size="11" text-anchor="middle" font-weight="bold">TOO COARSE</text>
+  <text x="155" y="82" fill="#bbb" font-size="10" text-anchor="middle">huge collisions:</text>
+  <text x="155" y="98" fill="#bbb" font-size="10" text-anchor="middle">cooking ≠ baking but</text>
+  <text x="155" y="114" fill="#bbb" font-size="10" text-anchor="middle">share one ID → vague recs</text>
+  <line x1="155" y1="130" x2="155" y2="148" stroke="#ef5350" stroke-width="2"/>
+  <!-- middle -->
+  <rect x="285" y="30" width="190" height="100" rx="8" fill="#0a1a0a" stroke="#4caf50"/>
+  <text x="380" y="50" fill="#4caf50" font-size="11" text-anchor="middle" font-weight="bold">SWEET SPOT</text>
+  <text x="380" y="72" fill="#bbb" font-size="10" text-anchor="middle">similar items share a</text>
+  <text x="380" y="88" fill="#bbb" font-size="10" text-anchor="middle">prefix (transfer), each</text>
+  <text x="380" y="104" fill="#bbb" font-size="10" text-anchor="middle">item still identifiable</text>
+  <line x1="380" y1="130" x2="380" y2="148" stroke="#4caf50" stroke-width="2"/>
+  <!-- right -->
+  <rect x="510" y="40" width="190" height="90" rx="8" fill="#1a1400" stroke="#ff9800"/>
+  <text x="605" y="60" fill="#ff9800" font-size="11" text-anchor="middle" font-weight="bold">TOO FINE</text>
+  <text x="605" y="82" fill="#bbb" font-size="10" text-anchor="middle">every item nearly unique</text>
+  <text x="605" y="98" fill="#bbb" font-size="10" text-anchor="middle">→ no sharing → you're</text>
+  <text x="605" y="114" fill="#bbb" font-size="10" text-anchor="middle">back to atomic IDs</text>
+  <line x1="605" y1="130" x2="605" y2="148" stroke="#ff9800" stroke-width="2"/>
+  <defs><marker id="arq" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#555"/></marker></defs>
+</svg>
+<p class="cap">Both ends hurt recommendations. The art is landing in the middle — enough levels to tell items apart, few enough that neighbors still share a prefix.</p>
+</div>
+
+<div class="card purple">
+<h3>The failure mode that surprises people: keying on the wrong thing</h3>
+<div class="math">
+<div class="line"><span class="cmt">// suppose reconstruction is dominated by the VISUAL embedding, and the</span></div>
+<div class="line"><span class="cmt">// biggest visual variation in the data is... lighting / thumbnail brightness.</span></div>
+<div class="line">→ codes end up encoding "bright vs dark thumbnail"</div>
+<div class="line">→ "similar SID" = "similar brightness", NOT "similar topic"</div>
+<div class="line">→ recommender confidently suggests visually-similar but topically-random videos</div>
+</div>
+<p>Reconstruction error can be <em>low</em> while the recommendation is <em>bad</em>, because the codes captured a real-but-useless axis of variation. This is precisely why PLUM adds the <strong>co-occurrence contrastive loss</strong> (Ch6): it forces "watched-together" items to share IDs, steering the codes toward <em>behaviorally</em> meaningful similarity instead of whatever happens to dominate pixels. <span class="key">Good tokenizer quality = the codes capture the similarity that predicts engagement, not just the similarity that minimizes reconstruction.</span></p>
+</div>
+
+<div class="card green">
+<h3>Summary: when does tokenizer quality <em>help</em> recs?</h3>
+<table>
+<tr><th>Tokenizer property</th><th>Effect on recommendations</th></tr>
+<tr><td>Right granularity (sweet spot)</td><td>↑ Transfer to cold-start + unique identity. Best case.</td></tr>
+<tr><td>High effective-vocabulary (few dead codes)</td><td>↑ Capacity to distinguish items → finer, less vague recs.</td></tr>
+<tr><td>Codes aligned to engagement (co-occurrence loss)</td><td>↑ "Similar ID" means "users agree these are alike" → relevant.</td></tr>
+<tr><td>Too coarse / heavy collisions</td><td>↓ Distinct items blur together → generic recs.</td></tr>
+<tr><td>Too fine / near-unique IDs</td><td>↓ Sharing lost → cold-start broken, back to atomic IDs.</td></tr>
+<tr><td>Keyed on wrong axis (e.g. brightness)</td><td>↓ Low reconstruction loss, bad recs — silent failure.</td></tr>
+<tr><td>Frequent retraining</td><td>↓ ID vocabulary churns under the recommender → instability.</td></tr>
+</table>
+</div>
+<button class="nx" onclick="go(5)">Next: recap &#x2192;</button>
+</div>
+
+<!-- PAGE 5 -->
+<div class="page" data-t="5. Recap">
+<h2>Recap — the tokenizer, demystified</h2>
+<div class="card blue">
+<table>
+<tr><th>Your question</th><th>The answer</th></tr>
+<tr><td>Are codebooks precomputed from video embeddings?</td><td>The codebook is trained offline then frozen. It consumes embeddings that <em>other</em> models precomputed (visual, audio, text, channel…).</td></tr>
+<tr><td>What do they do with all those embeddings?</td><td>L2-normalize → concatenate → learned projection → one fused vector z → RQ-VAE. Content features go in; behavioral signals mostly stay out (or enter via a contrastive loss).</td></tr>
+<tr><td>How is the codebook generated?</td><td>k-means init, then each code = running mean (EMA) of the vectors that snap to it; encoder pulled toward codes by commitment loss. It's learned k-means.</td></tr>
+<tr><td>How does RQ-VAE quality move recs?</td><td>It's the foundation — a tradeoff curve. Right granularity + alive codes + engagement-aligned codes help; too coarse, too fine, or wrong-axis hurt.</td></tr>
+</table>
+</div>
+<div class="card green">
+<h3>The single thread</h3>
+<p><span class="key">The codebook is a frozen set of learned cluster-centers over fused content embeddings; an item's Semantic ID is which centers it snaps to; and the recommender is only ever as good as the similarity those centers encode.</span></p>
+</div>
+<div class="card orange">
+<h3>Now Chapter 6 makes sense</h3>
+<p>With the tokenizer fully understood — its inputs, its training, its frozen serving, its quality knobs — PLUM's three stages read cleanly: Stage 1 <em>is</em> this chapter (upgraded with multimodal fusion, multi-resolution codebooks, and the co-occurrence loss); Stages 2–3 teach a pretrained LLM to speak the resulting ID language.</p>
+<p style="text-align:center;margin-top:14px"><a href="6_plum.html" style="color:#4fc3f7;font-weight:600;font-size:1.05em;text-decoration:none">Continue to Chapter 6: PLUM &#x2192;</a></p>
+</div>
+</div>
+
+<script>
+const pages=document.querySelectorAll('.page'),nav=document.getElementById('nav');
+pages.forEach((p,i)=>{const b=document.createElement('button');b.textContent=p.dataset.t;b.onclick=()=>go(i);if(i===0)b.classList.add('on');nav.appendChild(b);});
+function go(n){pages.forEach((p,i)=>p.classList.toggle('on',i===n));nav.querySelectorAll('button').forEach((b,i)=>{b.classList.remove('on');if(i<n)b.classList.add('done');else b.classList.remove('done');if(i===n)b.classList.add('on');});window.scrollTo({top:0,behavior:'smooth'});}
+</script>
+</body></html>

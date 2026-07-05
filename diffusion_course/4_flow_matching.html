@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Diffusion Ch4: Flow Matching</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0a0a1a;color:#e0e0e0;padding:20px 20px 80px;line-height:1.7}
+h1{text-align:center;color:#fff;margin-bottom:4px;font-size:1.5em}
+.sub{text-align:center;color:#888;margin-bottom:24px;font-size:.88em}
+.nav{display:flex;justify-content:center;gap:6px;margin-bottom:20px;flex-wrap:wrap}
+.nav button{padding:7px 13px;border:2px solid #333;background:#111;color:#888;border-radius:8px;cursor:pointer;font-size:.78em;transition:.2s}
+.nav button:hover{border-color:#555;color:#ccc}
+.nav button.on{border-color:#4fc3f7;color:#4fc3f7;background:#0d2137}
+.nav button.done{border-color:#4caf50;color:#4caf50}
+.page{display:none;max-width:860px;margin:0 auto}
+.page.on{display:block}
+.page h2{color:#4fc3f7;margin-bottom:12px;font-size:1.2em}
+.card{background:#12122a;border:1px solid #2a2a4a;border-radius:12px;padding:18px;margin-bottom:14px}
+.card.blue{border-color:#4fc3f7;background:#0d1b2a}
+.card.green{border-color:#4caf50;background:#0a1a0a}
+.card.orange{border-color:#ff9800;background:#1a1400}
+.card.red{border-color:#ef5350;background:#1a0a0a}
+.card.purple{border-color:#ce93d8;background:#1a0a2a}
+.card h3{color:#ffb74d;margin-bottom:8px;font-size:1em}
+button.nx{padding:10px 24px;background:#4caf50;color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:.9em;margin-top:14px}
+button.nx:hover{background:#66bb6a}
+table{width:100%;border-collapse:collapse;margin:10px 0}
+th,td{padding:8px 12px;border:1px solid #333;text-align:center;font-size:.88em}
+th{background:#1a1a3a;color:#4fc3f7}
+td{text-align:left}
+.math{background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:14px;margin:10px 0;font-family:'Fira Code',Consolas,monospace;font-size:.85em;line-height:1.8}
+.math .line{margin:2px 0;display:block}
+.math .hl{background:#264f78;padding:2px 6px;border-radius:4px;display:inline-block}
+.math .cmt{color:#6a9955}
+.math .val{color:#b5cea8}
+.math .lbl{color:#9cdcfe}
+.key{color:#ffb74d;font-weight:600}
+.vs{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:10px 0}
+@media(max-width:650px){.vs{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<a href="../index.html" style="position:fixed;top:10px;left:14px;font-size:.75em;color:#555;text-decoration:none;z-index:999;padding:4px 8px;background:#0a0a1a;border:1px solid #333;border-radius:6px;">&larr; index</a>
+
+<h1>Diffusion Ch4: Flow Matching</h1>
+<p class="sub">The next generation — cleaner math, fewer steps, better results</p>
+
+<div class="nav" id="nav"></div>
+
+<!-- PAGE 0 -->
+<div class="page on" data-t="0. Problem with DDPM">
+<h2>The Problem with DDPM — Curved Paths and Slow Sampling</h2>
+
+<div class="card blue">
+<h3>DDPM's fundamental inefficiency</h3>
+<p>DDPM works, but its sampling trajectory is wasteful. The forward process adds noise in many tiny Gaussian steps, creating a <strong>curved, stochastic path</strong> in data space. The reverse process must trace this same curved path backwards — carefully, step by step, because any large step misses the curve.</p>
+</div>
+
+<div class="card red">
+<h3>Three compounding problems</h3>
+<div class="vs">
+  <div class="card" style="margin:0;border-color:#ef5350">
+    <h3>Indirect objective</h3>
+    <p>You want to move from noisy to clean, but the loss trains to predict ε (added noise). The connection works mathematically, but noise prediction is an indirect proxy for the actual denoising direction.</p>
+  </div>
+  <div class="card" style="margin:0;border-color:#ef5350">
+    <h3>Curved path → many steps</h3>
+    <p>The SDE path curves through data space. You must follow it with tiny steps. Skip steps → leave the path → poor quality. 1000 steps is the minimum for good results.</p>
+  </div>
+</div>
+<div class="card" style="margin-top:14px;border-color:#ef5350;background:#1a0a0a">
+  <h3>Noisy training targets</h3>
+  <p>For the same clean image x_0, different noise samples ε give different training targets at x_t. Even for a fully correct network, the loss has high variance. This makes training slower and less stable than it needs to be.</p>
+</div>
+</div>
+
+<div class="card">
+<h3>The cost in practice</h3>
+<div class="math">
+<span class="line cmt">// DDPM: 1000 steps minimum for quality</span>
+<span class="line"><span class="lbl">1000 steps</span> × <span class="val">1 network forward pass</span> = <span class="val">1000 NFE</span></span>
+<span class="line cmt">// NFE = Neural Function Evaluations</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// DDIM speeds this up to ~50 steps, but at a quality cost</span>
+<span class="line cmt">// And DDIM works by approximating the curved path with fewer points</span>
+<span class="line cmt">// The curve itself is still the root problem</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Question: what if the path were a straight line?</span>
+<span class="line cmt">// Then you could take one giant step — or just a few big steps — and be done</span>
+</div>
+</div>
+
+<div class="card orange">
+<h3>The intuition for the fix</h3>
+<p>If you want to get from point A to point B, the shortest and most predictable path is a straight line. DDPM takes a winding road through noise space. Flow matching asks: <strong>what if we just drew a straight line from noise to data and learned to follow it?</strong> It turns out this is possible, simpler, and dramatically faster.</p>
+</div>
+
+<button class="nx" onclick="go(1)">The flow matching idea</button>
+</div>
+
+<!-- PAGE 1 -->
+<div class="page" data-t="1. The FM Idea">
+<h2>The Flow Matching Idea — Learn a Vector Field for Straight Paths</h2>
+
+<div class="card blue">
+<h3>Rethinking the formulation</h3>
+<p>Instead of learning to predict noise (an indirect target), learn to predict the <span class="key">velocity field</span>: at every point in space and time, which direction should probability mass flow to transform noise into data? With straight-line paths, this velocity is simply a constant vector from noise to data — trivial to compute.</p>
+</div>
+
+<div class="card green">
+<h3>Straight-line interpolation path</h3>
+<div class="math">
+<span class="line cmt">// Define the path between data x_0 and noise x_1 (note: t=0 is data, t=1 is noise)</span>
+<span class="line"><span class="lbl">x_t</span> = (1 − t) × x_0 + t × x_1       where t ∈ [0, 1]</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// At t=0: x_t = x_0 (clean data)</span>
+<span class="line cmt">// At t=1: x_t = x_1 (pure noise)</span>
+<span class="line cmt">// At t=0.5: x_t = midpoint between data and noise</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// The velocity (rate of change along this path):</span>
+<span class="line"><span class="lbl">dx_t / dt</span> = −x_0 + x_1 = x_1 − x_0</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Key insight: the velocity is CONSTANT along the path!</span>
+<span class="line cmt">// It doesn't depend on t — same direction at every point on the line</span>
+</div>
+</div>
+
+<div class="card purple">
+<h3>The flow matching loss</h3>
+<div class="math">
+<span class="line cmt">// Train a velocity network v_θ(x_t, t) to predict the target velocity:</span>
+<span class="line"><span class="lbl">L_FM</span> = E_{x_0, x_1, t} [ ||v_θ(x_t, t) − (x_1 − x_0)||² ]</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Compare to DDPM loss:</span>
+<span class="line"><span class="lbl">L_DDPM</span> = E_{x_0, ε, t} [ ||ε_θ(x_t, t) − ε||² ]</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Both are MSE losses. Key difference:</span>
+<span class="line cmt">// FM target (x_1 − x_0) is a FIXED vector for a given (x_0, x_1) pair</span>
+<span class="line cmt">// DDPM target ε varies with each random noise draw — higher variance</span>
+</div>
+</div>
+
+<div class="card">
+<h3>Concrete: one training example</h3>
+<div class="math">
+<span class="line cmt">// Sample a real image pixel and a noise sample:</span>
+<span class="line"><span class="lbl">x_0</span> = [0.8,  0.3]   <span class="cmt">// real image (2D example)</span></span>
+<span class="line"><span class="lbl">x_1</span> = [0.2, -1.1]   <span class="cmt">// noise ~ N(0,I)</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Sample a random timestep t=0.5:</span>
+<span class="line"><span class="lbl">x_t</span> = (1−0.5)×[0.8, 0.3] + 0.5×[0.2, −1.1]</span>
+<span class="line">     = 0.5×[0.8, 0.3] + 0.5×[0.2, −1.1]</span>
+<span class="line">     = [0.4, 0.15] + [0.1, −0.55]</span>
+<span class="line">     = <span class="val">[0.5, −0.4]</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Target velocity (deterministic — same every time for this pair):</span>
+<span class="line"><span class="lbl">target v</span> = x_1 − x_0 = [0.2−0.8, −1.1−0.3] = <span class="hl val">[−0.6, −1.4]</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Train: v_θ([0.5, −0.4], t=0.5) should predict [−0.6, −1.4]</span>
+<span class="line cmt">// Clean, unique target — no ambiguity, no variance from noise sampling</span>
+</div>
+</div>
+
+<div class="card orange">
+<h3>Why this is more elegant than DDPM</h3>
+<p>In DDPM, two different noise samples ε₁ and ε₂ from the same x_0 give the same x_t but different training targets — the network sees contradictory gradients. In flow matching, for a fixed (x_0, x_1) pair, the target velocity is always exactly x_1 − x_0. The training signal is clean, consistent, and geometrically interpretable.</p>
+</div>
+
+<button class="nx" onclick="go(2)">Why straight paths win</button>
+</div>
+
+<!-- PAGE 2 -->
+<div class="page" data-t="2. Straight Paths">
+<h2>Why Straight Paths Win — Fewer Steps, Better Solvers</h2>
+
+<div class="card blue">
+<h3>The geometry of the problem</h3>
+<p>Sampling from a trained model means numerically integrating the velocity field from t=1 (noise) to t=0 (data). Numerical integration accuracy depends on how much the path curves. <span class="key">Straighter paths allow larger steps</span> with the same accuracy — which means far fewer total steps needed.</p>
+</div>
+
+<div class="card green">
+<h3>DDPM path vs flow matching path</h3>
+<div class="vs">
+  <div class="card orange" style="margin:0">
+    <h3>DDPM (curved)</h3>
+    <p>The SDE trajectory curves continuously through noise space. The velocity at each point depends on the local curvature — you can't predict where the path will be several steps ahead. Must take tiny steps or error accumulates.</p>
+    <p style="margin-top:8px;color:#888;font-size:.88em">Like driving a mountain road — must go slowly, can't cut corners.</p>
+  </div>
+  <div class="card purple" style="margin:0">
+    <h3>Flow matching (straight)</h3>
+    <p>The target velocity is constant along each path — the ODE has zero curvature per-trajectory. Euler integration (the simplest possible solver) makes zero error on perfectly straight lines. Takes large steps with high accuracy.</p>
+    <p style="margin-top:8px;color:#888;font-size:.88em">Like driving a straight highway — full speed, no error in direction.</p>
+  </div>
+</div>
+</div>
+
+<div class="card">
+<h3>Numerical integration: why fewer steps work</h3>
+<div class="math">
+<span class="line cmt">// Euler method integration error scales with step size × curvature</span>
+<span class="line"><span class="lbl">error per step</span> ≈ Δt² × d²x/dt²  (second derivative = curvature)</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// For a straight-line path: d²x/dt² = 0 exactly</span>
+<span class="line"><span class="lbl">error per step</span> = <span class="val">0</span>  (for a perfect straight path)</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// In practice (imperfect learned velocity field), curvature is small</span>
+<span class="line cmt">// Can take Δt = 0.05 (20 steps total) with negligible error</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// DDPM/DDIM: high curvature → must use Δt ≈ 0.001 (1000 steps)</span>
+</div>
+</div>
+
+<div class="card green">
+<h3>Concrete step count comparison</h3>
+<div class="math">
+<span class="line cmt">// Generating one 512×512 image, same quality target:</span>
+<span class="line">&nbsp;</span>
+<span class="line"><span class="lbl">DDPM</span>:          <span class="val">1000</span> steps × 1 pass = <span class="val">1000 NFE</span></span>
+<span class="line"><span class="lbl">DDIM</span>:            <span class="val">50</span> steps × 1 pass =   <span class="val">50 NFE</span></span>
+<span class="line"><span class="lbl">Flow Matching</span>:   <span class="val">20</span> steps × 1 pass =   <span class="val">20 NFE</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Flow matching: 50× fewer NFE than DDPM, 2.5× fewer than DDIM</span>
+<span class="line cmt">// With CFG, each "step" is 2 passes — but savings are the same</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Wall clock: ~0.1s for flow matching vs ~5s for DDPM (A100 GPU)</span>
+</div>
+</div>
+
+<div class="card purple">
+<h3>ODE solvers: more options, better quality</h3>
+<p>Because flow matching is an ODE (not a stochastic SDE), you can use <strong>classical ODE solvers</strong> that make large, accurate steps:</p>
+<table>
+<tr><th>Solver</th><th>Steps</th><th>Notes</th></tr>
+<tr><td>Euler (1st order)</td><td>20–50</td><td>Simplest; works well for straight paths</td></tr>
+<tr><td>Midpoint (2nd order)</td><td>10–20</td><td>2 function evaluations per step, higher accuracy</td></tr>
+<tr><td>Runge-Kutta 4 (RK4)</td><td>5–10</td><td>4 evaluations per step, very accurate</td></tr>
+</table>
+<p style="margin-top:8px">DDPM/DDIM cannot use RK4 — the stochastic noise term breaks higher-order solver assumptions. Flow matching works with all ODE solvers out of the box.</p>
+</div>
+
+<button class="nx" onclick="go(3)">Conditional flow matching</button>
+</div>
+
+<!-- PAGE 3 -->
+<div class="page" data-t="3. Conditional FM">
+<h2>Conditional Flow Matching — Guidance and Beyond</h2>
+
+<div class="card blue">
+<h3>Two ways to condition generation</h3>
+<p>Flow matching supports the same text-guided generation as diffusion (using CFG at inference), but it also enables a more powerful framework: conditioning built directly into the flow. You can define a flow from <strong>any distribution to any other distribution</strong>, not just noise to data.</p>
+</div>
+
+<div class="card green">
+<h3>Method 1: CFG works identically in flow matching</h3>
+<div class="math">
+<span class="line cmt">// Train with text condition dropped 10% of the time (same as diffusion)</span>
+<span class="line cmt">// At inference, run network twice per step:</span>
+<span class="line"><span class="lbl">v_uncond</span> = v_θ(x_t, t, ∅)   <span class="cmt">// unconditional velocity</span></span>
+<span class="line"><span class="lbl">v_cond</span>   = v_θ(x_t, t, c)   <span class="cmt">// conditional velocity</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Guided velocity (same CFG formula, now for velocities):</span>
+<span class="line"><span class="hl lbl">v_guided</span> = v_uncond + w × (v_cond − v_uncond)</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Integrate guided velocity from t=1 to t=0 → conditioned image</span>
+<span class="line cmt">// Same tradeoff: higher w = more prompt-adherent but less diverse</span>
+</div>
+</div>
+
+<div class="card purple">
+<h3>Method 2: flows between arbitrary distributions</h3>
+<p>The real power of flow matching: you aren't limited to "noise → data". You can define a flow from any source distribution q to any target distribution p. This enables:</p>
+<div class="vs">
+  <div class="card" style="margin:0;border-color:#ce93d8">
+    <h3>Image-to-image translation</h3>
+    <p>Define a flow from the "day photographs" distribution to the "night photographs" distribution. The flow learns to transform day images into night images — without paired training data, only distributions.</p>
+  </div>
+  <div class="card" style="margin:0;border-color:#ce93d8">
+    <h3>Text-to-image as a direct flow</h3>
+    <p>Define a flow from the CLIP text embedding distribution directly to the image distribution. Instead of starting from N(0,I), start from the text embedding — a more informative source that already "knows" what to generate.</p>
+  </div>
+</div>
+</div>
+
+<div class="card">
+<h3>The generalized flow matching objective</h3>
+<div class="math">
+<span class="line cmt">// General conditional flow matching (Lipman et al. 2022):</span>
+<span class="line"><span class="lbl">x_t</span> = (1−t) × x_0 + t × x_1     where x_0 ~ p_data, x_1 ~ q_source</span>
+<span class="line"><span class="lbl">target v</span> = x_1 − x_0             <span class="cmt">// still just the displacement</span></span>
+<span class="line"><span class="lbl">L</span> = E[||v_θ(x_t, t, c) − (x_1 − x_0)||²]</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// q_source can be:</span>
+<span class="line cmt">// - N(0,I): standard noise → data (Stable Diffusion 3, Flux)</span>
+<span class="line cmt">// - another image distribution: image → image (style transfer)</span>
+<span class="line cmt">// - text embeddings: text → image (more direct conditioning)</span>
+<span class="line cmt">// - low-res images: super-resolution as a flow</span>
+</div>
+</div>
+
+<div class="card orange">
+<h3>Optimal transport: the best straight paths</h3>
+<p>Not all straight-line pairings between noise and data are equal. <span class="key">Optimal transport (OT) conditioning</span> finds the pairing that minimizes total path length — matching each noise sample to the closest data point in distribution. OT paths are the "most straight" on average, further reducing curvature in the learned velocity field. Flux and Stable Diffusion 3 use OT-conditioned flow matching for this reason.</p>
+</div>
+
+<button class="nx" onclick="go(4)">Flow Matching vs Diffusion</button>
+</div>
+
+<!-- PAGE 4 -->
+<div class="page" data-t="4. FM vs Diffusion">
+<h2>Flow Matching vs Diffusion — State of the Art</h2>
+
+<div class="card blue">
+<h3>Head-to-head comparison</h3>
+<table>
+<tr><th>Property</th><th>DDPM</th><th>DDIM</th><th>Flow Matching</th></tr>
+<tr><td>Steps for quality</td><td>1000</td><td>50</td><td>20</td></tr>
+<tr><td>Sampling type</td><td>Stochastic</td><td>Deterministic</td><td>Deterministic</td></tr>
+<tr><td>Training target</td><td>Noise ε</td><td>Noise ε</td><td>Velocity v = x_1 − x_0</td></tr>
+<tr><td>Path shape</td><td>Curved SDE</td><td>Curved ODE</td><td>Straight ODE</td></tr>
+<tr><td>ODE solver support</td><td>No (SDE)</td><td>Limited</td><td>Full (Euler, RK4...)</td></tr>
+<tr><td>Training stability</td><td>Good</td><td>Same model as DDPM</td><td>Better (lower variance)</td></tr>
+<tr><td>Source distribution</td><td>N(0,I) only</td><td>N(0,I) only</td><td>Any distribution</td></tr>
+</table>
+</div>
+
+<div class="card green">
+<h3>Who uses flow matching</h3>
+<div class="math">
+<span class="line"><span class="lbl">Stable Diffusion 3</span>  (Stability AI, 2024)   — flow matching + OT</span>
+<span class="line"><span class="lbl">Flux</span>                 (Black Forest Labs, 2024) — flow matching + OT</span>
+<span class="line"><span class="lbl">Movie Gen</span>            (Meta, 2024)             — flow matching for video</span>
+<span class="line"><span class="lbl">Sora</span>                 (OpenAI, 2024)           — likely flow matching or similar</span>
+<span class="line"><span class="lbl">Stable Video Diffusion 3</span> (2024)              — flow matching</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// DDPM/DDIM: still used in older Stable Diffusion 1.5, 2.1</span>
+<span class="line cmt">// All new frontier models (2024+) use flow matching</span>
+</div>
+</div>
+
+<div class="card purple">
+<h3>Why flow matching won</h3>
+<div class="vs">
+  <div class="card" style="margin:0;border-color:#4fc3f7">
+    <h3>Simpler loss</h3>
+    <p>MSE on velocity has lower gradient variance than DDPM's noise MSE. Faster convergence, more stable training at large scale. Models train more predictably.</p>
+  </div>
+  <div class="card" style="margin:0;border-color:#4caf50">
+    <h3>Faster sampling</h3>
+    <p>20 NFE instead of 1000. Real-time generation on consumer hardware. Enables video generation (hundreds of frames) at reasonable cost.</p>
+  </div>
+</div>
+<div class="vs" style="margin-top:14px">
+  <div class="card" style="margin:0;border-color:#ff9800">
+    <h3>Better theory</h3>
+    <p>Directly connected to optimal transport — the mathematically optimal way to move probability mass. Diffusion has no such clean optimality guarantee.</p>
+  </div>
+  <div class="card" style="margin:0;border-color:#ce93d8">
+    <h3>More general</h3>
+    <p>Flows between arbitrary distributions unlock new applications: image editing, video, 3D generation, protein folding — wherever you want to transform one distribution into another.</p>
+  </div>
+</div>
+</div>
+
+<div class="card orange">
+<h3>The complete landscape: from DDPM to Flow Matching</h3>
+<div class="math">
+<span class="line cmt">// 2020: DDPM — the breakthrough (Ho et al.)</span>
+<span class="line cmt">// 2020: DDIM — deterministic sampling, 50× fewer steps (Song et al.)</span>
+<span class="line cmt">// 2021: Score SDE — unifying framework (Song et al.)</span>
+<span class="line cmt">// 2021: Latent Diffusion — pixel→latent space (Rombach et al.) → Stable Diffusion</span>
+<span class="line cmt">// 2022: Flow Matching — straight paths, better theory (Lipman et al.)</span>
+<span class="line cmt">// 2022: Rectified Flow — independent concurrent work (Liu et al.)</span>
+<span class="line cmt">// 2023: OT-conditioned FM — optimal transport pairing (Tong et al.)</span>
+<span class="line cmt">// 2024: SD3 / Flux — flow matching at production scale</span>
+</div>
+</div>
+
+<button class="nx" onclick="go(5)">Summary</button>
+</div>
+
+<!-- PAGE 5 -->
+<div class="page" data-t="5. Summary">
+<h2>Chapter 4 Summary — Flow Matching</h2>
+
+<div class="card blue">
+<table>
+<tr><th>Concept</th><th>Definition</th><th>Why it matters</th></tr>
+<tr><td>Flow</td><td>ODE moving probability mass from q to p</td><td>Unifying generative framework</td></tr>
+<tr><td>Straight-line path</td><td>x_t = (1−t)×x_0 + t×x_1</td><td>Zero curvature → fewer steps</td></tr>
+<tr><td>Target velocity</td><td>v = x_1 − x_0 (constant)</td><td>Clean, low-variance training target</td></tr>
+<tr><td>FM loss</td><td>||v_θ(x_t,t) − (x_1−x_0)||²</td><td>Same form as DDPM, cleaner signal</td></tr>
+<tr><td>ODE solvers</td><td>Euler, RK4, midpoint</td><td>Works with all; 20 steps suffices</td></tr>
+<tr><td>Arbitrary flows</td><td>Any source → any target dist.</td><td>Enables image-to-image, video, etc.</td></tr>
+</table>
+</div>
+
+<div class="card green">
+<h3>The progression from DDPM to Flow Matching</h3>
+<div class="math">
+<span class="line"><span class="lbl">DDPM</span>:     predict ε,       1000 steps, stochastic SDE, curved</span>
+<span class="line">              ↓  same idea, deterministic ODE</span>
+<span class="line"><span class="lbl">DDIM</span>:     predict ε,         50 steps, deterministic ODE, curved</span>
+<span class="line">              ↓  same idea, straight paths</span>
+<span class="line"><span class="lbl">Flow FM</span>:  predict x_1−x_0,   20 steps, deterministic ODE, straight</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Each step: same model family, cleaner inductive bias</span>
+<span class="line cmt">// Diffusion models are a special case of flows (with added noise)</span>
+</div>
+</div>
+
+<div class="card orange">
+<h3>Key numbers to remember</h3>
+<div class="math">
+<span class="line"><span class="lbl">Flow matching steps</span>: ~20 NFE for full quality</span>
+<span class="line"><span class="lbl">vs DDPM</span>:             50× fewer (1000 NFE)</span>
+<span class="line"><span class="lbl">Training target</span>:     v = x_1 − x_0  (not ε)</span>
+<span class="line"><span class="lbl">Path</span>:               x_t = (1−t)×x_0 + t×x_1</span>
+<span class="line"><span class="lbl">Models using it</span>:    SD3, Flux, Movie Gen, Sora (likely)</span>
+</div>
+</div>
+</div>
+
+<script>
+const pages=document.querySelectorAll('.page'),nav=document.getElementById('nav');
+pages.forEach((p,i)=>{const b=document.createElement('button');b.textContent=p.dataset.t;b.onclick=()=>go(i);if(i===0)b.classList.add('on');nav.appendChild(b);});
+function go(n){pages.forEach((p,i)=>p.classList.toggle('on',i===n));nav.querySelectorAll('button').forEach((b,i)=>{b.classList.remove('on');if(i<n)b.classList.add('done');else b.classList.remove('done');if(i===n)b.classList.add('on');});window.scrollTo({top:0,behavior:'smooth'});}
+</script>
+</body>
+</html>

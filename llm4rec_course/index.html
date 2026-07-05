@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LLM4Rec — State of the Art</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0a0a1a;color:#e0e0e0;padding:20px 20px 80px;line-height:1.7}
+h1{text-align:center;color:#fff;margin-bottom:4px;font-size:1.5em}
+.sub{text-align:center;color:#888;margin-bottom:24px;font-size:.88em}
+.nav{display:flex;justify-content:center;gap:6px;margin-bottom:20px;flex-wrap:wrap}
+.nav button{padding:7px 13px;border:2px solid #333;background:#111;color:#888;border-radius:8px;cursor:pointer;font-size:.78em;transition:.2s}
+.nav button:hover{border-color:#555;color:#ccc}
+.nav button.on{border-color:#4fc3f7;color:#4fc3f7;background:#0d2137}
+.nav button.done{border-color:#4caf50;color:#4caf50}
+.page{display:none;max-width:880px;margin:0 auto}
+.page.on{display:block}
+.page h2{color:#4fc3f7;margin-bottom:12px;font-size:1.2em}
+.card{background:#12122a;border:1px solid #2a2a4a;border-radius:12px;padding:18px;margin-bottom:14px}
+.card.blue{border-color:#4fc3f7;background:#0d1b2a}
+.card.green{border-color:#4caf50;background:#0a1a0a}
+.card.orange{border-color:#ff9800;background:#1a1400}
+.card.red{border-color:#ef5350;background:#1a0a0a}
+.card.purple{border-color:#ce93d8;background:#1a0a2a}
+.card h3{color:#ffb74d;margin-bottom:8px;font-size:1em}
+button.nx{padding:10px 24px;background:#4caf50;color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:.9em;margin-top:14px}
+button.nx:hover{background:#66bb6a}
+table{width:100%;border-collapse:collapse;margin:10px 0}
+th,td{padding:8px 12px;border:1px solid #333;text-align:center;font-size:.86em}
+th{background:#1a1a3a;color:#4fc3f7}
+td{text-align:left}
+td.c{text-align:center}
+.math{background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:14px;margin:10px 0;font-family:'Fira Code',Consolas,monospace;font-size:.85em;line-height:1.8;overflow-x:auto}
+.math .line{margin:2px 0;display:block;white-space:pre-wrap}
+.math .hl{background:#264f78;padding:2px 6px;border-radius:4px;display:inline-block}
+.math .cmt{color:#6a9955}.math .val{color:#b5cea8}.math .lbl{color:#9cdcfe}.math .win{color:#4caf50;font-weight:700}.math .bad{color:#ef5350;font-weight:700}
+.key{color:#ffb74d;font-weight:600}
+.diagram{display:block;margin:14px auto;max-width:100%}
+.cap{text-align:center;color:#888;font-size:.8em;margin:-6px 0 14px}
+details.more{background:#0d0d20;border:1px solid #333;border-left:3px solid #ce93d8;border-radius:8px;padding:10px 14px;margin:12px 0}
+details.more summary{cursor:pointer;color:#ce93d8;font-size:.86em;font-weight:600;outline:none}
+details.more[open] summary{margin-bottom:10px}
+details.more p,details.more .math{font-size:.85em}
+.tag{display:inline-block;font-size:.7em;font-weight:700;padding:2px 7px;border-radius:4px;margin-left:6px;vertical-align:middle}
+.t-pa{background:rgba(255,152,0,.15);color:#ff9800;border:1px solid rgba(255,152,0,.35)}
+.t-pb{background:rgba(79,195,247,.15);color:#4fc3f7;border:1px solid rgba(79,195,247,.35)}
+.paper{border-left:3px solid #4fc3f7;padding:4px 0 4px 14px;margin:14px 0}
+.paper .ph{color:#fff;font-weight:700;font-size:.98em}
+.paper .pv{color:#666;font-size:.78em;margin-left:6px}
+.paper a{color:#4fc3f7;text-decoration:none;font-size:.8em}
+.paper a:hover{text-decoration:underline}
+.lblrow{font-size:.82em;margin:5px 0}
+.lblrow b{color:#4caf50}
+.lblrow.lim b{color:#ef5350}
+.lblrow.why b{color:#ce93d8}
+.idea{background:#12122a;border:1px solid #2a2a4a;border-left:3px solid #4caf50;border-radius:8px;padding:12px 16px;margin:12px 0}
+.idea .qn{color:#4caf50;font-weight:700;font-size:.78em;text-transform:uppercase;letter-spacing:.05em}
+.idea h4{color:#fff;font-size:.95em;margin:3px 0 6px}
+</style>
+</head>
+<body>
+<a href="../index.html" style="position:fixed;top:10px;left:14px;font-size:.75em;color:#555;text-decoration:none;z-index:999;padding:4px 8px;background:#0a0a1a;border:1px solid #333;border-radius:6px;">&larr; index</a>
+<h1>LLM4Rec — The State of the Art</h1>
+<p class="sub">The iconic papers that defined LLMs-for-recommendation, the one worked example behind each, and where the open research is &mdash; built from a verified deep-research pass (June 2026)</p>
+<div class="nav" id="nav"></div>
+
+<!-- ================= PAGE 0 — THE MAP ================= -->
+<div class="page on" data-t="0. The map">
+<h2>The whole field on one page</h2>
+
+<div class="card">
+<p>Classic recommenders are <span class="key">two towers + a lookup table</span>: every item is a random ID pointing at a learned vector, you embed the user, embed the items, and do nearest-neighbour search. It works, but the ID means nothing until engagement teaches it, and the model knows nothing about the world.</p>
+<p style="margin-top:8px">"LLM4Rec" is the bet that a <span class="key">language model</span> &mdash; which already knows that espresso relates to coffee, that <em>Dune</em> is sci-fi &mdash; can do recommendation better. The field splits into <strong>two big ideas</strong>, plus a glue layer and an industrial endgame.</p>
+</div>
+
+<div class="card blue">
+<h3>The two paradigm shifts (everything hangs off these)</h3>
+<table>
+<tr><th style="width:50%">Paradigm A &mdash; Rec as Language <span class="t-pa t-pa">text</span></th><th style="width:50%">Paradigm B &mdash; Generative Retrieval <span class="t-pb t-pb">IDs</span></th></tr>
+<tr>
+<td>Turn <em>every</em> rec task (rate, rank, explain, search) into <strong>text-in, text-out</strong>. One model, one loss.<br><br><span style="color:#888">Landmarks: <b style="color:#ff9800">P5</b>, <b style="color:#ff9800">M6-Rec</b> (2022)</span></td>
+<td>Give each item a short <strong>Semantic ID</strong> (a few discrete codes from its content). Recommend by <strong>generating the next item's ID</strong>, token by token &mdash; no lookup table, no ANN search.<br><br><span style="color:#888">Landmark: <b style="color:#4fc3f7">TIGER</b> (Google, 2023)</span></td>
+</tr>
+</table>
+<p style="margin-top:6px;font-size:.85em;color:#aaa">Paradigm B turned out to be the more <em>durable</em> one &mdash; it now underpins almost all industrial work. Paradigm A seeded the "just use the LM objective" mindset.</p>
+</div>
+
+<div class="card green">
+<h3>The family tree we'll walk</h3>
+<div class="math">
+<div class="line"><span class="cmt">         2022                2023              2024              2025-26</span></div>
+<div class="line">  <span class="lbl">P5 / M6-Rec</span> ──────► <span class="lbl">TIGER</span> ──────────────────────► <span class="lbl">OneRec</span>  (unify retrieve+rank)</div>
+<div class="line">  rec = language        sem-IDs +              │                <span class="lbl">Spotify</span> (one ID for search+rec)</div>
+<div class="line">                        gen-retrieval         │                <span class="lbl">YouTube/PLUM</span> (real LLM speaks IDs)</div>
+<div class="line">                                              ▼                <span class="bad">GRID</span>   (← "wait, the defaults are wrong")</div>
+<div class="line">  <span class="lbl">CoLLM · LLaRA · CTRL</span>  ── fuse collaborative signal into the LM ──►  (the glue layer)</div>
+</div>
+<p>Six chapters: <strong>(1)</strong> Paradigm A, <strong>(2)</strong> Paradigm B / TIGER, <strong>(3)</strong> the collaborative-fusion glue, <strong>(4)</strong> industrial unification, <strong>(5)</strong> the critical reckoning, <strong>(6)</strong> open problems as concrete research ideas.</p>
+</div>
+
+<div class="card purple">
+<h3>You already did the hard mechanics ◆</h3>
+<p>Your <strong>VAE course</strong> already builds <a href="../vae_course/5_semantic_ids.html" style="color:#ce93d8;font-weight:600">Semantic IDs / RQ-VAE / TIGER</a> and <a href="../vae_course/6_plum.html" style="color:#ce93d8;font-weight:600">PLUM</a> from scratch with worked numbers. This course is the <em>map above</em> them: which papers matter, why, what breaks, and where to push. I'll recap the mechanics briefly and link back rather than repeat.</p>
+</div>
+<button class="nx" onclick="go(1)">Next: Paradigm A — recommendation as language &#x2192;</button>
+</div>
+
+<!-- ================= PAGE 1 — PARADIGM A ================= -->
+<div class="page" data-t="1. Rec as language">
+<h2>Paradigm A: recommendation <em>is</em> language processing</h2>
+
+<div class="card orange">
+<h3>The one idea</h3>
+<p>A recommender usually has a different model for each job: one for rating prediction, one for next-item, one for generating an explanation. <span class="key">P5 said: write every job as a sentence, and train one text-to-text model on all of them with a single loss.</span> "Pretrain, Personalized Prompt &amp; Predict Paradigm" &rarr; <strong>P5</strong>.</p>
+</div>
+
+<div class="card">
+<h3>Show the thing — five tasks, one model, one loss</h3>
+<p>Same user (<code>user_23</code>), same catalogue. Every task is just a string in and a string out. IDs like <code>item_7</code> are literally tokens in the text:</p>
+<div class="math">
+<div class="line"><span class="cmt">// 1. RATING</span></div>
+<div class="line"><span class="lbl">in :</span> "What star rating would user_23 give item_7 ?"</div>
+<div class="line"><span class="lbl">out:</span> "<span class="val">4</span>"</div>
+<div class="line"> </div>
+<div class="line"><span class="cmt">// 2. SEQUENTIAL (next item)</span></div>
+<div class="line"><span class="lbl">in :</span> "user_23 bought item_5 , item_12 , item_8 in order. Next item?"</div>
+<div class="line"><span class="lbl">out:</span> "<span class="val">item_42</span>"</div>
+<div class="line"> </div>
+<div class="line"><span class="cmt">// 3. EXPLANATION</span></div>
+<div class="line"><span class="lbl">in :</span> "Explain why user_23 would enjoy item_42 ."</div>
+<div class="line"><span class="lbl">out:</span> "<span class="val">because it pairs a dark roast with ...</span>"</div>
+<div class="line"> </div>
+<div class="line"><span class="cmt">// 4. REVIEW → rating</span></div>
+<div class="line"><span class="lbl">in :</span> "Given the review 'rich and smooth', predict the rating."</div>
+<div class="line"><span class="lbl">out:</span> "<span class="val">5</span>"</div>
+<div class="line"> </div>
+<div class="line"><span class="cmt">// 5. DIRECT recommendation (pick from candidates)</span></div>
+<div class="line"><span class="lbl">in :</span> "From item_3 , item_9 , item_42 choose the best for user_23 ."</div>
+<div class="line"><span class="lbl">out:</span> "<span class="val">item_42</span>"</div>
+</div>
+<p>All five are trained with the <span class="key">exact same objective</span>: cross-entropy over the output tokens (the LM loss). Rating "4" and the word "because" are predicted by the identical machinery. That is the whole trick — one backbone (T5), many prompts.</p>
+</div>
+
+<div class="paper">
+<div><span class="ph">P5 &mdash; "Recommendation as Language Processing (RLP)"</span><span class="pv">Geng et al., RecSys 2022</span> &nbsp; <a href="https://arxiv.org/abs/2203.13366" target="_blank">arxiv 2203.13366</a></div>
+<div class="lblrow why"><b>Why iconic:</b> first to unify rating / sequential / explanation / review / direct rec under one text-to-text model and one LM loss. Reframed the entire problem as prompting.</div>
+<div class="lblrow"><b>Core:</b> convert all data (interactions, metadata, reviews) to natural-language sequences; personalized prompts; shared T5 backbone.</div>
+<div class="lblrow lim"><b>Limitation:</b> item IDs are arbitrary text tokens (<code>item_42</code> means nothing semantically); doesn't scale to millions of items as plain text; inference is slow vs a classic two-tower model.</div>
+</div>
+
+<div class="paper">
+<div><span class="ph">M6-Rec</span><span class="pv">Cui et al., Alibaba 2022</span> &nbsp; <a href="https://arxiv.org/abs/2205.08084" target="_blank">arxiv 2205.08084</a></div>
+<div class="lblrow why"><b>Why iconic:</b> the same reframing, but industrial &mdash; one foundation model covering retrieval, ranking, zero-shot rec, explanation, even conversational rec, with user behaviour written as plain text.</div>
+<div class="lblrow"><b>Core:</b> every subtask = language understanding or generation; cut downstream data needs by leaning on a pretrained foundation model.</div>
+<div class="lblrow lim"><b>Limitation:</b> serving cost; the "IDs as text" bottleneck again.</div>
+</div>
+
+<details class="more">
+<summary>Where do the related names fit? (LLM-Rec, GenRec, OpenP5, RecFormer) ◆</summary>
+<p style="margin-top:6px">These are in Paradigm A's orbit (well-known, but not deep-verified in this research pass &mdash; treat as context):</p>
+<p style="margin-top:6px">&bull; <b>OpenP5</b> &mdash; open-source benchmark/library re-implementing P5 so others can reproduce and extend it.<br>
+&bull; <b>GenRec</b> &mdash; uses an LLM to directly <em>generate</em> the recommended item rather than score candidates.<br>
+&bull; <b>LLM-Rec</b> &mdash; prompting strategies that enrich item text with LLM-written descriptions before feeding a recommender.<br>
+&bull; <b>RecFormer</b> &mdash; represents each item as a sentence of its attributes and runs a Longformer-style language model for sequential rec (a bridge between Paradigm A's "items as text" and sequence modelling).</p>
+</details>
+<button class="nx" onclick="go(2)">Next: Paradigm B — generating the item's ID &#x2192;</button>
+</div>
+
+<!-- ================= PAGE 2 — PARADIGM B / TIGER ================= -->
+<div class="page" data-t="2. TIGER / sem-IDs">
+<h2>Paradigm B: stop looking items up &mdash; <em>generate</em> them</h2>
+
+<div class="card blue">
+<h3>The one idea</h3>
+<p>P5's weakness was that <code>item_42</code> is a meaningless token. <span class="key">TIGER fixes the ID itself.</span> Give every item a <strong>Semantic ID</strong>: a short tuple of discrete codes derived from its content, coarse&rarr;fine. Then a sequence model reads the user's history of IDs and <strong>autoregressively decodes the next item's ID</strong> &mdash; recommendation becomes next-token generation. No billion-row table, no nearest-neighbour index.</p>
+</div>
+
+<div class="card">
+<h3>Recap the mechanic (full build is in your VAE course)</h3>
+<p>An item's content embedding is quantized by <strong>RQ-VAE</strong> &mdash; stacked codebooks where each level encodes the leftover residual of the last. The tiny version:</p>
+<div class="math">
+<div class="line"><span class="cmt">// item_42 content embedding (2-D toy):  [0.90, 0.20]</span></div>
+<div class="line"><span class="lbl">level 1</span> codebook → nearest code is #3 = [0.80, 0.10]   <span class="cmt">→ first token = 3</span></div>
+<div class="line">          residual = [0.90,0.20] − [0.80,0.10] = [0.10, 0.10]</div>
+<div class="line"><span class="lbl">level 2</span> codebook → nearest code is #1 = [0.10, 0.05]   <span class="cmt">→ second token = 1</span></div>
+<div class="line">          residual = [0.00, 0.05]   <span class="cmt">(small → stop)</span></div>
+<div class="line"> </div>
+<div class="line"><span class="win">Semantic ID(item_42) = (3, 1)</span></div>
+</div>
+<p>The payoff: a brand-new espresso video lands on code <strong>3</strong> at level 1 just like every other coffee video. <span class="key">Similar items share a prefix</span> &rarr; the model transfers knowledge to cold items for free. Full derivation incl. the codebook training &amp; tie-breaker token: <a href="../vae_course/5_semantic_ids.html" style="color:#4fc3f7">VAE ch5</a>.</p>
+</div>
+
+<div class="card green">
+<h3>Recommendation = generate the next ID</h3>
+<div class="math">
+<div class="line"><span class="cmt">// user history as a sentence of Semantic IDs</span></div>
+<div class="line">  (0,2)  (3,1)  (0,5)   <span class="cmt">→  seq2seq transformer  →</span>   ?</div>
+<div class="line"> </div>
+<div class="line"><span class="cmt">// decode token by token, like generating text</span></div>
+<div class="line">  step 1: P(first token) → argmax = <span class="val">3</span></div>
+<div class="line">  step 2: P(second token | 3) → argmax = <span class="val">7</span></div>
+<div class="line">  <span class="win">predicted next item = ID (3,7)</span>  → map back to the catalogue item</div>
+<div class="line"> </div>
+<div class="line"><span class="cmt">// beam search over IDs gives a ranked top-K list in ONE decode</span></div>
+</div>
+</div>
+
+<div class="paper">
+<div><span class="ph">TIGER &mdash; "Recommender Systems with Generative Retrieval"</span><span class="pv">Rajput et al., Google, NeurIPS 2023</span> &nbsp; <a href="https://arxiv.org/abs/2305.05065" target="_blank">arxiv 2305.05065</a></div>
+<div class="lblrow why"><b>Why iconic:</b> <em>the</em> pivot of the field. Replaced dual-encoder + ANN retrieval with a single seq2seq model that decodes IDs. First to use a generative auto-encoder (RQ-VAE) to make Semantic IDs for retrieval. Almost all industrial generative-rec work descends from it.</div>
+<div class="lblrow"><b>Core:</b> RQ-VAE Semantic IDs + seq2seq next-ID generation. Beat SASRec / S3-Rec / BERT4Rec / P5 on Amazon Beauty/Sports/Toys (author-reported up to <span style="color:#b5cea8">+29% NDCG@5</span> vs SASRec on Beauty).</div>
+<div class="lblrow lim"><b>Limitation:</b> benchmarks are small academic Amazon splits (best-case framing); cold-start for truly new items is still hard; follow-up work (Meta's <b>LIGER</b>) shows generative retrieval doesn't cleanly <em>replace</em> ANN at production scale &mdash; hybrids emerge.</div>
+</div>
+<button class="nx" onclick="go(3)">Next: the cold/warm gap — fusing collaborative signal &#x2192;</button>
+</div>
+
+<!-- ================= PAGE 3 — COLLABORATIVE FUSION ================= -->
+<div class="page" data-t="3. Collab fusion">
+<h2>The glue: give the LLM the one thing it lacks &mdash; <em>who clicked what</em></h2>
+
+<div class="card red">
+<h3>The gap this fixes</h3>
+<p>A text/LLM recommender reasons from <em>meaning</em>: great for <span class="key">cold-start</span> (a new item with a description is instantly placeable). But it's blind to the pure <span class="key">collaborative signal</span> &mdash; "people who bought this also bought that" &mdash; which classic matrix-factorization (MF) nails. So LLM recs are strong cold-start but <strong>sub-optimal warm-start</strong>. The fix: inject the MF vector <em>into</em> the LLM.</p>
+</div>
+
+<div class="card">
+<h3>Show the thing — a collaborative vector becomes a "soft token"</h3>
+<p>A classic MF model already learned a 2-D vector for the user. We can't type that vector as a word, so a small learned <strong>projector W</strong> maps it into the LLM's token-embedding space (4-D toy), where it sits beside real word embeddings:</p>
+<div class="math">
+<div class="line"><span class="cmt">// from the frozen MF model</span></div>
+<div class="line">  u = user_23 vector = [ 0.80, −0.30 ]</div>
+<div class="line"> </div>
+<div class="line"><span class="cmt">// learned projector W : 2 → 4  (into LLM embedding space)</span></div>
+<div class="line">  W = [[ 0.5,  0.1],</div>
+<div class="line">       [−0.2,  0.4],</div>
+<div class="line">       [ 0.3,  0.3],</div>
+<div class="line">       [ 0.1, −0.5]]</div>
+<div class="line"> </div>
+<div class="line"><span class="cmt">// e_u = W · u   (one matrix-vector multiply)</span></div>
+<div class="line">  e_u[0] = 0.5·0.80 + 0.1·(−0.30) = <span class="val">0.37</span></div>
+<div class="line">  e_u[1] = −0.2·0.80 + 0.4·(−0.30) = <span class="val">−0.28</span></div>
+<div class="line">  e_u[2] = 0.3·0.80 + 0.3·(−0.30) = <span class="val">0.15</span></div>
+<div class="line">  e_u[3] = 0.1·0.80 + (−0.5)·(−0.30) = <span class="val">0.23</span></div>
+<div class="line">  <span class="win">e_u = [0.37, −0.28, 0.15, 0.23]</span>   ← a vector the LLM can read like a word</div>
+</div>
+<div class="math">
+<div class="line"><span class="cmt">// the prompt the frozen LLM sees (⟨e_u⟩ is the soft token above)</span></div>
+<div class="line">  "User ⟨e_u⟩ is considering item ⟨e_i⟩ . Will they like it? "  →  "<span class="val">Yes</span>"</div>
+</div>
+<p>The LLM never had a token for <code>user_23</code>, but now its collaborative fingerprint is <em>in the sequence</em>. Only <strong>W</strong> and a small <strong>LoRA</strong> adapter train; the LLM stays frozen. Result: keep the LLM's world knowledge (cold-start) <span class="key">and</span> get the MF warm-start signal.</p>
+</div>
+
+<div class="paper">
+<div><span class="ph">CoLLM</span><span class="pv">Zhang et al., 2023 / IEEE TKDE 2025</span> &nbsp; <a href="https://arxiv.org/abs/2310.19488" target="_blank">arxiv 2310.19488</a></div>
+<div class="lblrow why"><b>Why iconic:</b> cleanest statement of the fusion recipe &mdash; capture collaborative info in an external model (MF/LightGCN), map it into the LLM input space, <em>don't touch the LLM</em>. Explicitly diagnosed the cold-good / warm-bad split.</div>
+<div class="lblrow lim"><b>Limitation:</b> quality is capped by the external model; the projector is a thin bridge between two very different representation spaces.</div>
+</div>
+<div class="paper">
+<div><span class="ph">LLaRA</span><span class="pv">Liao et al., SIGIR 2024</span> &nbsp; <a href="https://arxiv.org/abs/2312.02445" target="_blank">arxiv 2312.02445</a></div>
+<div class="lblrow why"><b>Why iconic:</b> <em>hybrid prompting</em> &mdash; combine ID-based item embeddings (from a conventional sequential recommender like SASRec) <strong>with</strong> textual item features, via a projector + curriculum learning (start text-heavy, anneal toward the ID signal).</div>
+<div class="lblrow lim"><b>Limitation:</b> curriculum schedule is fiddly; still a per-item alignment problem. <span style="color:#888">(Our research pass refuted a common mis-summary that LLaRA uses text-only prompts &mdash; it is explicitly hybrid ID+text.)</span></div>
+</div>
+<div class="paper">
+<div><span class="ph">CTRL</span><span class="pv">Li et al., ACM TORS 2025</span> &nbsp; <a href="https://arxiv.org/abs/2306.02841" target="_blank">arxiv 2306.02841</a></div>
+<div class="lblrow why"><b>Why iconic:</b> the <em>deployable</em> answer. Treat tabular data and its text form as two modalities &rarr; a CTR model and an LLM &rarr; align them with cross-modal contrastive learning, then <strong>distill into the lightweight CTR model and serve only that</strong>. You get LLM semantics at classic-CTR latency.</div>
+<div class="lblrow lim"><b>Limitation:</b> the LLM helps at <em>train</em> time only; at serve time you're back to a small model, so the semantic ceiling is lower than an LLM-in-the-loop system.</div>
+</div>
+<button class="nx" onclick="go(4)">Next: going industrial — collapse the whole pipeline &#x2192;</button>
+</div>
+
+<!-- ================= PAGE 4 — INDUSTRIAL ================= -->
+<div class="page" data-t="4. Industrial">
+<h2>Industrial endgame: one generative model for everything</h2>
+
+<div class="card">
+<h3>What "the pipeline" means, and what they're collapsing</h3>
+<p>Production recsys is a <span class="key">cascade</span>: retrieval (millions &rarr; thousands) &rarr; pre-rank &rarr; rank (thousands &rarr; tens) &rarr; re-rank. Each stage is its own model. The 2025 frontier asks: <strong>can one generative model do the whole thing?</strong></p>
+</div>
+
+<div class="paper">
+<div><span class="ph">OneRec</span><span class="pv">Kuaishou, Feb 2025</span> &nbsp; <a href="https://arxiv.org/abs/2502.18965" target="_blank">arxiv 2502.18965</a></div>
+<div class="lblrow why"><b>Why iconic:</b> first to <em>actually deploy</em> a single end-to-end encoder&ndash;decoder generative model that replaces the cascaded retrieve-then-rank framework, on Kuaishou's main short-video feed (hundreds of millions DAU). Adds an "iterative preference alignment" (RLHF-style) step to tune what it generates.</div>
+<div class="lblrow"><b>Result:</b> reported <span style="color:#b5cea8">+1.6% watch-time</span> online &mdash; a large number at that scale.</div>
+<div class="lblrow lim"><b>Limitation:</b> results are single-company, single-domain (short video); reproducibility outside Kuaishou unknown; controllability/freshness of one giant model vs tunable stages is an open question.</div>
+</div>
+
+<div class="paper">
+<div><span class="ph">Spotify &mdash; shared Semantic IDs for search <em>and</em> recommendation</span><span class="pv">Penha et al., RecSys 2025 (LBR)</span> &nbsp; <a href="https://arxiv.org/html/2508.10478v1" target="_blank">arxiv 2508.10478</a></div>
+<div class="lblrow why"><b>Why iconic:</b> names a sharp, real problem &mdash; can one Semantic-ID space serve <em>both</em> search and recommendation in a joint generative model? Solution: a bi-encoder jointly fine-tuned (multi-task) on both signals, optimizing the sum of two contrastive losses.</div>
+<div class="lblrow lim"><b>The headline tension (memorize this number):</b></div>
+<table>
+<tr><th>Tune the IDs for…</th><th>Search retrieval</th><th>Recommendation</th></tr>
+<tr><td>Search</td><td class="c" style="color:#4caf50">≈ 5× better</td><td class="c" style="color:#ef5350">≈ 60% worse</td></tr>
+<tr><td>Recommendation</td><td class="c" style="color:#ef5350">worse</td><td class="c" style="color:#4caf50">better</td></tr>
+</table>
+<div class="lblrow lim" style="margin-top:4px"><b>Limitation:</b> 5×/60% are single-dataset (short-form audio) numbers, not universal; the "shared ID on the Pareto frontier" is posed, not solved.</div>
+</div>
+
+<div class="card purple">
+<h3>Google / YouTube: put a <em>real</em> LLM behind the IDs ◆</h3>
+<p>TIGER trains a <em>small</em> transformer from scratch &mdash; it learns the grammar of IDs but knows nothing of the world. YouTube's line (<strong>LRM</strong>, adapting Gemini; <strong>PLUM</strong>) teaches a genuine pretrained LLM to speak the Semantic-ID language, so its world knowledge flows into recommendation. You built this in <a href="../vae_course/6_plum.html" style="color:#ce93d8;font-weight:600">VAE ch6: PLUM</a> &mdash; it's the natural industrial sequel to TIGER.</p>
+</div>
+<button class="nx" onclick="go(5)">Next: the reckoning — what the defaults get wrong &#x2192;</button>
+</div>
+
+<!-- ================= PAGE 5 — THE RECKONING / GRID ================= -->
+<div class="page" data-t="5. The reckoning">
+<h2>The reckoning: the field's defaults are under-justified</h2>
+
+<div class="card red">
+<h3>Why this chapter is where your research ideas live</h3>
+<p>Most LLM4Rec papers inherit two assumptions without testing them: <strong>(1)</strong> use RQ-VAE for the tokenizer, <strong>(2)</strong> bigger LLM = better. In 2025 a practitioner paper from Snap (<strong>GRID</strong>) ran the controlled experiments and found <span class="key">both assumptions are shaky</span>. Shaky defaults are exactly where new research gets traction.</p>
+</div>
+
+<div class="card">
+<h3>Finding 1 — RQ-VAE may be the wrong tokenizer</h3>
+<div class="math">
+<div class="line"><span class="cmt">// GRID, controlled comparison of quantizers for the Semantic ID</span></div>
+<div class="line">  RQ-VAE     ← the field default, trained <span class="bad">5× longer</span></div>
+<div class="line">  RK-Means   ← simpler (residual k-means)        <span class="win">→ better rec performance</span></div>
+<div class="line">  R-VQ       ← simpler                            <span class="win">→ sometimes better too</span></div>
+</div>
+<p>RQ-VAE optimizes <em>reconstruction</em> of the content embedding. But recommendation may not want a faithful reconstruction &mdash; it wants codes that separate items the way <em>behaviour</em> does. The default optimizes the wrong thing, and a simpler clusterer beats it. <span class="key">A reproduction (arXiv 2509.25522) reaches the stronger version: larger encoders give "negligible to no" improvement.</span></p>
+</div>
+
+<div class="card">
+<h3>Finding 2 — the scaling wall</h3>
+<div class="math">
+<div class="line"><span class="cmt">// scale ONLY the LLM that generates the Semantic IDs</span></div>
+<div class="line">  780M params ───────────────────► 11B params     (<span class="bad">&gt;14× bigger</span>)</div>
+<div class="line">  recommendation quality:  +tiny   ────────────►   +tiny   <span class="bad">(marginal)</span></div>
+</div>
+<p>14× the model, almost no rec gain. The big LLM's world knowledge isn't reaching the recommendation &mdash; something between the semantics and the objective is the bottleneck (the discrete-ID information ceiling? the quantizer? the rec loss?). <span class="key">This is the single most interesting open mystery in the field right now.</span></p>
+</div>
+
+<div class="paper">
+<div><span class="ph">GRID</span><span class="pv">Ju et al., Snap Inc., CIKM 2025</span> &nbsp; <a href="https://arxiv.org/abs/2507.22224" target="_blank">arxiv 2507.22224</a> &nbsp; <a href="https://github.com/snap-research/GRID" target="_blank">github</a></div>
+<div class="lblrow why"><b>Why iconic:</b> first open-source modular framework for generative recommendation with Semantic IDs &mdash; and it uses that rigor to puncture two field defaults. The "practitioner reality check" the field needed.</div>
+<div class="lblrow lim"><b>Caveat:</b> still benchmark-scale; "RQ-VAE is worse" is shown on specific datasets, and the mechanism (why) is raised but not fully explained &mdash; which is precisely the opening.</div>
+</div>
+<button class="nx" onclick="go(6)">Next: the quantizers in depth — RQ-VAE vs RK-Means vs R-VQ &#x2192;</button>
+</div>
+
+<!-- ================= PAGE 5½ — QUANTIZERS DEEP DIVE ================= -->
+<div class="page" data-t="5½ Quantizers">
+<h2>Deep dive: RQ-VAE vs RK-Means vs R-VQ &mdash; and why "reconstruction" is the wrong target</h2>
+
+<div class="card red">
+<h3>The claim we owe you a proof of</h3>
+<p>Finding 1 said a <em>simpler</em> clusterer beats the fancy <strong>RQ-VAE</strong>, and that RQ-VAE "optimizes the wrong thing." To see why that's not hand-waving, you need to know exactly what these three things are. Good news: <span class="key">all three build a Semantic ID the same way</span> &mdash; residual quantization. They differ in one place only: <strong>how the codebook is built</strong>. We'll nail that down with numbers, then show the two ways reconstruction backfires.</p>
+</div>
+
+<div class="card blue">
+<h3>Step 0 — the shared skeleton: residual quantization (one track, by hand)</h3>
+<p>Take 6 music tracks, each a tiny 2-D content embedding <code>[energy, acousticness]</code> (what the audio/text encoder spits out):</p>
+<div class="math">
+<div class="line"><span class="cmt">// content embeddings (the only thing all 3 methods ever see)</span></div>
+<div class="line">  t1=[0.9, 0.1]  t2=[0.8, 0.2]  t3=[0.7, 0.1]   <span class="cmt">← energetic</span></div>
+<div class="line">  t4=[0.1, 0.9]  t5=[0.2, 0.8]  t6=[0.1, 0.7]   <span class="cmt">← acoustic</span></div>
+</div>
+<p><span class="key">Level 1</span> &mdash; pick 2 codewords (the level-1 codebook) and snap each track to the nearest. Here the two natural centres are the group means:</p>
+<div class="math">
+<div class="line">  C0 = mean(t1,t2,t3) = [(0.9+0.8+0.7)/3 , (0.1+0.2+0.1)/3] = <span class="val">[0.80, 0.133]</span></div>
+<div class="line">  C1 = mean(t4,t5,t6) = <span class="val">[0.133, 0.80]</span></div>
+<div class="line"> </div>
+<div class="line">  t1 → nearest is C0 → <span class="win">first code = 0</span></div>
+<div class="line">  <span class="cmt">// what C0 could NOT explain about t1 — the leftover:</span></div>
+<div class="line">  residual r1 = t1 − C0 = [0.9−0.80 , 0.1−0.133] = <span class="val">[0.10, −0.033]</span></div>
+</div>
+<p><span class="key">Level 2</span> &mdash; run the <em>same trick on the residuals</em>. A second codebook (also from clustering, this time of the residuals) has, say, <code>d0=[0.10,−0.03]</code>, <code>d1=[−0.10, 0.02]</code>. <code>r1</code> is nearest <code>d0</code> &rarr; <strong>second code = 0</strong>.</p>
+<div class="math">
+<div class="line">  <span class="win">Semantic ID(t1) = (0, 0)</span>   <span class="cmt">// coarse code, then a finer code for the leftover</span></div>
+</div>
+<p>That coarse&rarr;fine, "quantize what the last level missed" loop is <strong>residual quantization</strong>. Every method below uses it. (Full version with the tie-breaker token: <a href="../vae_course/5_semantic_ids.html" style="color:#4fc3f7">VAE ch5</a>.)</p>
+</div>
+
+<div class="card">
+<h3>Step 1 — the three methods differ in ONE line: how the codebook is learned</h3>
+<table>
+<tr><th>Method</th><th>How it builds each codeword</th><th>Extra machinery</th></tr>
+<tr><td><b>RK-Means</b><br><span style="color:#888;font-size:.85em">Residual K-Means</span></td><td>Classic k-means (Lloyd's): codeword = <b>the average of the points assigned to it</b>. Repeat assign&rarr;average until stable. Then do it again on the residuals.</td><td class="c" style="color:#4caf50">none<br><span style="font-size:.8em">no neural net, no SGD</span></td></tr>
+<tr><td><b>R-VQ</b><br><span style="color:#888;font-size:.85em">Residual Vector Quantization</span></td><td>Same goal (codeword ≈ centre of its points) but learned by <b>gradient / EMA nudges</b> instead of exact averaging. The "VQ" you'd find inside a neural net &mdash; <em>without</em> the autoencoder around it.</td><td class="c" style="color:#ff9800">learned codebook<br><span style="font-size:.8em">no encoder/decoder</span></td></tr>
+<tr><td><b>RQ-VAE</b><br><span style="color:#888;font-size:.85em">Residual-Quantized VAE</span></td><td>Wraps R-VQ in an <b>autoencoder</b>: a learned <em>encoder</em> warps x into a latent, R-VQ quantizes the latent, a learned <em>decoder</em> rebuilds x. Trained end-to-end to <b>reconstruct</b> x.</td><td class="c" style="color:#ef5350">encoder + decoder<br>+ codebook<br><span style="font-size:.8em">the field default</span></td></tr>
+</table>
+<p>Read that as a ladder of complexity: <span class="key">RK-Means &sub; R-VQ &sub; RQ-VAE</span>. GRID's punchline is that climbing the ladder didn't help recommendation &mdash; and often hurt. To see why, look at what the top rung actually optimizes.</p>
+<div class="math">
+<div class="line"><span class="cmt">// the ONE update each method makes for a codeword c holding points {x}</span></div>
+<div class="line">  RK-Means:  c ← mean({x})                 <span class="cmt">// exact, in one shot</span></div>
+<div class="line">  R-VQ:      c ← 0.9·c + 0.1·x   (per step) <span class="cmt">// EMA — drifts toward the same mean</span></div>
+<div class="line">  RQ-VAE:    minimize ‖x − decode(quantize(encode(x)))‖²  <span class="cmt">// reconstruct x</span></div>
+</div>
+</div>
+
+<div class="card orange">
+<h3>Step 2 — what "RQ-VAE optimizes reconstruction" means, literally</h3>
+<p>Strip RQ-VAE to its loss. An encoder <code>z = W·x</code>, snap <code>z</code> to its nearest codeword <code>z<sub>q</sub></code>, a decoder <code>x̂ = V·z<sub>q</sub></code>, and the <em>only</em> thing training rewards:</p>
+<div class="math">
+<div class="line">  loss = ‖ x − x̂ ‖²        <span class="cmt">// "did the codes let me rebuild the original embedding?"</span></div>
+</div>
+<p>The Semantic ID is a <span class="key">by-product</span>. Nothing in that loss mentions users, clicks, or which tracks get played together. RQ-VAE is graded entirely on <strong>content fidelity</strong>. Hold that thought &mdash; it's the whole problem.</p>
+<details class="more">
+<summary>The full RQ-VAE objective, once the intuition is in place ◆</summary>
+<p style="margin-top:6px">Per residual level <code>ℓ</code> with codeword <code>e</code> chosen for latent <code>z<sub>ℓ</sub></code>, the loss adds a <em>commitment</em> term so the encoder and codebook don't drift apart (<code>sg</code> = stop-gradient):</p>
+<div class="math">
+<div class="line">  L = ‖x − x̂‖²  +  Σ<sub>ℓ</sub> ‖ sg[z<sub>ℓ</sub>] − e<sub>ℓ</sub> ‖²  +  β·Σ<sub>ℓ</sub> ‖ z<sub>ℓ</sub> − sg[e<sub>ℓ</sub>] ‖²</div>
+</div>
+<p>Every term is still about matching the latent to a codeword and rebuilding <code>x</code>. Add an encoder big enough and you can drive <code>‖x−x̂‖²</code> to nearly zero &mdash; which, as Step 4 shows, buys recommendation almost nothing.</p>
+</details>
+</div>
+
+<div class="card">
+<h3>Step 3 — failure mode A: codebook collapse (a leading reason simpler wins)</h3>
+<p>The encoder is free to warp the space. A cheap way to keep <code>‖x−x̂‖²</code> low for the energetic group is to map <em>all three</em> of t1,t2,t3 to the <strong>same</strong> codeword and have the decoder output their shared mean <code>[0.80, 0.133]</code>. Watch the bookkeeping:</p>
+<div class="math">
+<div class="line"><span class="cmt">// collapsed RQ-VAE decodes t1,t2,t3 all to the cluster mean [0.80,0.133]</span></div>
+<div class="line">  err(t1) = ‖[0.9,0.1]−[0.80,0.133]‖² = 0.10² + 0.033² = <span class="val">0.0111</span></div>
+<div class="line">  err(t2) = ‖[0.8,0.2]−[0.80,0.133]‖² = 0    + 0.067² = <span class="val">0.0045</span></div>
+<div class="line">  err(t3) = ‖[0.7,0.1]−[0.80,0.133]‖² = 0.10² + 0.033² = <span class="val">0.0111</span></div>
+<div class="line">  avg reconstruction MSE ≈ <span class="val">0.0089</span>   <span class="cmt">// small! training declares victory</span></div>
+<div class="line"> </div>
+<div class="line">  but now:  <span class="bad">SID(t1) = SID(t2) = SID(t3)</span>   <span class="cmt">// three songs, one address</span></div>
+</div>
+<p>Reconstruction is "happy" (MSE looks tiny) while the <span class="key">codes have gone useless</span>: the recommender literally cannot address t1 apart from t2. This is <strong>codebook collapse</strong> &mdash; a well-known RQ-VAE failure where most codewords go unused.</p>
+<div class="math">
+<div class="line"><span class="cmt">// RK-Means CAN'T do this — k-means must spread its centres over the data.</span></div>
+<div class="line">  same level-1 code (0) for t1,t2,t3, but the residuals stay distinct:</div>
+<div class="line">    r1=[0.10,−0.033]   r2=[0.0, 0.067]   r3=[−0.10,−0.033]</div>
+<div class="line">  → level-2 still has real signal to separate them.  <span class="win">codes preserved.</span></div>
+</div>
+<p>K-means' "boring" averaging is exactly what <em>stops</em> it throwing codes away. The autoencoder's freedom is a liability here. <span style="color:#888">(Exact ties &mdash; identical residuals &mdash; are handled by TIGER's extra tie-breaker token.)</span></p>
+</div>
+
+<div class="card">
+<h3>Step 3 — failure mode B: reconstruction preserves the <em>wrong</em> distances</h3>
+<p>Even a <em>perfect</em>, non-collapsed reconstruction can be wrong for recommendation. Suppose behaviour says:</p>
+<div class="math">
+<div class="line"><span class="cmt">// co-listen log: how often two tracks appear in the same session</span></div>
+<div class="line">  t3 and t4 are played back-to-back in <span class="val">90%</span> of sessions   <span class="cmt">// behaviour twins</span></div>
+<div class="line"> </div>
+<div class="line"><span class="cmt">// but their CONTENT is far apart:</span></div>
+<div class="line">  t3=[0.7,0.1] (energetic)   t4=[0.1,0.9] (acoustic)   → different clusters</div>
+<div class="line"> </div>
+<div class="line">  every content-only tokenizer gives:</div>
+<div class="line">    SID(t3) = (<span class="bad">0</span>, …)   SID(t4) = (<span class="bad">1</span>, …)   <span class="cmt">// no shared prefix</span></div>
+</div>
+<p>The generative recommender transfers knowledge through <span class="key">shared prefixes</span>. t3 and t4 are behavioural twins, but because their <em>content</em> differs they get unrelated IDs &mdash; recommending one gives zero lift to the other. RQ-VAE faithfully encoded that t3 and t4 are <em>far</em>… which is precisely the distance recommendation should have <em>ignored</em>. <span class="key">It optimized content geometry; rec lives in behaviour geometry.</span> When they disagree, faithful reconstruction is the wrong objective &mdash; and a bigger, more faithful encoder only nails the wrong answer harder.</p>
+</div>
+
+<div class="card purple">
+<h3>Step 4 — the smoking gun: scaling the encoder does nothing (arXiv 2509.25522)</h3>
+<p>Here's the test that ties it together. If <strong>reconstruction fidelity</strong> were the bottleneck, a <em>bigger</em> encoder (which reconstructs better) should lift recommendation. The reproduction study scaled the encoder up and measured:</p>
+<div class="math">
+<div class="line">  bigger encoder  →  lower ‖x−x̂‖²  (better reconstruction)  ✓</div>
+<div class="line">  bigger encoder  →  recommendation quality:  <span class="bad">"negligible to no improvement"</span></div>
+</div>
+<p>So the thing RQ-VAE is good at (faithful reconstruction) is <span class="key">not</span> what moves recommendation. Pouring capacity into the autoencoder optimizes a target the recommender doesn't care about &mdash; the exact same diagnosis as the <a href="#" onclick="go(5);return false;" style="color:#ce93d8">scaling wall in Finding 2</a>. The machinery is solving the wrong problem, harder.</p>
+</div>
+
+<div class="card green">
+<h3>So — show me I remember</h3>
+<table>
+<tr><th>Term</th><th>In one line</th></tr>
+<tr><td><b>Residual quantization</b></td><td>Coarse codeword, then quantize the leftover, then the leftover of that. Builds the Semantic ID.</td></tr>
+<tr><td><b>RK-Means</b></td><td>Residual quantization where each codeword = <b>mean of its members</b> (plain k-means). No learning. Can't collapse.</td></tr>
+<tr><td><b>R-VQ</b></td><td>Same, but codebook learned by gradient/EMA nudges. No encoder/decoder.</td></tr>
+<tr><td><b>RQ-VAE</b></td><td>R-VQ wrapped in a learned encoder+decoder, trained to <b>reconstruct</b> the embedding. The field default.</td></tr>
+<tr><td><b>Reconstruction ≠ rec</b></td><td>RQ-VAE is graded on rebuilding content. Rec needs codes that group items by <b>behaviour</b>. Two failure modes: collapse (wasted codes) and wrong geometry (content-far twins).</td></tr>
+<tr><td><b>Why simpler wins</b></td><td>K-means' forced spreading avoids collapse and keeps codes well-used; the autoencoder's extra freedom mostly buys reconstruction the recommender ignores.</td></tr>
+<tr><td><b>2509.25522</b></td><td>Scaled the encoder → better reconstruction, "negligible to no" rec gain → proof the bottleneck isn't reconstruction.</td></tr>
+</table>
+<p style="margin-top:8px">This is why <strong>Idea 1</strong> on the next page is the cleanest opening in the field: stop optimizing reconstruction, and train the tokenizer so co-engaged items land on nearby codes.</p>
+</div>
+<button class="nx" onclick="go(7)">Next: the research frontier — concrete ideas &#x2192;</button>
+</div>
+
+<!-- ================= PAGE 6 — RESEARCH FRONTIER ================= -->
+<div class="page" data-t="6. Research ideas">
+<h2>The frontier: five open problems you could actually work on</h2>
+<div class="card green">
+<p>These come straight from the verified open questions. Each is <strong>under-explored</strong>, has a <strong>concrete first experiment</strong>, and a <strong>landmark to build against</strong>.</p>
+</div>
+
+<div class="idea">
+<div class="qn">Idea 1 · tokenizer</div>
+<h4>A tokenizer trained for recommendation, not reconstruction</h4>
+<p>GRID shows RQ-VAE (reconstruction loss) loses to simpler clusterers. <span class="key">Design a quantizer whose objective is behavioural separation</span> &mdash; e.g. add a contrastive/next-item term so two items that get co-clicked land on nearby codes, regardless of content similarity.<br><span style="color:#888;font-size:.85em">First experiment: take GRID, swap the RQ-VAE loss for reconstruction + λ·(co-engagement contrastive), sweep λ, measure NDCG. Baseline to beat: RK-Means.</span></p>
+</div>
+
+<div class="idea">
+<div class="qn">Idea 2 · scaling</div>
+<h4>Break the 780M→11B wall: where does the world knowledge leak out?</h4>
+<p>Diagnose the bottleneck in Finding 2. Is it the <em>discrete ID</em> capacity, the quantizer, or the rec loss? <span class="key">Ablate one at a time</span>: (a) widen Semantic IDs (more levels / bigger codebooks) and re-test scaling; (b) try continuous/"soft" IDs to remove the quantization ceiling; (c) distill the big LLM's item similarities into the ID space directly.<br><span style="color:#888;font-size:.85em">If gains reappear only when you widen the ID, you've localized the bottleneck to discreteness &mdash; a publishable result by itself.</span></p>
+</div>
+
+<div class="idea">
+<div class="qn">Idea 3 · unified IDs</div>
+<h4>One Semantic-ID space on the search↔rec Pareto frontier</h4>
+<p>Spotify's 5×/60% trade-off says task-tuned IDs cannibalize each other. <span class="key">Can a single ID set be near-optimal for both?</span> Try beyond their bi-encoder: a shared codebook with task-specific <em>prefixes</em>, or a routing token that tells the decoder which task it's serving while sharing the vocabulary.<br><span style="color:#888;font-size:.85em">Measure the actual Pareto curve; even mapping it cleanly is a contribution.</span></p>
+</div>
+
+<div class="idea">
+<div class="qn">Idea 4 · retrieval reality</div>
+<h4>Generative retrieval vs ANN at real scale — and cold-start in a generative index</h4>
+<p>TIGER claims to replace dual-encoder+ANN; Meta's LIGER says hybrids win in production. <span class="key">Characterize when generative retrieval actually beats ANN</span> as a function of catalogue size and item freshness, and design a clean cold-start path for brand-new items in a generative index (their ID exists, but the decoder has never generated it).<br><span style="color:#888;font-size:.85em">A controlled "crossover study" (corpus size on x-axis, gen-retrieval minus ANN recall on y-axis) is rare and valuable.</span></p>
+</div>
+
+<div class="idea">
+<div class="qn">Idea 5 · unify vs modular</div>
+<h4>When does collapsing the cascade (OneRec) actually pay?</h4>
+<p>OneRec reports +1.6% watch-time at Kuaishou, but it's one company, one domain. <span class="key">Reproduce the unify-vs-cascade comparison on a public/open setting</span> and quantify the trade in latency, controllability, and freshness. The interesting answer may be a <em>partial</em> collapse (unify retrieval+pre-rank, keep a light final ranker).<br><span style="color:#888;font-size:.85em">Even a negative result ("unification doesn't pay below X scale") is useful — nobody has shown it outside industry.</span></p>
+</div>
+
+<div class="card blue">
+<h3>How to read this as a researcher</h3>
+<p>Ideas 1&ndash;2 are <span class="key">tokenizer/representation</span> problems (most open, least crowded). Idea 3 is <span class="key">multi-task</span>. Ideas 4&ndash;5 are <span class="key">systems/empirical</span> &mdash; lower novelty bar, high practical value, and GRID gives you an open codebase to run them in. If you want a paper fast, 1 or 4 on GRID + Amazon benchmarks is the shortest path; if you want depth, 2 is the field's real mystery.</p>
+</div>
+<button class="nx" onclick="go(8)">Next: recap &amp; the reading map &#x2192;</button>
+</div>
+
+<!-- ================= PAGE 7 — RECAP ================= -->
+<div class="page" data-t="7. Recap & reading">
+<h2>Recap &amp; the reading map</h2>
+
+<div class="card blue">
+<h3>The whole arc in one table</h3>
+<table>
+<tr><th>Paper</th><th>One-line core idea</th><th>Why it mattered</th></tr>
+<tr><td><b>P5</b> / M6-Rec</td><td>Every rec task = text-in / text-out, one LM loss</td><td>Reframed rec as language</td></tr>
+<tr><td><b>TIGER</b></td><td>Items get Semantic IDs; recommend by generating the next ID</td><td>The pivot — gen-retrieval</td></tr>
+<tr><td><b>CoLLM</b></td><td>Map an MF vector into the LLM as a soft token</td><td>Fixes warm-start</td></tr>
+<tr><td><b>LLaRA</b></td><td>Hybrid ID+text prompt, curriculum-learned</td><td>Best-of-both prompting</td></tr>
+<tr><td><b>CTRL</b></td><td>Align LLM↔CTR, distill, serve only the small model</td><td>Made it deployable</td></tr>
+<tr><td><b>OneRec</b></td><td>One generative model replaces retrieve→rank</td><td>Deployed unification</td></tr>
+<tr><td><b>Spotify</b></td><td>One Semantic-ID set for search+rec</td><td>Named the shared-ID trade-off</td></tr>
+<tr><td><b>GRID</b></td><td>RQ-VAE & bigger-LLM defaults don't hold</td><td>The reality check</td></tr>
+</table>
+</div>
+
+<div class="card green">
+<h3>The single thread</h3>
+<p><span class="key">First we made recommendation speak language (P5). Then we gave items a language to be spoken (TIGER's Semantic IDs). Then we poured collaborative signal and world knowledge into that language (CoLLM, PLUM). Now we're collapsing the pipeline into one speaker (OneRec) — and discovering the alphabet itself (the tokenizer) is the part we understand least (GRID).</span></p>
+</div>
+
+<div class="card">
+<h3>Read in this order</h3>
+<div class="math">
+<div class="line"><span class="lbl">1.</span> P5            <a style="color:#4fc3f7" href="https://arxiv.org/abs/2203.13366" target="_blank">arxiv.org/abs/2203.13366</a></div>
+<div class="line"><span class="lbl">2.</span> TIGER         <a style="color:#4fc3f7" href="https://arxiv.org/abs/2305.05065" target="_blank">arxiv.org/abs/2305.05065</a>   ← read closely</div>
+<div class="line"><span class="lbl">3.</span> CoLLM         <a style="color:#4fc3f7" href="https://arxiv.org/abs/2310.19488" target="_blank">arxiv.org/abs/2310.19488</a></div>
+<div class="line"><span class="lbl">4.</span> LLaRA         <a style="color:#4fc3f7" href="https://arxiv.org/abs/2312.02445" target="_blank">arxiv.org/abs/2312.02445</a></div>
+<div class="line"><span class="lbl">5.</span> CTRL          <a style="color:#4fc3f7" href="https://arxiv.org/abs/2306.02841" target="_blank">arxiv.org/abs/2306.02841</a></div>
+<div class="line"><span class="lbl">6.</span> OneRec        <a style="color:#4fc3f7" href="https://arxiv.org/abs/2502.18965" target="_blank">arxiv.org/abs/2502.18965</a></div>
+<div class="line"><span class="lbl">7.</span> Spotify       <a style="color:#4fc3f7" href="https://arxiv.org/html/2508.10478v1" target="_blank">arxiv.org/html/2508.10478v1</a></div>
+<div class="line"><span class="lbl">8.</span> GRID          <a style="color:#4fc3f7" href="https://arxiv.org/abs/2507.22224" target="_blank">arxiv.org/abs/2507.22224</a>   ← + the codebase</div>
+</div>
+</div>
+
+<div class="card orange">
+<h3>Honesty notes from the research pass</h3>
+<p style="font-size:.86em">&bull; All benchmark numbers (TIGER's +29%, Spotify's 5×/60%, GRID's 780M→11B) are <em>author-reported on specific datasets</em> — mostly small Amazon splits — not universal constants.<br>
+&bull; TIGER "replacing" ANN is the paper's own framing; production reality (LIGER) is hybrid.<br>
+&bull; LLM-Rec / RecFormer / GenRec / OpenP5 were named but <em>not</em> deep-verified here — the page 1 drop-down flags them as context, not established fact. Worth a follow-up pass if you go that direction.</p>
+</div>
+<p style="text-align:center;margin-top:18px"><a href="../index.html" style="color:#4fc3f7;font-weight:600;font-size:1.05em;text-decoration:none">&larr; Back to course index</a></p>
+</div>
+
+<script>
+const pages=document.querySelectorAll('.page'),nav=document.getElementById('nav');
+pages.forEach((p,i)=>{const b=document.createElement('button');b.textContent=p.dataset.t;b.onclick=()=>go(i);if(i===0)b.classList.add('on');nav.appendChild(b);});
+function go(n){pages.forEach((p,i)=>p.classList.toggle('on',i===n));nav.querySelectorAll('button').forEach((b,i)=>{b.classList.remove('on');if(i<n)b.classList.add('done');else b.classList.remove('done');if(i===n)b.classList.add('on');});window.scrollTo({top:0,behavior:'smooth'});}
+</script>
+</body></html>

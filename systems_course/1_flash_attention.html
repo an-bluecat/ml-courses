@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Systems Ch1: Flash Attention</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0a0a1a;color:#e0e0e0;padding:20px 20px 80px;line-height:1.7}
+h1{text-align:center;color:#fff;margin-bottom:4px;font-size:1.5em}
+.sub{text-align:center;color:#888;margin-bottom:24px;font-size:.88em}
+.nav{display:flex;justify-content:center;gap:6px;margin-bottom:20px;flex-wrap:wrap}
+.nav button{padding:7px 13px;border:2px solid #333;background:#111;color:#888;border-radius:8px;cursor:pointer;font-size:.78em;transition:.2s}
+.nav button:hover{border-color:#555;color:#ccc}
+.nav button.on{border-color:#4fc3f7;color:#4fc3f7;background:#0d2137}
+.nav button.done{border-color:#4caf50;color:#4caf50}
+.page{display:none;max-width:860px;margin:0 auto}
+.page.on{display:block}
+.page h2{color:#4fc3f7;margin-bottom:12px;font-size:1.2em}
+.card{background:#12122a;border:1px solid #2a2a4a;border-radius:12px;padding:18px;margin-bottom:14px}
+.card.blue{border-color:#4fc3f7;background:#0d1b2a}
+.card.green{border-color:#4caf50;background:#0a1a0a}
+.card.orange{border-color:#ff9800;background:#1a1400}
+.card.red{border-color:#ef5350;background:#1a0a0a}
+.card.purple{border-color:#ce93d8;background:#1a0a2a}
+.card h3{color:#ffb74d;margin-bottom:8px;font-size:1em}
+button.nx{padding:10px 24px;background:#4caf50;color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:.9em;margin-top:14px}
+button.nx:hover{background:#66bb6a}
+table{width:100%;border-collapse:collapse;margin:10px 0}
+th,td{padding:8px 12px;border:1px solid #333;text-align:center;font-size:.88em}
+th{background:#1a1a3a;color:#4fc3f7}
+td{text-align:left}
+.math{background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:14px;margin:10px 0;font-family:'Fira Code',Consolas,monospace;font-size:.85em;line-height:1.8}
+.math .line{margin:2px 0;display:block}
+.math .hl{background:#264f78;padding:2px 6px;border-radius:4px;display:inline-block}
+.math .cmt{color:#6a9955}
+.math .val{color:#b5cea8}
+.math .lbl{color:#9cdcfe}
+.key{color:#ffb74d;font-weight:600}
+.vs{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:10px 0}
+@media(max-width:650px){.vs{grid-template-columns:1fr}}
+.pipeline{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:center;margin:14px 0}
+.pipe-box{border-radius:8px;padding:8px 12px;font-size:.8em;text-align:center;border:2px solid}
+.pipe-box.p{border-color:#ce93d8;color:#ce93d8;background:#2a0a3a}
+.pipe-box.c{border-color:#4fc3f7;color:#4fc3f7;background:#1a3a5c}
+.pipe-box.a{border-color:#ffb74d;color:#ffb74d;background:#3a2a0a}
+.pipe-box.g{border-color:#4caf50;color:#4caf50;background:#0a3a0a}
+.pipe-box.r{border-color:#ef5350;color:#ef5350;background:#2a0a0a}
+.pipe-arr{color:#666;font-size:1.2em}
+.mem-bar{height:24px;border-radius:4px;margin:4px 0;display:flex;align-items:center;padding:0 10px;font-size:.75em;font-weight:600;transition:width .3s}
+.step-head{font-size:.82em;font-weight:700;color:#4fc3f7;margin:16px 0 8px;padding-top:12px;border-top:1px solid #2a2a4a}
+.step-head:first-child{border-top:none;padding-top:0;margin-top:0}
+.chip{display:inline-block;padding:2px 8px;border-radius:4px;font-size:.72em;font-weight:600;margin:2px}
+.chip.hbm{background:rgba(239,83,80,.15);color:#ef5350;border:1px solid rgba(239,83,80,.4)}
+.chip.sram{background:rgba(79,195,247,.15);color:#4fc3f7;border:1px solid rgba(79,195,247,.4)}
+.chip.fast{background:rgba(76,175,80,.15);color:#4caf50;border:1px solid rgba(76,175,80,.4)}
+</style>
+</head>
+<body>
+<a href="../index.html" style="position:fixed;top:10px;left:14px;font-size:.75em;color:#555;text-decoration:none;z-index:999;padding:4px 8px;background:#0a0a1a;border:1px solid #333;border-radius:6px;">&larr; index</a>
+
+<h1>Systems Ch1: Flash Attention</h1>
+<p class="sub">Why standard attention is memory-bound — and how tiling fixes it</p>
+
+<div class="nav" id="nav"></div>
+
+<!-- PAGE 0 -->
+<div class="page on" data-t="0. The Memory Problem">
+<h2>Standard Attention is Memory-Bound</h2>
+
+<div class="card blue">
+<h3>The attention formula</h3>
+<div class="math">
+<span class="line cmt">// Standard scaled dot-product attention</span>
+<span class="line"><span class="lbl">S</span> = Q × Kᵀ          <span class="cmt">// scores: shape (N × N)</span></span>
+<span class="line"><span class="lbl">S</span> = S / sqrt(d)     <span class="cmt">// scale</span></span>
+<span class="line"><span class="lbl">A</span> = softmax(S)      <span class="cmt">// attention weights: (N × N)</span></span>
+<span class="line"><span class="lbl">O</span> = A × V           <span class="cmt">// output: (N × d)</span></span>
+</div>
+<p>Q, K, V are each shape <strong>N×d</strong>. The bottleneck is the intermediate matrix S — shape <strong>N×N</strong>.</p>
+</div>
+
+<div class="card red">
+<h3>Concrete numbers: seq_len=2048, d_model=512</h3>
+<div class="math">
+<span class="line cmt">// How big is the N×N attention matrix?</span>
+<span class="line"><span class="lbl">S</span> shape = 2048 × 2048 = <span class="val">4,194,304</span> floats</span>
+<span class="line"><span class="lbl">Size</span>  = 4,194,304 × 2 bytes (FP16) = <span class="val hl">8 MB</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// What standard attention does with it:</span>
+<span class="line">1. Compute S = QKᵀ           → write 8MB to HBM</span>
+<span class="line">2. Read S for softmax         → read 8MB from HBM</span>
+<span class="line">3. Write softmax(S) to HBM   → write 8MB to HBM</span>
+<span class="line">4. Read A for A×V             → read 8MB from HBM</span>
+<span class="line"><span class="hl">Total HBM traffic: ~32 MB just for attention weights</span></span>
+</div>
+</div>
+
+<div class="card orange">
+<h3>Why this is the bottleneck — not compute</h3>
+<div class="math">
+<span class="line cmt">// A100 hardware specs</span>
+<span class="line"><span class="lbl">Compute</span>  = 312 TFLOP/s  (FP16)</span>
+<span class="line"><span class="lbl">HBM BW</span>  = 2 TB/s</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Time to do the attention for N=2048, d=512</span>
+<span class="line"><span class="lbl">FLOPs</span> = 2 × N² × d = 2 × 2048² × 512 ≈ <span class="val">4.3 GFLOP</span></span>
+<span class="line"><span class="lbl">Compute time</span> = 4.3e9 / 312e12 = <span class="val">0.014 ms</span></span>
+<span class="line">&nbsp;</span>
+<span class="line"><span class="lbl">HBM traffic</span> = 32 MB</span>
+<span class="line"><span class="lbl">Memory time</span>  = 32e6 / 2e12 = <span class="val">0.016 ms</span>  ← <span class="hl">bottleneck</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// At N=8192, memory time grows as N² → catastrophic</span>
+<span class="line"><span class="lbl">S size at N=8192</span> = 8192² × 2 = <span class="val">128 MB</span></span>
+<span class="line"><span class="lbl">Memory time</span>      = 128e6 / 2e12 = <span class="val">0.064 ms</span></span>
+<span class="line"><span class="lbl">Compute time</span>     = same FLOP density → <span class="val">0.22 ms</span> compute</span>
+<span class="line cmt">// But also 4 separate read/write passes → ~512 MB traffic total</span>
+</div>
+<p style="margin-top:8px">The <span class="chip hbm">HBM</span> (High Bandwidth Memory, off-chip) is 2 TB/s. The compute units are 312 TFLOP/s. For attention, we spend most of our time <strong>waiting for data transfers</strong>, not computing.</p>
+</div>
+
+<div class="card">
+<h3>GPU memory hierarchy — know these numbers</h3>
+<div class="vs">
+  <div>
+    <p><span class="chip hbm">HBM (DRAM)</span></p>
+    <p style="margin-top:6px;font-size:.88em">Capacity: <strong>40–80 GB</strong><br>Bandwidth: <strong>2 TB/s</strong><br>Latency: ~hundreds of ns<br>Where model weights live</p>
+  </div>
+  <div>
+    <p><span class="chip sram">SRAM (on-chip)</span></p>
+    <p style="margin-top:6px;font-size:.88em">Capacity: <strong>~20 MB</strong><br>Bandwidth: <strong>~19 TB/s</strong><br>Latency: ~ns<br>Where compute actually happens</p>
+  </div>
+</div>
+<p style="margin-top:4px;font-size:.85em;color:#888">SRAM is <strong>10× faster bandwidth</strong> but 2000× smaller. The trick is keeping data in SRAM as long as possible.</p>
+</div>
+
+<button class="nx" onclick="go(1)">The tiling idea →</button>
+</div>
+
+<!-- PAGE 1 -->
+<div class="page" data-t="1. The Tiling Idea">
+<h2>Tiling: Keep the Work in Fast Memory</h2>
+
+<div class="card blue">
+<h3>The core insight</h3>
+<p>Instead of computing the full N×N matrix and saving it to HBM, <span class="key">process it in tiles that fit in SRAM</span>. The full attention matrix is never written to HBM at all.</p>
+<div class="pipeline">
+  <div class="pipe-box p">Q tile<br><small>loaded to SRAM</small></div>
+  <span class="pipe-arr">×</span>
+  <div class="pipe-box c">K tile<br><small>loaded to SRAM</small></div>
+  <span class="pipe-arr">→</span>
+  <div class="pipe-box a">S tile<br><small>stays in SRAM</small></div>
+  <span class="pipe-arr">→</span>
+  <div class="pipe-box g">O tile<br><small>written once to HBM</small></div>
+</div>
+</div>
+
+<div class="card">
+<h3>How the loops work</h3>
+<div class="math">
+<span class="line cmt">// Flash Attention algorithm (simplified)</span>
+<span class="line">for each tile of Q rows (block_size B):   <span class="cmt">// outer loop</span></span>
+<span class="line">  load Q_tile from HBM → SRAM</span>
+<span class="line">  init O_tile = 0, running_max m = -∞, running_sum l = 0</span>
+<span class="line">&nbsp;</span>
+<span class="line">  for each tile of K, V columns:           <span class="cmt">// inner loop</span></span>
+<span class="line">    load K_tile, V_tile from HBM → SRAM</span>
+<span class="line">    S_tile = Q_tile × K_tileᵀ              <span class="cmt">// in SRAM, never to HBM</span></span>
+<span class="line">    update m, l, O_tile using online softmax</span>
+<span class="line">&nbsp;</span>
+<span class="line">  write O_tile to HBM                      <span class="cmt">// one write, not four</span></span>
+</div>
+</div>
+
+<div class="card green">
+<h3>SRAM tile size arithmetic</h3>
+<div class="math">
+<span class="line cmt">// How large a tile fits in 20MB SRAM?</span>
+<span class="line"><span class="lbl">SRAM</span> = 20 MB available for attention tiles</span>
+<span class="line"><span class="lbl">d</span>    = 64 (typical head dimension)</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// We need: Q_tile (Bq×d), K_tile (Bk×d), V_tile (Bk×d), O_tile (Bq×d)</span>
+<span class="line"><span class="lbl">Memory</span> = (2×Bq + 2×Bk) × d × 2 bytes</span>
+<span class="line"><span class="lbl">With Bq=Bk=128</span>: (2×128 + 2×128) × 64 × 2 = <span class="val">131,072 bytes = 128 KB</span></span>
+<span class="line cmt">// 128 KB << 20 MB. Plenty of room. Even B=1024 is only 1 MB.</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// The N×N matrix that standard attention would write:</span>
+<span class="line"><span class="lbl">N=2048</span>: 2048² × 2 = <span class="val">8 MB</span>  ← never touched</span>
+<span class="line"><span class="lbl">N=8192</span>: 8192² × 2 = <span class="val">128 MB</span> ← never touched</span>
+</div>
+</div>
+
+<div class="card orange">
+<h3>The catch — softmax needs global information</h3>
+<p>Standard softmax over row i of S requires seeing <em>all N values</em> to compute the denominator:</p>
+<div class="math">
+<span class="line">softmax(Sᵢ)ⱼ = exp(Sᵢⱼ) / Σₖ exp(Sᵢₖ)   <span class="cmt">← needs all k at once</span></span>
+</div>
+<p style="margin-top:8px">How do we compute softmax incrementally as tiles stream in? That's the <span class="key">online softmax algorithm</span> — next page.</p>
+</div>
+
+<button class="nx" onclick="go(2)">Online softmax step by step →</button>
+</div>
+
+<!-- PAGE 2 -->
+<div class="page" data-t="2. Online Softmax">
+<h2>Online Softmax — Step by Step with Real Numbers</h2>
+
+<div class="card blue">
+<h3>The problem: computing softmax([3, 1, 4, 1]) in two tiles</h3>
+<p>We process in two tiles: <strong>Tile 1</strong> = [3, 1], <strong>Tile 2</strong> = [4, 1]. We never hold all 4 values at once. We maintain a running max <span class="key">m</span> and running denominator <span class="key">d</span>.</p>
+</div>
+
+<div class="card">
+<h3>Tile 1: process values [3, 1]</h3>
+<div class="math">
+<span class="line cmt">// State before: m = -∞, d = 0, o = 0</span>
+<span class="line">&nbsp;</span>
+<span class="line"><span class="lbl">m₁</span>  = max(-∞, 3, 1) = <span class="val">3</span></span>
+<span class="line"><span class="lbl">d₁</span>  = exp(3 - 3) + exp(1 - 3)</span>
+<span class="line">    = exp(0) + exp(-2)</span>
+<span class="line">    = 1.000 + 0.135 = <span class="val">1.135</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Partial output (assuming V₁=[1.0], V₂=[0.0]):</span>
+<span class="line"><span class="lbl">O₁_partial</span> = (exp(3-3)×V₁ + exp(1-3)×V₂) / d₁</span>
+<span class="line">           = (1.000×1.0 + 0.135×0.0) / 1.135 = <span class="val">0.881</span></span>
+</div>
+</div>
+
+<div class="card">
+<h3>Tile 2: process values [4, 1] — update the running state</h3>
+<div class="math">
+<span class="line cmt">// A new max arrived (4 > 3). Must rescale previous sum.</span>
+<span class="line"><span class="lbl">m₂</span>  = max(m₁=3, 4, 1) = <span class="val">4</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Rescale old denominator: multiply by exp(old_max - new_max)</span>
+<span class="line"><span class="lbl">d₂</span>  = d₁ × exp(m₁ - m₂)  +  exp(4 - 4) + exp(1 - 4)</span>
+<span class="line">    = 1.135 × exp(3 - 4)  +  exp(0)      + exp(-3)</span>
+<span class="line">    = 1.135 × 0.368       +  1.000        + 0.050</span>
+<span class="line">    = 0.418 + 1.000 + 0.050 = <span class="val hl">1.468</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Rescale old output and add new contribution (V₃=[0.0], V₄=[0.5]):</span>
+<span class="line"><span class="lbl">O_final</span> = (O₁_partial × d₁ × exp(m₁-m₂)  +  exp(4-4)×V₃ + exp(1-4)×V₄) / d₂</span>
+<span class="line">        = (0.881 × 1.135 × 0.368  +  1.000×0.0 + 0.050×0.5) / 1.468</span>
+<span class="line">        = (0.368  +  0  + 0.025) / 1.468 = <span class="val">0.267</span></span>
+</div>
+</div>
+
+<div class="card green">
+<h3>Verify: same as full softmax (no tiling)</h3>
+<div class="math">
+<span class="line cmt">// Full softmax([3, 1, 4, 1]) — see all 4 values at once</span>
+<span class="line"><span class="lbl">max</span>    = 4</span>
+<span class="line"><span class="lbl">exps</span>   = [exp(-1), exp(-3), exp(0), exp(-3)]</span>
+<span class="line">       = [0.368,   0.050,   1.000,  0.050]</span>
+<span class="line"><span class="lbl">sum</span>    = 0.368 + 0.050 + 1.000 + 0.050 = <span class="val">1.468</span>  ✓ matches d₂</span>
+<span class="line">&nbsp;</span>
+<span class="line"><span class="lbl">weights</span>= [0.368/1.468, 0.050/1.468, 1.000/1.468, 0.050/1.468]</span>
+<span class="line">       = [<span class="val">0.251</span>,       <span class="val">0.034</span>,      <span class="val">0.681</span>,      <span class="val">0.034</span>]</span>
+<span class="line">&nbsp;</span>
+<span class="line"><span class="lbl">output</span> = 0.251×1.0 + 0.034×0.0 + 0.681×0.0 + 0.034×0.5</span>
+<span class="line">       = 0.251 + 0 + 0 + 0.017 = <span class="val">0.268</span>  ✓ matches O_final (rounding)</span>
+<span class="line cmt">// The N×N attention matrix [0.251, 0.034, 0.681, 0.034] was NEVER stored.</span>
+</div>
+</div>
+
+<div class="card purple">
+<h3>What the algorithm tracks per Q-row (just 3 scalars)</h3>
+<div class="vs">
+  <div>
+    <p style="margin-bottom:6px"><span class="key">m</span> — running maximum<br><span style="color:#888;font-size:.85em">Prevents exp() overflow. Updated each tile.</span></p>
+    <p style="margin-top:8px"><span class="key">l</span> — running sum of exp(s - m)<br><span style="color:#888;font-size:.85em">The softmax denominator.</span></p>
+  </div>
+  <div>
+    <p><span class="key">O</span> — running weighted sum of V<br><span style="color:#888;font-size:.85em">The partial output, rescaled each time m changes.</span></p>
+    <p style="margin-top:8px;font-size:.85em;color:#4caf50">That's it. 3 accumulators per query row. No N×N matrix.</p>
+  </div>
+</div>
+</div>
+
+<button class="nx" onclick="go(3)">Speedup numbers →</button>
+</div>
+
+<!-- PAGE 3 -->
+<div class="page" data-t="3. Speedup Numbers">
+<h2>Flash Attention vs Standard — Concrete Numbers</h2>
+
+<div class="card blue">
+<h3>Memory: O(N) vs O(N²)</h3>
+<table>
+<tr><th>Sequence Length</th><th>Standard Attention (N×N)</th><th>Flash Attention</th></tr>
+<tr><td>1024</td><td>2 MB</td><td>~20 MB SRAM (fixed)</td></tr>
+<tr><td>2048</td><td>8 MB</td><td>~20 MB SRAM</td></tr>
+<tr><td>4096</td><td>32 MB</td><td>~20 MB SRAM</td></tr>
+<tr><td>8192</td><td><strong style="color:#ef5350">128 MB</strong></td><td>~20 MB SRAM</td></tr>
+<tr><td>32768</td><td><strong style="color:#ef5350">2 GB</strong> → OOM</td><td>~20 MB SRAM ✓</td></tr>
+</table>
+<p style="margin-top:8px;font-size:.85em;color:#888">Standard attention fails at N=32768 with a single head. Flash Attention: same SRAM usage regardless of N.</p>
+</div>
+
+<div class="card orange">
+<h3>HBM traffic comparison — why wall-clock is faster</h3>
+<div class="math">
+<span class="line cmt">// Standard attention HBM traffic (N=8192, d=64, FP16)</span>
+<span class="line"><span class="lbl">Q, K, V read</span>       = 3 × 8192 × 64 × 2 = 3.1 MB</span>
+<span class="line"><span class="lbl">Write S = QKᵀ</span>      = 8192² × 2 = <span class="val">128 MB</span></span>
+<span class="line"><span class="lbl">Read S for softmax</span> = 128 MB</span>
+<span class="line"><span class="lbl">Write A = softmax(S)</span>= 128 MB</span>
+<span class="line"><span class="lbl">Read A for A×V</span>     = 128 MB</span>
+<span class="line"><span class="lbl">Write O</span>            = 8192 × 64 × 2 = 1.0 MB</span>
+<span class="line"><span class="hl">Total HBM: ~491 MB</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Flash Attention HBM traffic (same N=8192, d=64, FP16)</span>
+<span class="line"><span class="lbl">Q, K, V read</span>       = 3.1 MB  (tiled, each read once)</span>
+<span class="line"><span class="lbl">Write O</span>            = 1.0 MB</span>
+<span class="line"><span class="hl">Total HBM: ~4 MB</span>  ← 120× less HBM traffic</span>
+</div>
+</div>
+
+<div class="card green">
+<h3>Wall-clock speedup</h3>
+<div class="math">
+<span class="line cmt">// Flash Attention 2 vs standard, measured on A100</span>
+<span class="line"><span class="lbl">Standard attention</span>  throughput: ~35% GPU utilization</span>
+<span class="line"><span class="lbl">Flash Attention 2</span>   throughput: ~70% GPU utilization</span>
+<span class="line"><span class="lbl">Speedup</span>: <span class="val">2–4×</span> faster wall-clock on typical seq lengths</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Flash Attention 3 (2024) — async pipeline on H100</span>
+<span class="line"><span class="lbl">FA3 utilization</span>:    ~75% A100 / ~85% H100</span>
+<span class="line"><span class="lbl">Key trick</span>: overlap GEMM and softmax with async tensor cores</span>
+<span class="line"><span class="lbl">Speedup vs FA2</span>:     ~1.5–2×</span>
+</div>
+</div>
+
+<div class="card">
+<h3>Important: FLOPs are identical</h3>
+<p>Flash Attention does <strong>the same number of floating-point operations</strong> as standard attention. It recomputes some values instead of storing them, which slightly increases FLOPs but dramatically reduces HBM traffic.</p>
+<div class="math">
+<span class="line"><span class="lbl">Standard FLOPs</span>  = 2 × N² × d  (compute QKᵀ and A×V)</span>
+<span class="line"><span class="lbl">Flash Attn FLOPs</span>= same 2 × N² × d  (+tiny overhead)</span>
+<span class="line cmt">// The win is entirely from reduced memory traffic, not fewer FLOPs.</span>
+</div>
+</div>
+
+<button class="nx" onclick="go(4)">Summary →</button>
+</div>
+
+<!-- PAGE 4 -->
+<div class="page" data-t="4. Summary">
+<h2>Flash Attention — Summary</h2>
+
+<div class="card blue">
+<h3>Standard vs Flash Attention</h3>
+<table>
+<tr><th>Property</th><th>Standard Attention</th><th>Flash Attention</th></tr>
+<tr><td>N×N matrix</td><td style="color:#ef5350">Written to HBM</td><td style="color:#4caf50">Never materialized</td></tr>
+<tr><td>HBM reads/writes (N=8192)</td><td style="color:#ef5350">~491 MB</td><td style="color:#4caf50">~4 MB</td></tr>
+<tr><td>Extra memory vs N</td><td style="color:#ef5350">O(N²)</td><td style="color:#4caf50">O(N) — just SRAM tiles</td></tr>
+<tr><td>FLOPs</td><td>2N²d</td><td>2N²d (same!)</td></tr>
+<tr><td>Max seq_len on A100 80GB</td><td style="color:#ef5350">~16K (OOM at 32K)</td><td style="color:#4caf50">&gt;100K</td></tr>
+<tr><td>Wall-clock speed</td><td>baseline</td><td style="color:#4caf50">2–4× faster</td></tr>
+<tr><td>GPU utilization</td><td>~35%</td><td style="color:#4caf50">~70%</td></tr>
+</table>
+</div>
+
+<div class="card green">
+<h3>Key takeaway</h3>
+<p><span class="key">Flash Attention doesn't reduce FLOPs — it reduces HBM traffic.</span> The attention computation is memory-bandwidth bound, not compute bound. By keeping intermediate data in fast SRAM and using online softmax to avoid materializing the N×N matrix, Flash Attention turns a memory-bandwidth problem into a compute-bound problem.</p>
+</div>
+
+<div class="card orange">
+<h3>Why online softmax works</h3>
+<p>The rescaling trick: when a new maximum <strong>m_new</strong> arrives, multiply the old denominator by <strong>exp(m_old − m_new)</strong>. This is exact — no approximation. The final output is identical to computing softmax over all values simultaneously.</p>
+</div>
+
+<div class="card purple">
+<h3>What this enabled</h3>
+<ul style="margin-left:18px;margin-top:6px">
+  <li>Long-context models: 32K, 128K, 1M tokens — Flash Attention made this feasible</li>
+  <li>Faster training: 2–4× throughput improvement means cheaper pretraining</li>
+  <li>Adopted everywhere: PyTorch 2.0 built-in, used in every major LLM</li>
+  <li>Flash Attention 3: async pipeline on H100, ~85% MFU</li>
+</ul>
+</div>
+</div>
+
+<script>
+const pages=document.querySelectorAll('.page'),nav=document.getElementById('nav');
+pages.forEach((p,i)=>{const b=document.createElement('button');b.textContent=p.dataset.t;b.onclick=()=>go(i);if(i===0)b.classList.add('on');nav.appendChild(b);});
+function go(n){pages.forEach((p,i)=>p.classList.toggle('on',i===n));nav.querySelectorAll('button').forEach((b,i)=>{b.classList.remove('on');if(i<n)b.classList.add('done');else b.classList.remove('done');if(i===n)b.classList.add('on');});window.scrollTo({top:0,behavior:'smooth'});}
+</script>
+</body>
+</html>

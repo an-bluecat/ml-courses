@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ML Course Index</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0a0a1a;color:#e0e0e0;padding:32px 24px 80px;line-height:1.7;min-height:100vh}
+
+h1{text-align:center;color:#fff;font-size:1.7em;margin-bottom:6px}
+.tagline{text-align:center;color:#555;font-size:.88em;margin-bottom:48px}
+
+/* Roadmap strip */
+.roadmap{background:#12122a;border:1px solid #2a2a4a;border-radius:12px;padding:16px 20px;max-width:860px;margin:0 auto 40px;display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.roadmap-label{font-size:.72em;color:#555;text-transform:uppercase;letter-spacing:.1em;margin-right:4px;white-space:nowrap}
+.badge{font-size:.7em;font-weight:700;padding:3px 9px;border-radius:4px;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap}
+.b-p1{background:rgba(239,83,80,.15);color:#ef5350;border:1px solid rgba(239,83,80,.3)}
+.b-p2{background:rgba(255,152,0,.15);color:#ff9800;border:1px solid rgba(255,152,0,.3)}
+.b-p3{background:rgba(79,195,247,.15);color:#4fc3f7;border:1px solid rgba(79,195,247,.3)}
+.b-done{background:rgba(76,175,80,.1);color:#4caf50;border:1px solid rgba(76,175,80,.3)}
+.arr{color:#333;font-size:.9em}
+
+/* Grid */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:20px;max-width:900px;margin:0 auto}
+
+/* Course card */
+.course{background:#12122a;border:1px solid #2a2a4a;border-radius:12px;overflow:hidden;transition:border-color .2s,transform .15s}
+.course:hover{border-color:#4fc3f7;transform:translateY(-2px)}
+.course-head{padding:16px 18px 10px;border-bottom:1px solid #1a1a3a}
+.course-icon{font-size:1.6em;margin-bottom:6px}
+.course-title{font-weight:600;color:#fff;font-size:1em;margin-bottom:2px}
+.course-sub{font-size:.78em;color:#666}
+.course-body{padding:10px 0}
+.chapter{display:block;padding:6px 18px;font-size:.8em;color:#888;text-decoration:none;transition:background .15s,color .15s;border-left:2px solid transparent}
+.chapter:hover{background:#1a1a3a;color:#e0e0e0;border-left-color:#4fc3f7}
+.chapter-num{color:#333;font-family:monospace;font-size:.85em;margin-right:6px}
+.priority-tag{display:inline-block;font-size:.62em;font-weight:700;padding:2px 6px;border-radius:3px;text-transform:uppercase;letter-spacing:.05em;float:right;margin-top:1px}
+.pt1{background:rgba(239,83,80,.12);color:#ef5350}
+.pt2{background:rgba(255,152,0,.12);color:#ff9800}
+.pt3{background:rgba(79,195,247,.12);color:#4fc3f7}
+
+/* Section header */
+.section-label{max-width:900px;margin:0 auto 12px;display:flex;align-items:center;gap:10px}
+.section-label span{font-size:.72em;color:#555;text-transform:uppercase;letter-spacing:.1em;white-space:nowrap}
+.section-label::after{content:'';flex:1;height:1px;background:#1a1a3a}
+</style>
+</head>
+<body>
+
+<h1>ML Courses</h1>
+<p class="tagline">Everything in one place — click any chapter to open it</p>
+
+<!-- Roadmap strip -->
+<div class="roadmap">
+  <span class="roadmap-label">Interview priority →</span>
+  <span class="badge b-p1">P1 Must know</span>
+  <span class="arr">·</span>
+  <span class="badge b-done">✓ RL/RLHF</span>
+  <span class="badge b-done">✓ Transformers</span>
+  <span class="badge b-done">✓ Training dynamics</span>
+  <span class="arr">·</span>
+  <span class="badge b-p2">P2 Strong candidate</span>
+  <span class="arr">·</span>
+  <span class="badge b-done">✓ Contrastive/CLIP</span>
+  <span class="badge b-done">✓ Diffusion</span>
+  <span class="badge b-done">✓ Eval</span>
+  <span class="arr">·</span>
+  <span class="badge b-p3">P3 Differentiator</span>
+  <span class="arr">·</span>
+  <span class="badge b-done">✓ Info theory</span>
+  <span class="badge b-done">✓ VAE</span>
+  <span class="badge b-done">✓ Systems</span>
+</div>
+
+<!-- P1 -->
+<div class="section-label"><span>Priority 1 — Must Know Cold</span></div>
+<div class="grid">
+
+  <!-- RL -->
+  <div class="course">
+    <div class="course-head">
+      <div class="course-icon">🤖</div>
+      <div class="course-title">Reinforcement Learning</div>
+      <div class="course-sub">Bandit → REINFORCE → PPO → DPO → GRPO</div>
+    </div>
+    <div class="course-body">
+      <a class="chapter" href="rl_demos/0_statquest_walkthrough.html"><span class="chapter-num">00</span>StatQuest walkthrough<span class="priority-tag pt1">P1</span></a>
+      <a class="chapter" href="rl_demos/2_q_learning.html"><span class="chapter-num">02</span>Q-Learning</a>
+      <a class="chapter" href="rl_demos/3_reinforce.html"><span class="chapter-num">03</span>REINFORCE</a>
+      <a class="chapter" href="rl_demos/4_actor_critic.html"><span class="chapter-num">04</span>Actor-Critic</a>
+      <a class="chapter" href="rl_demos/5_ppo.html"><span class="chapter-num">05</span>PPO</a>
+      <a class="chapter" href="rl_demos/6_dpo.html"><span class="chapter-num">06</span>DPO</a>
+      <a class="chapter" href="rl_demos/7_grpo.html"><span class="chapter-num">07</span>GRPO</a>
+    </div>
+  </div>
+
+  <!-- Transformers -->
+  <div class="course">
+    <div class="course-head">
+      <div class="course-icon">⚡</div>
+      <div class="course-title">Transformers</div>
+      <div class="course-sub">Attention → Multi-head → Scaling laws</div>
+    </div>
+    <div class="course-body">
+      <a class="chapter" href="transformer_course/1_attention.html"><span class="chapter-num">01</span>Attention (QKV) <span class="priority-tag pt1">P1</span></a>
+      <a class="chapter" href="transformer_course/2_multihead.html"><span class="chapter-num">02</span>Multi-head attention</a>
+      <a class="chapter" href="transformer_course/3_positional_encoding.html"><span class="chapter-num">03</span>Positional encoding</a>
+      <a class="chapter" href="transformer_course/4_encoder_block.html"><span class="chapter-num">04</span>Encoder block</a>
+      <a class="chapter" href="transformer_course/5_bert_vs_gpt.html"><span class="chapter-num">05</span>BERT vs GPT</a>
+      <a class="chapter" href="transformer_course/6_decoder_kv_cache.html"><span class="chapter-num">06</span>Decoding & KV cache</a>
+      <a class="chapter" href="transformer_course/7_scaling_laws.html"><span class="chapter-num">07</span>Scaling laws</a>
+    </div>
+  </div>
+
+  <!-- Training dynamics -->
+  <div class="course">
+    <div class="course-head">
+      <div class="course-icon">📉</div>
+      <div class="course-title">Training Dynamics</div>
+      <div class="course-sub">Loss curves, optimizers, LR schedules, gradients</div>
+    </div>
+    <div class="course-body">
+      <a class="chapter" href="training_dynamics/1_loss_curves.html"><span class="chapter-num">01</span>Reading loss curves <span class="priority-tag pt1">P1</span></a>
+      <a class="chapter" href="training_dynamics/2_optimizers.html"><span class="chapter-num">02</span>Adam vs SGD</a>
+      <a class="chapter" href="training_dynamics/3_lr_schedule.html"><span class="chapter-num">03</span>LR schedules</a>
+      <a class="chapter" href="training_dynamics/4_gradient_flow.html"><span class="chapter-num">04</span>Gradient flow</a>
+    </div>
+  </div>
+
+  <!-- PyTorch mechanics -->
+  <div class="course">
+    <div class="course-head">
+      <div class="course-icon">🔧</div>
+      <div class="course-title">PyTorch Mechanics</div>
+      <div class="course-sub">How autograd, backward & the optimizer are wired</div>
+    </div>
+    <div class="course-body">
+      <a class="chapter" href="pytorch_autograd/autograd.html"><span class="chapter-num">01</span>Autograd, backward & optimizer <span class="priority-tag pt1">P1</span></a>
+      <a class="chapter" href="pytorch_autograd/nn_module.html"><span class="chapter-num">02</span>nn.Module & super().__init__()</a>
+    </div>
+  </div>
+
+  <!-- Array frameworks -->
+  <div class="course">
+    <div class="course-head">
+      <div class="course-icon">🧭</div>
+      <div class="course-title">Array Frameworks</div>
+      <div class="course-sub">NumPy · PyTorch · TensorFlow · JAX — one problem, four answers</div>
+    </div>
+    <div class="course-body">
+      <a class="chapter" href="frameworks_course/0_map.html"><span class="chapter-num">00</span>The map — read first <span class="priority-tag pt1">P1</span></a>
+      <div style="padding:6px 18px 0;font-size:.64em;color:#444;text-transform:uppercase;letter-spacing:.08em">Part 1 · the four</div>
+      <a class="chapter" href="frameworks_course/1_numpy.html"><span class="chapter-num">01</span>NumPy — the substrate</a>
+      <a class="chapter" href="frameworks_course/2_tensorflow.html"><span class="chapter-num">02</span>TensorFlow — graphs first</a>
+      <a class="chapter" href="frameworks_course/3_pytorch.html"><span class="chapter-num">03</span>PyTorch — Python first</a>
+      <a class="chapter" href="frameworks_course/4_jax.html"><span class="chapter-num">04</span>JAX — the compiler</a>
+      <div style="padding:6px 18px 0;font-size:.64em;color:#444;text-transform:uppercase;letter-spacing:.08em">Part 2 · the differences</div>
+      <a class="chapter" href="frameworks_course/5_execution_models.html"><span class="chapter-num">05</span>When does your Python run?</a>
+      <a class="chapter" href="frameworks_course/6_autodiff_and_state.html"><span class="chapter-num">06</span>Where do gradients & state live?</a>
+      <a class="chapter" href="frameworks_course/7_choosing.html"><span class="chapter-num">07</span>Choosing — the 2026 map</a>
+      <div style="padding:6px 18px 0;font-size:.64em;color:#444;text-transform:uppercase;letter-spacing:.08em">Part 3 · depth by doing</div>
+      <a class="chapter" href="frameworks_course/8_autodiff_from_scratch.html"><span class="chapter-num">08</span>Build autograd yourself</a>
+      <a class="chapter" href="frameworks_course/9_one_model_four_ways.html"><span class="chapter-num">09</span>One model, four dialects</a>
+      <a class="chapter" href="frameworks_course/10_jax_in_practice.html"><span class="chapter-num">10</span>JAX in practice</a>
+    </div>
+  </div>
+
+</div>
+
+<!-- P2 -->
+<div class="section-label" style="margin-top:36px"><span>Priority 2 — Strong Candidates Know These</span></div>
+<div class="grid">
+
+  <!-- Contrastive -->
+  <div class="course">
+    <div class="course-head">
+      <div class="course-icon">🔗</div>
+      <div class="course-title">Contrastive Learning</div>
+      <div class="course-sub">SimCLR → CLIP → Sentence-BERT</div>
+    </div>
+    <div class="course-body">
+      <a class="chapter" href="contrastive_learning/1_the_problem.html"><span class="chapter-num">01</span>The problem + InfoNCE <span class="priority-tag pt2">P2</span></a>
+      <a class="chapter" href="contrastive_learning/2_simclr.html"><span class="chapter-num">02</span>SimCLR</a>
+      <a class="chapter" href="contrastive_learning/3_clip.html"><span class="chapter-num">03</span>CLIP</a>
+      <a class="chapter" href="contrastive_learning/4_sentence_bert.html"><span class="chapter-num">04</span>Sentence-BERT</a>
+      <a class="chapter" href="contrastive_learning/5_interview_roadmap.html"><span class="chapter-num">05</span>Interview roadmap</a>
+    </div>
+  </div>
+
+  <!-- Diffusion -->
+  <div class="course">
+    <div class="course-head">
+      <div class="course-icon">🌀</div>
+      <div class="course-title">Diffusion Models</div>
+      <div class="course-sub">DDPM → Score matching → U-Net → Flow matching</div>
+    </div>
+    <div class="course-body">
+      <a class="chapter" href="diffusion_course/1_the_idea.html"><span class="chapter-num">01</span>The idea <span class="priority-tag pt2">P2</span></a>
+      <a class="chapter" href="diffusion_course/2_score_matching.html"><span class="chapter-num">02</span>Score matching</a>
+      <a class="chapter" href="diffusion_course/3_unet_cfg.html"><span class="chapter-num">03</span>U-Net & CFG</a>
+      <a class="chapter" href="diffusion_course/4_flow_matching.html"><span class="chapter-num">04</span>Flow matching</a>
+    </div>
+  </div>
+
+  <!-- Eval -->
+  <div class="course">
+    <div class="course-head">
+      <div class="course-icon">📊</div>
+      <div class="course-title">LLM Evaluation</div>
+      <div class="course-sub">Traced on real models — benchmarks, judges, safety, perplexity, build-your-own</div>
+    </div>
+    <div class="course-body">
+      <a class="chapter" href="eval_course/1_benchmarks.html"><span class="chapter-num">01</span>Benchmarks with ground truth (MMLU, pass@k) <span class="priority-tag pt2">P2</span></a>
+      <a class="chapter" href="eval_course/2_preference_eval.html"><span class="chapter-num">02</span>Preference eval: Elo, Bradley-Terry, LLM-judge</a>
+      <a class="chapter" href="eval_course/3_alignment_eval.html"><span class="chapter-num">03</span>Safety eval: the harmful/benign 2×2</a>
+      <a class="chapter" href="eval_course/4_bits_per_byte.html"><span class="chapter-num">04</span>Perplexity & bits-per-byte</a>
+      <a class="chapter" href="eval_course/5_building_evals.html"><span class="chapter-num">05</span>Building your own eval</a>
+    </div>
+  </div>
+
+</div>
+
+<!-- P3 -->
+<div class="section-label" style="margin-top:36px"><span>Priority 3 — Differentiators</span></div>
+<div class="grid">
+
+  <!-- Info theory -->
+  <div class="course">
+    <div class="course-head">
+      <div class="course-icon">📡</div>
+      <div class="course-title">Information Theory</div>
+      <div class="course-sub">Bits → Entropy → Cross-entropy → KL divergence</div>
+    </div>
+    <div class="course-body">
+      <a class="chapter" href="info_theory/1_bits_and_codes.html"><span class="chapter-num">01</span>Bits & codes <span class="priority-tag pt3">P3</span></a>
+      <a class="chapter" href="info_theory/2_entropy.html"><span class="chapter-num">02</span>Entropy</a>
+      <a class="chapter" href="info_theory/3_cross_entropy.html"><span class="chapter-num">03</span>Cross-entropy</a>
+      <a class="chapter" href="info_theory/4_kl_divergence.html"><span class="chapter-num">04</span>KL divergence</a>
+      <a class="chapter" href="info_theory/5_ml_connections.html"><span class="chapter-num">05</span>ML connections</a>
+    </div>
+  </div>
+
+  <!-- VAE -->
+  <div class="course">
+    <div class="course-head">
+      <div class="course-icon">🧬</div>
+      <div class="course-title">VAE Course</div>
+      <div class="course-sub">Autoencoder → VAE → latent space</div>
+    </div>
+    <div class="course-body">
+      <a class="chapter" href="vae_course/1_autoencoder.html"><span class="chapter-num">01</span>Autoencoder <span class="priority-tag pt3">P3</span></a>
+      <a class="chapter" href="vae_course/2_vae.html"><span class="chapter-num">02</span>VAE &amp; KL loss</a>
+      <a class="chapter" href="vae_course/4_use_cases.html"><span class="chapter-num">04</span>Use cases — reconstruction vs MLP</a>
+      <a class="chapter" href="vae_course/5_semantic_ids.html"><span class="chapter-num">05</span>Semantic IDs — RQ-VAE &amp; TIGER</a>
+      <a class="chapter" href="vae_course/5b_codebook.html"><span class="chapter-num">5½</span>Building the codebook (deep-dive)</a>
+      <a class="chapter" href="vae_course/6_plum.html"><span class="chapter-num">06</span>PLUM — LLM generative rec</a>
+    </div>
+  </div>
+
+  <!-- LLM4Rec -->
+  <div class="course">
+    <div class="course-head">
+      <div class="course-icon">🎯</div>
+      <div class="course-title">LLM4Rec — State of the Art</div>
+      <div class="course-sub">P5 → TIGER → collab fusion → OneRec → open problems</div>
+    </div>
+    <div class="course-body">
+      <a class="chapter" href="llm4rec_course/index.html"><span class="chapter-num">00</span>The map — two paradigm shifts <span class="priority-tag pt3">P3</span></a>
+      <a class="chapter" href="llm4rec_course/index.html"><span class="chapter-num">01</span>Rec as language — P5, M6-Rec</a>
+      <a class="chapter" href="llm4rec_course/index.html"><span class="chapter-num">02</span>Generative retrieval — TIGER</a>
+      <a class="chapter" href="llm4rec_course/index.html"><span class="chapter-num">03</span>Collaborative fusion — CoLLM, LLaRA, CTRL</a>
+      <a class="chapter" href="llm4rec_course/index.html"><span class="chapter-num">04</span>Industrial — OneRec, Spotify, PLUM</a>
+      <a class="chapter" href="llm4rec_course/index.html"><span class="chapter-num">05</span>The reckoning — GRID's findings</a>
+      <a class="chapter" href="llm4rec_course/index.html"><span class="chapter-num">5½</span>Quantizers deep-dive — RQ-VAE vs RK-Means</a>
+      <a class="chapter" href="llm4rec_course/index.html"><span class="chapter-num">06</span>Research frontier — 5 open ideas</a>
+    </div>
+  </div>
+
+  <!-- Systems -->
+  <div class="course">
+    <div class="course-head">
+      <div class="course-icon">⚙️</div>
+      <div class="course-title">Systems & Efficiency</div>
+      <div class="course-sub">Flash Attention, LoRA, quantization, MoE</div>
+    </div>
+    <div class="course-body">
+      <a class="chapter" href="systems_course/1_flash_attention.html"><span class="chapter-num">01</span>Flash Attention <span class="priority-tag pt3">P3</span></a>
+      <a class="chapter" href="systems_course/2_lora.html"><span class="chapter-num">02</span>LoRA & QLoRA</a>
+      <a class="chapter" href="systems_course/3_quantization.html"><span class="chapter-num">03</span>Quantization</a>
+      <a class="chapter" href="systems_course/4_moe_speculative.html"><span class="chapter-num">04</span>MoE & speculative decoding</a>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>

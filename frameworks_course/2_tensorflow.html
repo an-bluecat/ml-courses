@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TensorFlow — graphs first</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0a0a1a;color:#e0e0e0;padding:20px 20px 80px;line-height:1.7}
+h1{text-align:center;color:#fff;margin-bottom:4px;font-size:1.5em}
+.sub{text-align:center;color:#888;margin-bottom:24px;font-size:.88em}
+.nav{display:flex;justify-content:center;gap:6px;margin-bottom:20px;flex-wrap:wrap}
+.nav button{padding:7px 13px;border:2px solid #333;background:#111;color:#888;border-radius:8px;cursor:pointer;font-size:.78em;transition:.2s}
+.nav button:hover{border-color:#555;color:#ccc}
+.nav button.on{border-color:#4fc3f7;color:#4fc3f7;background:#0d2137}
+.nav button.done{border-color:#4caf50;color:#4caf50}
+.page{display:none;max-width:880px;margin:0 auto}
+.page.on{display:block}
+.page h2{color:#4fc3f7;margin-bottom:12px;font-size:1.2em}
+.card{background:#12122a;border:1px solid #2a2a4a;border-radius:12px;padding:18px;margin-bottom:14px}
+.card.blue{border-color:#4fc3f7;background:#0d1b2a}
+.card.green{border-color:#4caf50;background:#0a1a0a}
+.card.orange{border-color:#ff9800;background:#1a1400}
+.card.red{border-color:#ef5350;background:#1a0a0a}
+.card.purple{border-color:#ce93d8;background:#1a0a2a}
+.card h3{color:#ffb74d;margin-bottom:8px;font-size:1em}
+button.nx{padding:10px 24px;background:#4caf50;color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:.9em;margin-top:14px}
+button.nx:hover{background:#66bb6a}
+a.nx{display:inline-block;padding:10px 24px;background:#4caf50;color:#000;border-radius:8px;font-weight:700;font-size:.9em;margin-top:14px;text-decoration:none}
+table{width:100%;border-collapse:collapse;margin:10px 0}
+th,td{padding:8px 12px;border:1px solid #333;text-align:left;font-size:.86em}
+th{background:#1a1a3a;color:#4fc3f7}
+.math{background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:14px;margin:10px 0;font-family:'Fira Code',Consolas,monospace;font-size:.84em;line-height:1.8;overflow-x:auto}
+.math .line{margin:2px 0;display:block;white-space:pre}
+.math .cmt{color:#6a9955}
+.math .val{color:#b5cea8}
+.math .lbl{color:#9cdcfe}
+.math .kw{color:#c586c0}
+.math .fn{color:#dcdcaa}
+.math.out{border-left:3px solid #4caf50;background:#0d1a12}
+.outlabel{display:block;font-size:.72em;color:#4caf50;letter-spacing:.08em;text-transform:uppercase;margin-bottom:6px}
+.key{color:#ffb74d;font-weight:600}
+.inline{font-family:'Fira Code',Consolas,monospace;background:#1a1a2e;border:1px solid #333;border-radius:4px;padding:1px 6px;font-size:.86em;color:#9cdcfe}
+.faded{color:#888;font-size:.86em}
+ul{margin-left:20px;margin-top:6px}
+li{margin:4px 0}
+details{margin-top:12px}
+details summary{cursor:pointer;color:#888;font-size:.85em;padding:8px 12px;background:#12122a;border:1px solid #333;border-radius:8px}
+details summary:hover{color:#ccc;border-color:#555}
+details[open] summary{color:#4fc3f7;border-color:#4fc3f7}
+.fw{display:inline-block;font-weight:700;padding:1px 8px;border-radius:4px;font-size:.82em;border:1px solid}
+.fw.np{color:#4fc3f7;border-color:rgba(79,195,247,.4);background:rgba(79,195,247,.08)}
+.fw.tf{color:#ff9800;border-color:rgba(255,152,0,.4);background:rgba(255,152,0,.08)}
+.fw.pt{color:#ef5350;border-color:rgba(239,83,80,.4);background:rgba(239,83,80,.08)}
+.fw.jx{color:#ce93d8;border-color:rgba(206,147,216,.4);background:rgba(206,147,216,.08)}
+.pipeline{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:center;margin:14px 0}
+.pipe-box{border-radius:8px;padding:8px 12px;font-size:.8em;text-align:center;border:2px solid;min-width:78px}
+.pipe-box small{display:block;font-size:.78em;color:#999;font-weight:400}
+.pipe-box.o{border-color:#ff9800;color:#ffb74d;background:#1a1400}
+.pipe-box.b{border-color:#4fc3f7;color:#4fc3f7;background:#0d2137}
+.pipe-box.g{border-color:#4caf50;color:#4caf50;background:#0a2a0a}
+.pipe-arr{color:#666;font-size:1.2em}
+</style>
+</head>
+<body>
+<a href="../index.html" style="position:fixed;top:10px;left:14px;font-size:.75em;color:#555;text-decoration:none;z-index:999;padding:4px 8px;background:#0a0a1a;border:1px solid #333;border-radius:6px;">&larr; index</a>
+
+<h1><span class="fw tf" style="font-size:.7em;vertical-align:middle">Part 1</span> TensorFlow — graphs first</h1>
+<p class="sub">Google's answer to "how do we train AND ship models on a million machines and a billion phones." The design that won production and lost researchers.</p>
+
+<div class="nav" id="nav"></div>
+
+<!-- PAGE 0 -->
+<div class="page on" data-t="0. History">
+<h2>2011–2015: from DistBelief to "the graph is the product"</h2>
+
+<div class="card">
+<h3>DistBelief (2011) — the problem TensorFlow was built to fix</h3>
+<p>Google Brain's first system, DistBelief (Dean et al., NIPS 2012), trained huge networks by splitting them across thousands of <em>CPUs</em> with parameter servers. It worked — "hundreds of teams" used it — but it was a C++ system where trying a new layer type or optimizer meant real systems engineering. Research iteration was slow, and it was welded to Google's infrastructure.</p>
+</div>
+
+<div class="card orange">
+<h3>TensorFlow (open-sourced Nov 9, 2015) — the stated goals</h3>
+<p>The whitepaper ("TensorFlow: Large-Scale Machine Learning on Heterogeneous Distributed Systems", 2015; OSDI paper 2016) is explicit about the design targets:</p>
+<ul>
+<li><span class="key">One system from research to production</span> — no rewrite when a model ships.</li>
+<li><span class="key">Heterogeneous placement</span> — pieces of one computation mapped onto CPUs, GPUs, and (soon) TPUs, across many machines.</li>
+<li><span class="key">Datacenter to phone</span> — the same model description runs on a rack or a handset.</li>
+</ul>
+<p>All three goals point to the same mechanism: make the program a <span class="key">dataflow graph</span> — a data structure describing every operation and every dependency — and Python merely the tool that builds it. A data structure can be split across machines, optimized, serialized to disk, and executed by a C++ runtime with no Python anywhere near it.</p>
+<p class="faded">The idea wasn't new — Theano (Montréal, ~2008) had pioneered symbolic graphs with autodiff, and TF openly inherited from it. Theano's team wound down major development in 2017, citing the arrival of "strong industrial players."</p>
+</div>
+
+<div class="card blue">
+<h3>The TPU made graphs non-negotiable</h3>
+<p>Google announced the Tensor Processing Unit in May 2016 (it had already been serving internally for a year). A TPU is a systolic matrix engine — it doesn't run Python, it runs long pre-planned instruction streams. If your program exists as a graph, you can compile it for such hardware. If your program is "whatever Python does next," you can't. <span class="key">TF's graph-first design and Google's custom-silicon strategy were the same decision.</span> Keep this in mind for JAX — it inherits exactly this half of the family DNA.</p>
+</div>
+<button class="nx" onclick="go(1)">Next: run real TF1 — the graph, live</button>
+</div>
+
+<!-- PAGE 1 -->
+<div class="page" data-t="1. Graphs, live">
+<h2>What "Python only describes it" actually looks like</h2>
+
+<div class="card">
+<h3>Real TF1-style code (runs today via <span class="inline">tf.compat.v1</span>)</h3>
+<div class="math">
+<span class="line">x = tf1.<span class="fn">placeholder</span>(tf1.float32, name=<span class="val">"x"</span>)  <span class="cmt"># a promise: "data arrives later"</span></span>
+<span class="line">w = tf1.<span class="fn">Variable</span>(<span class="val">2.0</span>, name=<span class="val">"w"</span>)</span>
+<span class="line">y = w * x</span>
+<span class="line">loss = (y - <span class="val">10.0</span>) ** <span class="val">2</span></span>
+<span class="line"><span class="fn">print</span>(y)</span>
+<span class="line"><span class="fn">print</span>(loss)</span>
+</div>
+<div class="math out"><span class="outlabel">output — real run</span>
+<span class="line">y    = Tensor("mul:0", dtype=float32)</span>
+<span class="line">loss = Tensor("pow:0", dtype=float32)</span>
+</div>
+<p>Stop and absorb this: we "multiplied" w by x and <span class="key">no multiplication happened</span>. <span class="inline">y</span> has no value — it's a handle to node <span class="inline">"mul:0"</span> in a graph. Python is acting as a <em>construction crane</em> for a program that exists only as data.</p>
+</div>
+
+<div class="card orange">
+<h3>Proof: dump what Python actually built</h3>
+<div class="math out"><span class="outlabel">output — real run (the default graph's operations)</span>
+<span class="line">  Placeholder  x</span>
+<span class="line">  Const        w/Initializer/initial_value</span>
+<span class="line">  VarHandleOp  w</span>
+<span class="line">  VarIsInitializedOp w/IsInitialized/VarIsInitializedOp</span>
+<span class="line">  AssignVariableOp w/Assign</span>
+<span class="line">  ReadVariableOp w/Read/ReadVariableOp</span>
+<span class="line">  ReadVariableOp ReadVariableOp</span>
+<span class="line">  Mul          mul</span>
+<span class="line">  Const        sub/y</span>
+<span class="line">  Sub          sub</span>
+<span class="line">  Pow          pow</span>
+</div>
+<p>Four lines of Python produced eleven graph nodes — including plumbing you never wrote (variable initialization, reads). Note there's a <span class="key">whole sub-machine just for w</span>: in graph land, even "a variable" must be reified as nodes, because the runtime — not Python — owns the state.</p>
+</div>
+
+<div class="card green">
+<h3>Now execute — and get gradients symbolically</h3>
+<div class="math">
+<span class="line">grad = tf1.<span class="fn">gradients</span>(loss, w)[<span class="val">0</span>]      <span class="cmt"># adds MORE NODES that compute dloss/dw</span></span>
+<span class="line"><span class="kw">with</span> tf1.<span class="fn">Session</span>() <span class="kw">as</span> sess:            <span class="cmt"># connect to the runtime</span></span>
+<span class="line">    sess.<span class="fn">run</span>(tf1.<span class="fn">global_variables_initializer</span>())</span>
+<span class="line">    sess.<span class="fn">run</span>([loss, grad], feed_dict={x: <span class="val">3.0</span>})</span>
+</div>
+<div class="math out"><span class="outlabel">output — real run</span>
+<span class="line">sess.run([loss, grad], feed_dict={x: 3.0}) -> [16.0, -24.0]</span>
+</div>
+<p>Our canonical 16 and −24. Two things are genuinely elegant here: <span class="inline">tf1.gradients</span> is <span class="key">graph-to-graph differentiation</span> — it walks the graph backwards and appends the derivative computation as more nodes (no runtime tape needed, ever). And the whole thing — forward, backward, update — is one serializable artifact you can ship to a datacenter or a phone.</p>
+</div>
+
+<div class="card blue">
+<h3>Why this design wins (when it wins)</h3>
+<ul>
+<li><span class="key">Optimize</span>: the runtime sees the <em>whole</em> program before running it — it can fuse ops, prune dead branches, plan memory.</li>
+<li><span class="key">Distribute</span>: a graph can be cut into subgraphs placed on different devices/machines, with sends/receives inserted automatically.</li>
+<li><span class="key">Ship</span>: <span class="inline">saved_model.pb</span> runs under C++ servers, Android, browsers — Python was scaffolding, discarded after construction.</li>
+</ul>
+</div>
+<button class="nx" onclick="go(2)">Next: the price researchers refused to pay</button>
+</div>
+
+<!-- PAGE 2 -->
+<div class="page" data-t="2. The revolt">
+<h2>The price: you're programming a program you can't touch</h2>
+
+<div class="card red">
+<h3>Pain #1 — you can't look at anything</h3>
+<p><span class="inline">print(y)</span> gives <span class="inline">Tensor("mul:0")</span>, forever. There is no value to inspect until <span class="inline">sess.run</span> — and by then you're outside the model code. <span class="inline">pdb</span> is useless: stepping through Python steps through the <em>crane</em>, not the computation. Errors surface at <span class="inline">sess.run</span>, often far from the line that caused them, as shape mismatches between anonymous node names.</p>
+</div>
+
+<div class="card red">
+<h3>Pain #2 — Python control flow doesn't mean what it says</h3>
+<p>You want "if the value is positive, double it":</p>
+<div class="math">
+<span class="line"><span class="kw">if</span> y &gt; <span class="val">0</span>:            <span class="cmt"># WRONG: y has no value at build time!</span></span>
+<span class="line">    out = y * <span class="val">2</span>       <span class="cmt"># this if runs ONCE, in Python, on a node handle</span></span>
+<span class="line"></span>
+<span class="line">out = tf1.<span class="fn">cond</span>(y &gt; <span class="val">0</span>,             <span class="cmt"># RIGHT: build a branch NODE</span></span>
+<span class="line">               <span class="kw">lambda</span>: y * <span class="val">2</span>,</span>
+<span class="line">               <span class="kw">lambda</span>: -y)</span>
+</div>
+<p>Every <span class="inline">if</span> becomes <span class="inline">tf.cond</span>, every loop becomes <span class="inline">tf.while_loop</span> with explicit loop-carried state. You are writing a compiler's intermediate representation by hand, in Python syntax. For a fixed feed-forward net, tolerable. For 2015-era NLP — recursive nets over parse trees, variable-length everything — it was misery.</p>
+</div>
+
+<div class="card">
+<h3>The two-language problem, named</h3>
+<p>TF1 forced you to think in two programs at once: the Python program that runs now (building), and the graph program that runs later (computing). Every mental context switch between them is a chance to be wrong. The 2015 whitepaper's customers — Google production teams — happily paid this tax for deployability. The customers who wouldn't were <span class="key">researchers iterating daily</span>. In January 2017, PyTorch handed them an alternative (next chapter), and within about two years new-paper implementations had flipped decisively toward it.</p>
+<details><summary>Also: the API churn compounded the pain</summary>
+<p style="padding:8px 4px">Layers lived in <span class="inline">tf.contrib</span>, then moved, then <span class="inline">tf.contrib</span> was deleted entirely in TF 2.0; there were three-plus competing high-level APIs (slim, layers, estimators, keras) before Keras won. Many practitioners' strongest TF1 memory is not graphs — it's rewriting working code across versions.</p></details>
+</div>
+<button class="nx" onclick="go(3)">Next: TF2 — eager, plus tf.function</button>
+</div>
+
+<!-- PAGE 3 -->
+<div class="page" data-t="3. TF2 & tf.function">
+<h2>TF 2.0 (Sept 2019): surrender on the surface, graphs underneath</h2>
+
+<div class="card">
+<h3>The pivot</h3>
+<p>TF 2.0 made execution <span class="key">eager by default</span> — <span class="inline">w * x</span> now just computes 6.0, like NumPy — and deleted sessions and placeholders from the main API. But Google still needed graphs (TPUs, serving, phones). The bridge is <span class="inline">@tf.function</span>: <span class="key">run your Python once with symbolic tensors, record what happens, keep the recording</span>. That recording is… a TF1-style graph. The graph didn't die; it moved behind a decorator.</p>
+</div>
+
+<div class="card orange">
+<h3>Watch tracing happen — once</h3>
+<div class="math">
+<span class="line"><span class="kw">@tf.function</span></span>
+<span class="line"><span class="kw">def</span> <span class="fn">f</span>(x):</span>
+<span class="line">    <span class="fn">print</span>(<span class="val">"  [python print] tracing now, x ="</span>, x)   <span class="cmt"># python side effect</span></span>
+<span class="line">    tf.<span class="fn">print</span>(<span class="val">"  [tf.print] running, x ="</span>, x)         <span class="cmt"># a graph NODE</span></span>
+<span class="line">    <span class="kw">return</span> x * <span class="val">2.0</span></span>
+<span class="line">f(tf.<span class="fn">constant</span>(<span class="val">3.0</span>)); f(tf.<span class="fn">constant</span>(<span class="val">4.0</span>))</span>
+</div>
+<div class="math out"><span class="outlabel">output — real run</span>
+<span class="line">  [python print] tracing now, x = Tensor("x:0", shape=(), dtype=float32)</span>
+<span class="line">  [tf.print] running, x = 3</span>
+<span class="line">call 1: 6.0</span>
+<span class="line">  [tf.print] running, x = 4</span>
+<span class="line">call 2: 8.0</span>
+</div>
+<p>Read it carefully — this one output block is the whole story of traced execution:</p>
+<ul>
+<li>The python <span class="inline">print</span> fired <span class="key">once</span>, during tracing, and saw a <em>symbolic</em> tensor (<span class="inline">"x:0"</span> — a placeholder reborn!). On call 2 it's gone: Python didn't run; the graph did.</li>
+<li><span class="inline">tf.print</span> fired both times with real values — because it was recorded <em>into</em> the graph.</li>
+</ul>
+</div>
+
+<div class="card red">
+<h3>And watch retracing bite</h3>
+<div class="math out"><span class="outlabel">output — real run: g(tensor 1.0), g(tensor 2.0), then g(1), g(2), g(3)</span>
+<span class="line">  [tracing] with x = Tensor("x:0", shape=(), dtype=float32)</span>
+<span class="line">  [tracing] with x = 1</span>
+<span class="line">  [tracing] with x = 2</span>
+<span class="line">  [tracing] with x = 3</span>
+</div>
+<p>Two <em>tensor</em> arguments of the same shape/dtype → one trace, reused. Three <em>Python int</em> arguments → <span class="key">three separate traces</span>, because Python values get baked into the graph as constants; a new value means a new graph. This is the classic real-world TF2 performance bug (and you'll meet its identical twin in <span class="inline">jax.jit</span>, Chapter 4 — same disease, same cure: keep changing values inside tensors).</p>
+</div>
+
+<div class="card blue">
+<h3>AutoGraph: your <span class="inline">if</span>, rewritten while you sleep</h3>
+<p>Remember Pain #2 — <span class="inline">if</span> must become <span class="inline">tf.cond</span>? TF2 automates that with a <span class="key">source-to-source rewriter</span>. This is real output — TF will show you the code it generated from a plain <span class="inline">if x &gt; 0</span> function:</p>
+<div class="math out"><span class="outlabel">output — real run: tf.autograph.to_code(h), trimmed</span>
+<span class="line">def tf__h(x):</span>
+<span class="line">    ...</span>
+<span class="line">        def if_body():</span>
+<span class="line">            nonlocal do_return, retval_</span>
+<span class="line">            retval_ = ag__.ld(x) * 2.0</span>
+<span class="line">        def else_body():</span>
+<span class="line">            nonlocal do_return, retval_</span>
+<span class="line">            retval_ = -ag__.ld(x)</span>
+<span class="line">        ag__.if_stmt(ag__.ld(x) &gt; 0, if_body, else_body, ...)</span>
+</div>
+<p>Your two-branch <span class="inline">if</span> became <span class="inline">if_stmt(...)</span> — which emits <span class="inline">tf.cond</span> when the condition is a tensor. TF chose <span class="key">rewrite the user's source so the old graph machinery can swallow it</span>. Hold that thought: JAX will instead make you write <span class="inline">lax.cond</span> yourself, and PyTorch's compiler will instead <em>split the program</em> at the branch. Three frameworks, three answers to the same <span class="inline">if</span> — that's Chapter 5's centerpiece.</p>
+</div>
+<button class="nx" onclick="go(4)">Next: Keras &amp; the artifact empire</button>
+</div>
+
+<!-- PAGE 4 -->
+<div class="page" data-t="4. Keras & artifacts">
+<h2>Keras on top, files underneath: TF as a shipping company</h2>
+
+<div class="card">
+<h3>Keras — the UX that outlived everything</h3>
+<p>François Chollet released Keras in <span class="key">March 2015</span> — before TensorFlow existed — as a friendly layer API over <em>Theano</em>. It later ran on TF, became <span class="inline">tf.keras</span> (the official high-level API), and then in <span class="key">Keras 3.0 (Nov 2023)</span> did something remarkable: it went multi-backend again — the same Keras model now runs on <span class="fw tf">TF</span>, <span class="fw jx">JAX</span>, or <span class="fw pt">PyTorch</span>. We prove that with a real run in Chapter 7.</p>
+<div class="math">
+<span class="line">model = keras.<span class="fn">Sequential</span>([</span>
+<span class="line">    keras.layers.<span class="fn">Dense</span>(<span class="val">8</span>, activation=<span class="val">'tanh'</span>),</span>
+<span class="line">    keras.layers.<span class="fn">Dense</span>(<span class="val">1</span>, activation=<span class="val">'sigmoid'</span>)])</span>
+<span class="line">model.<span class="fn">compile</span>(optimizer=<span class="val">'adam'</span>, loss=<span class="val">'mse'</span>)</span>
+<span class="line">model.<span class="fn">fit</span>(X, Y, epochs=<span class="val">300</span>)     <span class="cmt"># the loop you never write</span></span>
+</div>
+<p class="faded">Keras's bet: most practitioners want layers-and-fit, not tape mechanics. It's why "TensorFlow" tutorials are mostly Keras tutorials.</p>
+</div>
+
+<div class="card green">
+<h3>The graph as a file — TF's most durable idea</h3>
+<div class="math">
+<span class="line">tf.saved_model.<span class="fn">save</span>(m, <span class="val">"/tmp/tiny_savedmodel"</span>)</span>
+</div>
+<div class="math out"><span class="outlabel">output — real run: what landed on disk</span>
+<span class="line">/tmp/tiny_savedmodel</span>
+<span class="line">/tmp/tiny_savedmodel/fingerprint.pb</span>
+<span class="line">/tmp/tiny_savedmodel/variables</span>
+<span class="line">/tmp/tiny_savedmodel/variables/variables.data-00000-of-00001</span>
+<span class="line">/tmp/tiny_savedmodel/variables/variables.index</span>
+<span class="line">/tmp/tiny_savedmodel/saved_model.pb</span>
+<span class="line">/tmp/tiny_savedmodel/assets</span>
+<span class="line">loaded, back(3.0) = 6.0</span>
+</div>
+<p><span class="inline">saved_model.pb</span> is the traced graph; <span class="inline">variables/</span> are the weights. That directory is the <span class="key">complete model, no Python required</span> — loadable from C++ (TensorFlow Serving), phones (LiteRT), or JavaScript (TF.js). This artifact story is what TF1 was for, and it survived every API upheaval.</p>
+<table>
+<tr><th>Deployment target</th><th>TF's answer</th><th>2026 status</th></tr>
+<tr><td>Server fleet</td><td>TensorFlow Serving (C++, gRPC)</td><td>maintained, still releasing</td></tr>
+<tr><td>Phones / embedded</td><td>TFLite → renamed <span class="key">LiteRT</span> (Sept 2024)</td><td>very active — 100K+ apps, ~2.7B devices; now converts from PyTorch &amp; JAX too</td></tr>
+<tr><td>Browser</td><td>TF.js</td><td>effectively frozen (last release Oct 2024)</td></tr>
+</table>
+</div>
+<button class="nx" onclick="go(5)">Next: TF in 2026, honestly</button>
+</div>
+
+<!-- PAGE 5 -->
+<div class="page" data-t="5. TF in 2026">
+<h2>Where TensorFlow stands in 2026 — the honest read</h2>
+
+<div class="card orange">
+<h3>The observable facts (all sourced, July 2026)</h3>
+<ul>
+<li>Release cadence fell from quarterly to ~2/year: TF 2.20 (Aug 2025) → <span class="key">2.21 (Mar 2026)</span>, and release notes have thinned to maintenance items.</li>
+<li>The periphery is being shed: TF Addons ended (2024), tensorflow/ranking archived, TF.js frozen, and <span class="key">Hugging Face Transformers v5 (Dec 2025) dropped TensorFlow support entirely</span> — the largest model library is now PyTorch-only.</li>
+<li>But "dead" is wrong: Serving and TFX shipped new releases in <em>June 2026</em>; LiteRT is genuinely thriving; and core TF still lands real features.</li>
+<li>François Chollet, on the record (Sept 2024): TensorFlow "is still maintained, and will keep being maintained — at least in the medium term… <span class="key">Most production ML systems at Google use TensorFlow</span>," while "JAX is definitely seeing more development capacity."</li>
+</ul>
+<p>Fair one-line verdict: <span class="key">core TF is in sustaining engineering; the investment moved to JAX (research/frontier) and LiteRT (edge)</span>. Google's own frontier models (Gemini) are trained with JAX — Chapter 4 picks up that thread.</p>
+</div>
+
+<div class="card blue">
+<h3>When TF is still the right answer (2026)</h3>
+<ul>
+<li>You're <span class="key">joining an existing TF production system</span> — enormous fleets of them run at Google and elsewhere, and they aren't being rewritten for fun.</li>
+<li><span class="key">Android / embedded deployment</span> via LiteRT — though note you can now reach LiteRT <em>from</em> PyTorch or JAX, which weakens "must train in TF."</li>
+<li>You want <span class="key">Keras</span> ergonomics — but Keras 3 gives you that on three backends, so this no longer implies TF either.</li>
+</ul>
+<p class="faded">Notice the pattern in both bullets' caveats: TF's moats were drained by interop — its best pieces (Keras, LiteRT, XLA) all became framework-neutral.</p>
+</div>
+
+<div class="card purple">
+<h3>Carry forward from this chapter</h3>
+<ul>
+<li>A <span class="key">graph</span> is a program as data: optimizable, distributable, shippable — and miserable to debug from Python.</li>
+<li><span class="inline">tf.function</span> = <span class="key">trace once, replay forever</span>; Python values bake in (retracing), Python side effects happen only at trace time.</li>
+<li>AutoGraph = <span class="key">rewrite source</span> so control flow survives tracing — one of three possible answers you'll compare in Chapter 5.</li>
+<li>TF's enduring legacy is the <span class="key">artifact</span>: model-as-file, runnable anywhere. Everyone else eventually copied that too.</li>
+</ul>
+</div>
+<a class="nx" href="3_pytorch.html">Next chapter: PyTorch — Python first →</a>
+</div>
+
+<script>
+const pages=document.querySelectorAll('.page'),nav=document.getElementById('nav');
+pages.forEach((p,i)=>{
+  const b=document.createElement('button');
+  b.textContent=p.dataset.t;
+  b.onclick=()=>go(i);
+  if(i===0)b.classList.add('on');
+  nav.appendChild(b);
+});
+function go(n){
+  pages.forEach((p,i)=>p.classList.toggle('on',i===n));
+  nav.querySelectorAll('button').forEach((b,i)=>{
+    b.classList.remove('on');
+    if(i<n)b.classList.add('done');
+    else b.classList.remove('done');
+    if(i===n)b.classList.add('on');
+  });
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+</script>
+</body>
+</html>

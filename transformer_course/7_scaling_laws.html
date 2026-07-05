@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Transformer Ch7: Scaling Laws</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0a0a1a;color:#e0e0e0;padding:20px 20px 80px;line-height:1.7}
+h1{text-align:center;color:#fff;margin-bottom:4px;font-size:1.5em}
+.sub{text-align:center;color:#888;margin-bottom:24px;font-size:.88em}
+.nav{display:flex;justify-content:center;gap:6px;margin-bottom:20px;flex-wrap:wrap}
+.nav button{padding:7px 13px;border:2px solid #333;background:#111;color:#888;border-radius:8px;cursor:pointer;font-size:.78em;transition:.2s}
+.nav button:hover{border-color:#555;color:#ccc}
+.nav button.on{border-color:#4fc3f7;color:#4fc3f7;background:#0d2137}
+.nav button.done{border-color:#4caf50;color:#4caf50}
+.page{display:none;max-width:860px;margin:0 auto}
+.page.on{display:block}
+.page h2{color:#4fc3f7;margin-bottom:12px;font-size:1.2em}
+.card{background:#12122a;border:1px solid #2a2a4a;border-radius:12px;padding:18px;margin-bottom:14px}
+.card.blue{border-color:#4fc3f7;background:#0d1b2a}
+.card.green{border-color:#4caf50;background:#0a1a0a}
+.card.orange{border-color:#ff9800;background:#1a1400}
+.card.red{border-color:#ef5350;background:#1a0a0a}
+.card.purple{border-color:#ce93d8;background:#1a0a2a}
+.card h3{color:#ffb74d;margin-bottom:8px;font-size:1em}
+button.nx{padding:10px 24px;background:#4caf50;color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:.9em;margin-top:14px}
+button.nx:hover{background:#66bb6a}
+table{width:100%;border-collapse:collapse;margin:10px 0}
+th,td{padding:8px 12px;border:1px solid #333;text-align:center;font-size:.88em}
+th{background:#1a1a3a;color:#4fc3f7}
+td{text-align:left}
+.math{background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:14px;margin:10px 0;font-family:'Fira Code',Consolas,monospace;font-size:.85em;line-height:1.8}
+.math .line{margin:2px 0;display:block}
+.math .hl{background:#264f78;padding:2px 6px;border-radius:4px;display:inline-block}
+.math .cmt{color:#6a9955}
+.math .val{color:#b5cea8}
+.math .lbl{color:#9cdcfe}
+.key{color:#ffb74d;font-weight:600}
+.vs{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:10px 0}
+@media(max-width:650px){.vs{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<a href="../index.html" style="position:fixed;top:10px;left:14px;font-size:.75em;color:#555;text-decoration:none;z-index:999;padding:4px 8px;background:#0a0a1a;border:1px solid #333;border-radius:6px;">&larr; index</a>
+
+<h1>Transformer Ch7: Scaling Laws</h1>
+<p class="sub">How performance scales with model size, data, and compute — the Chinchilla result</p>
+
+<div class="nav" id="nav"></div>
+
+<!-- PAGE 0 -->
+<div class="page on" data-t="0. The Question">
+<h2>0. The Central Question</h2>
+
+<div class="card blue">
+<h3>You have a fixed compute budget. How do you spend it?</h3>
+<p>Training a large language model requires choosing:</p>
+<ul style="margin-left:16px;margin-top:8px">
+<li><span class="key">N</span> — number of model parameters</li>
+<li><span class="key">D</span> — number of training tokens</li>
+</ul>
+<p style="margin-top:8px">These are linked by compute: <span class="key">C ≈ 6ND</span> (approximately 6 FLOPs per parameter per token — 2 for forward pass, 4 for backward).</p>
+<div class="math">
+  <span class="line"><span class="cmt">// Compute budget C = 6 × N × D</span></span>
+  <span class="line"><span class="cmt">// Example: 10²³ FLOPs total</span></span>
+  <span class="line"><span class="lbl">Option A:</span> N=<span class="val">200B</span>, D=<span class="val">83B</span>  tokens   → C = 6×200B×83B ≈ 10²³ ✓</span>
+  <span class="line"><span class="lbl">Option B:</span> N=<span class="val">67B</span>,  D=<span class="val">250B</span> tokens   → C = 6×67B×250B ≈ 10²³ ✓</span>
+  <span class="line"><span class="lbl">Option C:</span> N=<span class="val">10B</span>,  D=<span class="val">1.67T</span> tokens   → C = 6×10B×1.67T ≈ 10²³ ✓</span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// All three cost the same compute. Which gives the best model?</span></span>
+</div>
+</div>
+
+<div class="card orange">
+<h3>Why this question matters</h3>
+<p>Training GPT-3 cost approximately $4.6M in compute. If the "optimal" data/parameter split means you can get GPT-3 quality from a 4× smaller model trained on 4× more data — same total compute, much better result — that's worth knowing.</p>
+<p style="margin-top:8px">This is exactly what the Chinchilla paper found.</p>
+</div>
+
+<button class="nx" onclick="go(1)">Next: Power Law →</button>
+</div>
+
+<!-- PAGE 1 -->
+<div class="page" data-t="1. Power Law">
+<h2>1. The Scaling Law: Loss as a Power Law</h2>
+
+<div class="card blue">
+<h3>Kaplan et al. (OpenAI, 2020) empirical finding</h3>
+<p>Loss follows a power law in both model size N and data D, with an irreducible minimum L∞:</p>
+<div class="math">
+  <span class="line"><span class="hl">L(N, D) = A/N^α + B/D^β + L∞</span></span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// Empirically measured constants:</span></span>
+  <span class="line"><span class="lbl">α</span> ≈ <span class="val">0.076</span>  <span class="cmt">// how fast loss drops with N</span></span>
+  <span class="line"><span class="lbl">β</span> ≈ <span class="val">0.095</span>  <span class="cmt">// how fast loss drops with D</span></span>
+  <span class="line"><span class="lbl">L∞</span> ≈ some irreducible entropy of text</span>
+</div>
+<p style="margin-top:8px">These are measured by training many small models across a wide range of N and D, then fitting the curve.</p>
+</div>
+
+<div class="card orange">
+<h3>Worked example: doubling N</h3>
+<div class="math">
+  <span class="line"><span class="cmt">// Suppose current loss contribution from model size = A/N^α = 1.0</span></span>
+  <span class="line"><span class="cmt">// If we double N (to 2N):</span></span>
+  <span class="line"><span class="lbl">new term</span> = A/(2N)^α = A/(N^α × 2^α)</span>
+  <span class="line">           = (A/N^α) × (1/2^α)</span>
+  <span class="line">           = 1.0 × (1/2^0.076)</span>
+  <span class="line">           = 1.0 × (1/1.054)</span>
+  <span class="line">           = <span class="hl">0.949</span>  <span class="cmt">// only 5.1% improvement!</span></span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// Doubling D (to 2D):</span></span>
+  <span class="line"><span class="lbl">new term</span> = B/(2D)^β = 1/2^0.095 = <span class="hl">0.936</span>  <span class="cmt">// 6.4% improvement</span></span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// To halve the N-dependent loss, you need 2^(1/α) = 2^(1/0.076) ≈ 8192× more params!</span></span>
+  <span class="line"><span class="cmt">// Power laws = diminishing returns. You need 10× more compute for ~25% less loss.</span></span>
+</div>
+</div>
+
+<div class="card green">
+<h3>The log-linear relationship</h3>
+<div class="math">
+  <span class="line"><span class="cmt">// On a log-log plot, loss is approximately linear in log(N) and log(D)</span></span>
+  <span class="line"><span class="lbl">log(L)</span> ≈ -α · log(N) + const</span>
+  <span class="line"><span class="lbl">log(L)</span> ≈ -β · log(D) + const</span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// GPT-3 empirical: every 10× increase in N → ~21% loss drop</span></span>
+  <span class="line"><span class="cmt">// Every 10× increase in D → ~22% loss drop</span></span>
+  <span class="line"><span class="cmt">// Both scale roughly equally!</span></span>
+</div>
+</div>
+
+<button class="nx" onclick="go(2)">Next: Chinchilla →</button>
+</div>
+
+<!-- PAGE 2 -->
+<div class="page" data-t="2. The Chinchilla Result">
+<h2>2. The Chinchilla Result (2022)</h2>
+
+<div class="card red">
+<h3>The Kaplan (GPT-3 era) mistake</h3>
+<p>Kaplan et al. (2020) concluded: given fixed compute, scale N (model size) more aggressively than D (tokens). They suggested D ∝ N^0.74 — i.e., scale data much slower than model size.</p>
+<div class="math">
+  <span class="line"><span class="cmt">// Kaplan scaling advice:</span></span>
+  <span class="line"><span class="lbl">If compute C is fixed:</span> scale N more, D less</span>
+  <span class="line"><span class="lbl">GPT-3 applied this:</span> N=<span class="val">175B</span> params, D=<span class="val">300B</span> tokens</span>
+  <span class="line"><span class="cmt">// 300B tokens is relatively few compared to 175B params</span></span>
+  <span class="line"><span class="cmt">// Ratio D/N ≈ 1.7 tokens per parameter</span></span>
+</div>
+</div>
+
+<div class="card green">
+<h3>Hoffmann et al. (DeepMind, 2022): Chinchilla</h3>
+<p>They re-ran the scaling experiments with a crucial fix: they trained <em>many more models to full convergence</em> across a wider range of N and D. Previous experiments didn't train long enough.</p>
+<div class="math">
+  <span class="line"><span class="cmt">// Chinchilla finding: optimal allocation</span></span>
+  <span class="line"><span class="hl">N_opt ∝ C^0.50</span>   <span class="cmt">// scale model size as sqrt of compute</span></span>
+  <span class="line"><span class="hl">D_opt ∝ C^0.50</span>   <span class="cmt">// scale data equally as sqrt of compute</span></span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// Practical rule: train on ~20 tokens per parameter</span></span>
+  <span class="line"><span class="lbl">D_opt</span> ≈ <span class="val">20</span> × N</span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// GPT-3: 300B tokens / 175B params = 1.7 tokens per param</span></span>
+  <span class="line"><span class="cmt">// Chinchilla says: should have been 175B × 20 = 3.5T tokens!</span></span>
+  <span class="line"><span class="cmt">// GPT-3 was massively undertrained.</span></span>
+</div>
+</div>
+
+<div class="card orange">
+<h3>The head-to-head comparison</h3>
+<table>
+<tr><th>Model</th><th>Parameters</th><th>Training Tokens</th><th>Compute (FLOPs)</th><th>Result</th></tr>
+<tr><td>Gopher</td><td>280B</td><td>300B</td><td>~6×10²³</td><td>Baseline</td></tr>
+<tr><td><span class="key">Chinchilla</span></td><td><span class="key">70B</span></td><td><span class="key">1.4T</span></td><td><span class="key">~6×10²³</span></td><td><span class="key">Beats Gopher on nearly all benchmarks</span></td></tr>
+</table>
+<div class="math" style="margin-top:10px">
+  <span class="line"><span class="cmt">// Same compute budget. Chinchilla is 4× smaller but trained on 4.7× more data.</span></span>
+  <span class="line"><span class="cmt">// Chinchilla wins. The old "scale N aggressively" advice was wrong.</span></span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// Specific benchmark examples:</span></span>
+  <span class="line"><span class="lbl">MMLU (5-shot):</span>  Chinchilla <span class="val">67.6%</span>  vs  Gopher <span class="val">60.0%</span></span>
+  <span class="line"><span class="lbl">BIG-Bench avg:</span> Chinchilla outperforms on 63 of 62 evaluated tasks</span>
+</div>
+</div>
+
+<button class="nx" onclick="go(3)">Next: Concrete Implications →</button>
+</div>
+
+<!-- PAGE 3 -->
+<div class="page" data-t="3. Concrete Implications">
+<h2>3. Concrete Implications</h2>
+
+<div class="card blue">
+<h3>Given a compute budget, what should you do?</h3>
+<div class="math">
+  <span class="line"><span class="cmt">// Given C FLOPs, Chinchilla-optimal N and D:</span></span>
+  <span class="line"><span class="lbl">N_opt</span> = sqrt(C / (6 × 20)) = sqrt(C / 120)</span>
+  <span class="line"><span class="lbl">D_opt</span> = 20 × N_opt</span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// Example: C = 10²³ FLOPs</span></span>
+  <span class="line"><span class="lbl">N_opt</span> = sqrt(10²³ / 120) = sqrt(8.33×10²⁰) ≈ <span class="hl">28.9B</span></span>
+  <span class="line"><span class="lbl">D_opt</span> = 20 × 28.9B ≈ <span class="hl">578B tokens</span></span>
+</div>
+</div>
+
+<table>
+<tr><th>Compute (FLOPs)</th><th>Old advice (Kaplan)</th><th>Chinchilla advice</th><th>Better?</th></tr>
+<tr><td>10²²</td><td>Train 9B model on 100B tokens</td><td>Train 3B model on 200B tokens</td><td>Chinchilla</td></tr>
+<tr><td>10²³</td><td>Train 30B model on 200B tokens</td><td>Train 29B model on 580B tokens</td><td>Chinchilla</td></tr>
+<tr><td>6×10²³ (GPT-3)</td><td>Train 175B model on 300B tokens</td><td>Train 67B model on 1.4T tokens</td><td>Chinchilla</td></tr>
+<tr><td>3×10²⁴</td><td>Train 500B model on 1T tokens</td><td>Train 150B model on 7T tokens</td><td>Chinchilla</td></tr>
+</table>
+
+<div class="card orange">
+<h3>Why more tokens beats more parameters</h3>
+<div class="math">
+  <span class="line"><span class="cmt">// Intuition: a large model trained on few tokens memorizes training data</span></span>
+  <span class="line"><span class="cmt">// A smaller model trained on much more data generalizes better</span></span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// Think of it like studying for an exam:</span></span>
+  <span class="line"><span class="lbl">Option A:</span> very smart student reads the same 100 books twice</span>
+  <span class="line"><span class="lbl">Option B:</span> slightly less smart student reads 1000 different books once</span>
+  <span class="line"><span class="cmt">// Option B has much more diverse knowledge — wins on unseen problems</span></span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// Data diversity is the key:</span></span>
+  <span class="line"><span class="cmt">// More tokens = more unique phrases, facts, reasoning patterns</span></span>
+  <span class="line"><span class="cmt">// This generalizes better to new prompts at inference</span></span>
+</div>
+</div>
+
+<button class="nx" onclick="go(4)">Next: Practice →</button>
+</div>
+
+<!-- PAGE 4 -->
+<div class="page" data-t="4. Practice">
+<h2>4. What This Means for Practice</h2>
+
+<div class="card red">
+<h3>Most pre-Chinchilla models were undertrained</h3>
+<table>
+<tr><th>Model</th><th>Params</th><th>Tokens trained</th><th>Chinchilla-optimal tokens</th><th>Undertraining factor</th></tr>
+<tr><td>GPT-3</td><td>175B</td><td>300B</td><td>3.5T</td><td>~12×</td></tr>
+<tr><td>Gopher</td><td>280B</td><td>300B</td><td>5.6T</td><td>~19×</td></tr>
+<tr><td>MT-NLG</td><td>530B</td><td>270B</td><td>10.6T</td><td>~39×</td></tr>
+</table>
+</div>
+
+<div class="card green">
+<h3>LLaMA: the Chinchilla lesson applied</h3>
+<p>Meta's LLaMA (Feb 2023) explicitly followed Chinchilla: train smaller models on much more data. The headline result:</p>
+<div class="math">
+  <span class="line"><span class="lbl">LLaMA-13B</span> trained on 1T tokens</span>
+  <span class="line"><span class="lbl">GPT-3</span>      trained on 300B tokens (175B params)</span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// LLaMA-13B outperforms GPT-3 on most benchmarks!</span></span>
+  <span class="line"><span class="cmt">// 13× fewer parameters, trained on 3× more data</span></span>
+  <span class="line"></span>
+  <span class="line"><span class="lbl">LLaMA-65B</span> outperforms Chinchilla-70B on MMLU (63.4% vs 67.6%)</span>
+  <span class="line"><span class="cmt">// Comparable, with similar compute budget</span></span>
+</div>
+</div>
+
+<div class="card blue">
+<h3>The "inference-optimal" perspective</h3>
+<p>Chinchilla optimizes for <span class="key">training loss at fixed compute</span>. But there's another consideration: the model will be queried millions of times after training.</p>
+<div class="math">
+  <span class="line"><span class="cmt">// If you will run 10¹⁰ inference queries, the inference cost matters a lot.</span></span>
+  <span class="line"><span class="cmt">// A 7B model is ~10× cheaper to run than a 70B model.</span></span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// "Inference-optimal" models are overtrained relative to Chinchilla:</span></span>
+  <span class="line"><span class="lbl">LLaMA-3-8B:</span>  <span class="val">8B</span> params, trained on <span class="val">15T</span> tokens  <span class="cmt">// ~240 tokens/param!</span></span>
+  <span class="line"><span class="lbl">Chinchilla would say:</span> <span class="val">8B × 20</span> = 160B tokens is "optimal"</span>
+  <span class="line"><span class="cmt">// But serving cheaply justifies overtraining</span></span>
+</div>
+</div>
+
+<div class="card orange">
+<h3>The three regimes</h3>
+<table>
+<tr><th>Goal</th><th>Strategy</th><th>Token/param ratio</th><th>Example</th></tr>
+<tr><td>Best loss at fixed C</td><td>Chinchilla-optimal</td><td>~20×</td><td>Chinchilla-70B</td></tr>
+<tr><td>Best model for cheap inference</td><td>Overtrain small model</td><td>200-2000×</td><td>Llama-3-8B (1900×)</td></tr>
+<tr><td>Cutting-edge capability</td><td>Scale everything</td><td>Varies</td><td>GPT-4, Claude 3</td></tr>
+</table>
+</div>
+
+<div class="card purple">
+<h3>Post-Chinchilla era summary</h3>
+<p>The scaling laws haven't changed — power laws still hold. What changed is the <span class="key">recipe</span>:</p>
+<ol style="margin-left:16px;margin-top:8px">
+<li>For a given budget, the old advice to "scale N aggressively" was wrong.</li>
+<li>Optimal: scale N and D equally (both ∝ sqrt(C)).</li>
+<li>For inference-optimized models: overtrain small models on massive data.</li>
+<li>Models like Llama-3-8B are now more capable than GPT-3 (175B) despite being 22× smaller.</li>
+</ol>
+</div>
+</div>
+
+<script>
+const pages=document.querySelectorAll('.page'),nav=document.getElementById('nav');
+pages.forEach((p,i)=>{const b=document.createElement('button');b.textContent=p.dataset.t;b.onclick=()=>go(i);if(i===0)b.classList.add('on');nav.appendChild(b);});
+function go(n){pages.forEach((p,i)=>p.classList.toggle('on',i===n));nav.querySelectorAll('button').forEach((b,i)=>{b.classList.remove('on');if(i<n)b.classList.add('done');else b.classList.remove('done');if(i===n)b.classList.add('on');});window.scrollTo({top:0,behavior:'smooth'});}
+</script>
+</body>
+</html>

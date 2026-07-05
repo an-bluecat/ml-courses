@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chapter 6: DPO — Skip the Reward Model</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0a0a1a;color:#e0e0e0;padding:20px 20px 80px;line-height:1.7}
+h1{text-align:center;color:#fff;margin-bottom:4px;font-size:1.5em}
+.sub{text-align:center;color:#888;margin-bottom:24px;font-size:.88em}
+.nav{display:flex;justify-content:center;gap:6px;margin-bottom:20px;flex-wrap:wrap}
+.nav button{padding:7px 13px;border:2px solid #333;background:#111;color:#888;border-radius:8px;cursor:pointer;font-size:.78em;transition:.2s}
+.nav button:hover{border-color:#555;color:#ccc}
+.nav button.on{border-color:#4fc3f7;color:#4fc3f7;background:#0d2137}
+.nav button.done{border-color:#4caf50;color:#4caf50}
+.page{display:none;max-width:860px;margin:0 auto}
+.page.on{display:block}
+.page h2{color:#4fc3f7;margin-bottom:12px;font-size:1.2em}
+.card{background:#12122a;border:1px solid #2a2a4a;border-radius:12px;padding:18px;margin-bottom:14px}
+.card.blue{border-color:#4fc3f7;background:#0d1b2a}
+.card.green{border-color:#4caf50;background:#0a1a0a}
+.card.orange{border-color:#ff9800;background:#1a1400}
+.card.red{border-color:#ef5350;background:#1a0a0a}
+.card.purple{border-color:#ce93d8;background:#1a0a2a}
+.card h3{color:#ffb74d;margin-bottom:8px;font-size:1em}
+button.nx{padding:10px 24px;background:#4caf50;color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:.9em;margin-top:14px}
+button.nx:hover{background:#66bb6a}
+table{width:100%;border-collapse:collapse;margin:10px 0}
+th,td{padding:8px 12px;border:1px solid #333;text-align:center;font-size:.88em}
+th{background:#1a1a3a;color:#4fc3f7}
+.math{background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:14px;margin:10px 0;font-family:'Fira Code',monospace;font-size:.85em;line-height:1.8}
+.math .line{margin:2px 0}
+.math .hl{background:#264f78;padding:2px 6px;border-radius:4px;display:inline-block}
+.math .cmt{color:#6a9955}
+.math .val{color:#b5cea8}
+.math .lbl{color:#9cdcfe}
+.key{color:#ffb74d;font-weight:600}
+.vs{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:10px 0}
+@media(max-width:650px){.vs{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<a href="../index.html" style="position:fixed;top:10px;left:14px;font-size:.75em;color:#555;text-decoration:none;z-index:999;padding:4px 8px;background:#0a0a1a;border:1px solid #333;border-radius:6px;">&larr; index</a>
+
+<h1>Chapter 6: DPO</h1>
+<p class="sub">Direct Preference Optimization — skip the reward model, train directly from human choices</p>
+
+<div class="nav" id="nav"></div>
+
+<!-- ============================================================ -->
+<!--  PAGE 0: RLHF RECAP — WHAT DPO REPLACES                    -->
+<!-- ============================================================ -->
+<div class="page on" data-t="0. RLHF Recap">
+<h2>First: What RLHF Actually Does (Concrete)</h2>
+
+<div class="card blue">
+<h3>RLHF is a 3-step pipeline</h3>
+<p>Chapter 5 ended with "replace environment reward with human preferences." Here's what that looks like with actual data:</p>
+</div>
+
+<div class="card">
+<h3>Step 1: Collect human preferences</h3>
+<p>Show a human two responses to the same prompt. They pick the better one.</p>
+<table>
+  <tr><th>Prompt</th><th>Response A</th><th>Response B</th><th>Human picked</th></tr>
+  <tr><td>"Tell me a joke"</td><td>"Why did the chicken cross the road? To get to the other side!"</td><td>"I am an AI and cannot tell jokes."</td><td style="color:#4caf50;font-weight:700">A</td></tr>
+  <tr><td>"What is 2+2?"</td><td>"2+2 is the sum of two and two"</td><td>"4"</td><td style="color:#4caf50;font-weight:700">B</td></tr>
+  <tr><td>"Write a haiku"</td><td>"Roses are red..."</td><td>"Silent winter moon / frost clings to the bare branches / a crow calls at dawn"</td><td style="color:#4caf50;font-weight:700">B</td></tr>
+</table>
+<p style="margin-top:6px;font-size:.85em;color:#888">Typically ~50,000-100,000 of these pairs.</p>
+</div>
+
+<div class="card">
+<h3>Step 2: Train a reward model</h3>
+<p>A separate neural network that takes (prompt, response) and outputs a score:</p>
+<div class="math">
+<div class="line"><span class="lbl">reward_model</span>("Tell me a joke", "Why did the chicken...") → <span class="val">0.82</span></div>
+<div class="line"><span class="lbl">reward_model</span>("Tell me a joke", "I am an AI and cannot...") → <span class="val">0.15</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// Trained so that: score(human_preferred) > score(human_rejected)</span></div>
+<div class="line"><span class="cmt">// 0.82 > 0.15 ✓ — matches what the human picked</span></div>
+</div>
+<p>The reward model learns to <strong>imitate the human's taste</strong>. Given any new (prompt, response) pair, it guesses what score the human would give.</p>
+</div>
+
+<div class="card">
+<h3>Step 3: Run PPO using the reward model as the "environment"</h3>
+<div class="math">
+<div class="line"><span class="cmt">// For each training prompt:</span></div>
+<div class="line"><span class="lbl">prompt</span> = "Tell me a joke"</div>
+<div class="line"><span class="lbl">response</span> = <span class="lbl">LLM</span>.generate(<span class="lbl">prompt</span>)  <span class="cmt">// LLM writes a response</span></div>
+<div class="line"><span class="lbl">reward</span> = <span class="lbl">reward_model</span>(<span class="lbl">prompt</span>, <span class="lbl">response</span>)  <span class="cmt">// → 0.65</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// PPO update (same as Chapter 5):</span></div>
+<div class="line"><span class="cmt">// ratio = new_prob / old_prob</span></div>
+<div class="line"><span class="cmt">// clipped loss = -min(ratio * advantage, clip(ratio) * advantage)</span></div>
+<div class="line"><span class="cmt">// update LLM weights</span></div>
+</div>
+</div>
+
+<div class="card orange">
+<h3>The problem with this pipeline</h3>
+<p>Step 2 (reward model) is a whole separate model you have to train and maintain. It can be:</p>
+<ul style="margin-left:18px;margin-top:4px">
+<li><strong>Wrong</strong> — it might give high scores to responses the human wouldn't actually like</li>
+<li><strong>Exploitable</strong> — the LLM can find weird responses that score high on the reward model but are actually bad ("reward hacking")</li>
+<li><strong>Expensive</strong> — you're training and running two large models instead of one</li>
+</ul>
+<p style="margin-top:8px"><span class="key">DPO's insight:</span> what if we skip step 2 and 3 entirely?</p>
+</div>
+
+<button class="nx" onclick="go(1)">Next: DPO's one new idea &#x2192;</button>
+</div>
+
+<!-- ============================================================ -->
+<!--  PAGE 1: THE ONE IDEA                                        -->
+<!-- ============================================================ -->
+<div class="page" data-t="1. The Idea">
+<h2>DPO: Train Directly on Preferences</h2>
+
+<div class="card blue">
+<h3>The one new concept</h3>
+<p>Instead of:</p>
+<p style="margin:4px 0;font-family:monospace;font-size:.85em;color:#888">preferences → reward model → PPO → updated LLM</p>
+<p>DPO does:</p>
+<p style="margin:4px 0;font-family:monospace;font-size:.85em;color:#4caf50">preferences → updated LLM &nbsp; (directly)</p>
+<p style="margin-top:8px">No reward model. No PPO. No clipping. One training loop.</p>
+</div>
+
+<div class="card">
+<h3>How? Use the LLM itself as the reward model</h3>
+<p>An LLM already assigns probabilities to text. If the LLM says P("Why did the chicken...") = 0.03 and P("I cannot help") = 0.01, then the LLM already "prefers" the chicken joke (higher probability).</p>
+<p style="margin-top:6px">DPO's math proves: <strong>there's a direct formula to go from preference pairs to the optimal LLM update, without ever building a separate reward model.</strong></p>
+</div>
+
+<div class="vs">
+<div class="card red">
+<h3>RLHF (3 steps)</h3>
+<p>1. Collect preferences</p>
+<p>2. Train reward model</p>
+<p>3. Run PPO (generate, score, clip, update)</p>
+<p style="margin-top:6px;font-size:.85em;color:#888">Two models. Sampling in the loop. Hyperparameter-sensitive.</p>
+</div>
+<div class="card green">
+<h3>DPO (1 step)</h3>
+<p>1. Collect preferences</p>
+<p>2. Single supervised-style training loop</p>
+<p style="margin-top:6px;font-size:.85em;color:#888">One model. No sampling in the loop. Simple as fine-tuning.</p>
+</div>
+</div>
+
+<button class="nx" onclick="go(2)">Next: What does one training step look like? &#x2192;</button>
+</div>
+
+<!-- ============================================================ -->
+<!--  PAGE 2: ONE STEP WORKED EXAMPLE                             -->
+<!-- ============================================================ -->
+<div class="page" data-t="2. One Step">
+<h2>One DPO Training Step — Every Number</h2>
+
+<div class="card blue">
+<h3>Setup</h3>
+<p>We have one preference pair:</p>
+<table>
+<tr><th>Prompt</th><th>Winner (y<sub>w</sub>)</th><th>Loser (y<sub>l</sub>)</th></tr>
+<tr><td>"Tell me a joke"</td><td style="color:#4caf50">"Why did the chicken cross the road?"</td><td style="color:#ef5350">"I cannot help with that."</td></tr>
+</table>
+<p style="margin-top:6px">We also need a <strong>reference model</strong> — a frozen copy of the LLM from before training started. This prevents the LLM from changing too much (same idea as PPO's clipping, just done differently).</p>
+</div>
+
+<div class="card">
+<h3>Step 1: Get probabilities from both models</h3>
+<p>Both the current LLM and the frozen reference assign a probability to each response:</p>
+<div class="math">
+<div class="line"><span class="cmt">// Current model (the one we're training):</span></div>
+<div class="line"><span class="lbl">P_current</span>("Why did the chicken..." | prompt) = <span class="val">0.030</span></div>
+<div class="line"><span class="lbl">P_current</span>("I cannot help..." | prompt)      = <span class="val">0.010</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// Reference model (frozen, never changes):</span></div>
+<div class="line"><span class="lbl">P_ref</span>("Why did the chicken..." | prompt)     = <span class="val">0.025</span></div>
+<div class="line"><span class="lbl">P_ref</span>("I cannot help..." | prompt)          = <span class="val">0.012</span></div>
+</div>
+</div>
+
+<div class="card">
+<h3>Step 2: Compute log-ratios</h3>
+<p>"How much more does the current model like this response compared to the reference?"</p>
+<div class="math">
+<div class="line"><span class="cmt">// For the winner:</span></div>
+<div class="line"><span class="lbl">log_ratio_w</span> = log(0.030) - log(0.025)</div>
+<div class="line">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; = -3.507 - (-3.689)</div>
+<div class="line">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; = <span class="val">+0.182</span> <span class="cmt">// current model likes winner MORE than ref does ✓</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// For the loser:</span></div>
+<div class="line"><span class="lbl">log_ratio_l</span> = log(0.010) - log(0.012)</div>
+<div class="line">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; = -4.605 - (-4.423)</div>
+<div class="line">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; = <span class="val">-0.182</span> <span class="cmt">// current model likes loser LESS than ref does ✓</span></div>
+</div>
+</div>
+
+<div class="card blue">
+<h3>Step 3: The DPO loss</h3>
+<div class="math">
+<div class="line"><span class="cmt">// β controls how far the model can drift from the reference (like PPO's clip ε)</span></div>
+<div class="line"><span class="lbl">β</span> = <span class="val">0.1</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// Gap = how much more the model prefers winner over loser</span></div>
+<div class="line"><span class="lbl">gap</span> = β × (log_ratio_w - log_ratio_l)</div>
+<div class="line">&nbsp;&nbsp;&nbsp;&nbsp; = 0.1 × (0.182 - (-0.182))</div>
+<div class="line">&nbsp;&nbsp;&nbsp;&nbsp; = 0.1 × 0.364</div>
+<div class="line">&nbsp;&nbsp;&nbsp;&nbsp; = <span class="val">0.0364</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// Loss = -log(sigmoid(gap))</span></div>
+<div class="line"><span class="lbl">sigmoid</span>(0.0364) = <span class="val">0.509</span> <span class="cmt">// barely above 0.5 — model slightly prefers winner</span></div>
+<div class="line"><span class="hl"><span class="lbl">loss</span> = -log(0.509) = <span class="val">0.675</span></span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// If the model strongly preferred winner: sigmoid → 0.99, loss → 0.01 (tiny)</span></div>
+<div class="line"><span class="cmt">// If the model preferred loser: sigmoid → 0.01, loss → 4.6 (huge!)</span></div>
+<div class="line"><span class="cmt">// Loss pushes the model to widen the gap between winner and loser.</span></div>
+</div>
+</div>
+
+<div class="card green">
+<h3>Step 4: Backprop and update</h3>
+<div class="math">
+<div class="line"><span class="lbl">loss</span>.backward()  <span class="cmt">// compute gradients</span></div>
+<div class="line"><span class="lbl">optimizer</span>.step()  <span class="cmt">// update LLM weights</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// After update:</span></div>
+<div class="line"><span class="lbl">P_current</span>("Why did the chicken..." | prompt) = <span class="val" style="color:#4caf50">0.032</span> <span class="cmt">// went UP ✓</span></div>
+<div class="line"><span class="lbl">P_current</span>("I cannot help..." | prompt)      = <span class="val" style="color:#ef5350">0.009</span> <span class="cmt">// went DOWN ✓</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// The reference model stays frozen. It never changes.</span></div>
+<div class="line"><span class="cmt">// It's the anchor that prevents the LLM from drifting too far.</span></div>
+</div>
+<p style="margin-top:8px">Winner got more likely, loser got less likely. That's one DPO step. Repeat for all 50,000 preference pairs.</p>
+</div>
+
+<button class="nx" onclick="go(3)">Next: Why does β matter? &#x2192;</button>
+</div>
+
+<!-- ============================================================ -->
+<!--  PAGE 3: BETA AND THE REFERENCE                              -->
+<!-- ============================================================ -->
+<div class="page" data-t="3. β and Reference">
+<h2>β and the Reference Model: Don't Drift Too Far</h2>
+
+<div class="card orange">
+<h3>The same problem as before, solved differently</h3>
+<table>
+<tr><th>Chapter</th><th>Problem</th><th>Solution</th></tr>
+<tr><td>5. PPO</td><td>One update wrecks the policy</td><td>Clip the ratio to [0.8, 1.2]</td></tr>
+<tr><td>6. DPO</td><td>One update wrecks the policy</td><td>Penalize divergence from reference via β</td></tr>
+</table>
+</div>
+
+<div class="card">
+<h3>What β does — with numbers</h3>
+<p>β controls how much the model is allowed to change from the reference. Think of it as a leash length.</p>
+<div class="math">
+<div class="line"><span class="cmt">// Same preference pair, different β values:</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="lbl">β = 0.5</span> (long leash, more freedom)</div>
+<div class="line">&nbsp; gap = 0.5 × 0.364 = <span class="val">0.182</span></div>
+<div class="line">&nbsp; sigmoid(0.182) = <span class="val">0.545</span></div>
+<div class="line">&nbsp; loss = -log(0.545) = <span class="val">0.607</span></div>
+<div class="line">&nbsp; <span class="cmt">// Moderate loss. Model can learn fast but might drift.</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="lbl">β = 0.1</span> (short leash, cautious)</div>
+<div class="line">&nbsp; gap = 0.1 × 0.364 = <span class="val">0.036</span></div>
+<div class="line">&nbsp; sigmoid(0.036) = <span class="val">0.509</span></div>
+<div class="line">&nbsp; loss = -log(0.509) = <span class="val">0.675</span></div>
+<div class="line">&nbsp; <span class="cmt">// Higher loss. Model learns slower but stays close to reference.</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="lbl">β = 0.01</span> (very short leash)</div>
+<div class="line">&nbsp; gap = 0.01 × 0.364 = <span class="val">0.004</span></div>
+<div class="line">&nbsp; sigmoid(0.004) = <span class="val">0.501</span></div>
+<div class="line">&nbsp; loss = -log(0.501) = <span class="val">0.691</span></div>
+<div class="line">&nbsp; <span class="cmt">// Almost max loss. Model barely moves. Too conservative.</span></div>
+</div>
+</div>
+
+<div class="card">
+<h3>The reference model: a frozen "before" snapshot</h3>
+<div class="math">
+<div class="line"><span class="cmt">// Before DPO training:</span></div>
+<div class="line"><span class="lbl">reference_model</span> = copy(LLM)  <span class="cmt">// exact clone</span></div>
+<div class="line"><span class="lbl">reference_model</span>.freeze()     <span class="cmt">// never updated again</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// During training:</span></div>
+<div class="line"><span class="cmt">// LLM weights change → P_current changes</span></div>
+<div class="line"><span class="cmt">// reference stays frozen → P_ref stays the same</span></div>
+<div class="line"><span class="cmt">// log_ratio = log(P_current / P_ref) measures "how far have I drifted?"</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// If the LLM drifts too far from reference on the LOSER response:</span></div>
+<div class="line"><span class="cmt">//   log_ratio_l becomes very negative → gap shrinks → loss increases</span></div>
+<div class="line"><span class="cmt">//   "You're changing too much — stay closer to who you were."</span></div>
+</div>
+</div>
+
+<button class="nx" onclick="go(4)">Next: The full picture &#x2192;</button>
+</div>
+
+<!-- ============================================================ -->
+<!--  PAGE 4: FULL PICTURE                                        -->
+<!-- ============================================================ -->
+<div class="page" data-t="4. Full Picture">
+<h2>The Complete Journey</h2>
+
+<div class="card blue">
+<h3>Every chapter added exactly one thing</h3>
+<table>
+<tr><th>Ch.</th><th>Algorithm</th><th>What it adds</th><th>Problem solved</th></tr>
+<tr><td>0</td><td>Policy gradient</td><td>gradient &times; reward</td><td>Learning without labels</td></tr>
+<tr><td>1</td><td>Bandit</td><td>Explore vs exploit</td><td>Finding the best action</td></tr>
+<tr><td>2</td><td>Q-learning</td><td>States + Q-table</td><td>Different situations need different actions</td></tr>
+<tr><td>3</td><td>REINFORCE</td><td>Neural network policy</td><td>Scaling to large/continuous states</td></tr>
+<tr><td>4</td><td>Actor-Critic</td><td>Baseline V(s)</td><td>Too much noise in the learning signal</td></tr>
+<tr><td>5</td><td>PPO</td><td>Ratio clipping</td><td>One bad update destroys everything</td></tr>
+<tr><td>-</td><td>RLHF</td><td>Learned reward model</td><td>Use human preferences as the reward</td></tr>
+<tr><td style="color:#4fc3f7;font-weight:700">6</td><td style="color:#4fc3f7;font-weight:700">DPO</td><td style="color:#4fc3f7;font-weight:700">Direct preference loss</td><td style="color:#4fc3f7;font-weight:700">Skip the reward model entirely</td></tr>
+</table>
+</div>
+
+<div class="card green">
+<h3>The DPO training loop — complete pseudocode</h3>
+<div class="math">
+<div class="line"><span class="cmt">// Setup</span></div>
+<div class="line"><span class="lbl">reference</span> = frozen_copy(LLM)</div>
+<div class="line"><span class="lbl">β</span> = 0.1</div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// For each preference pair in dataset:</span></div>
+<div class="line"><span class="kw">for</span> (prompt, winner, loser) <span class="kw">in</span> preference_data:</div>
+<div class="line">&nbsp;</div>
+<div class="line">&nbsp; <span class="cmt">// 1. Get log-probs from both models</span></div>
+<div class="line">&nbsp; log_ratio_w = log P_current(winner|prompt) - log P_ref(winner|prompt)</div>
+<div class="line">&nbsp; log_ratio_l = log P_current(loser|prompt)  - log P_ref(loser|prompt)</div>
+<div class="line">&nbsp;</div>
+<div class="line">&nbsp; <span class="cmt">// 2. Compute loss</span></div>
+<div class="line">&nbsp; loss = -log(sigmoid(β × (log_ratio_w - log_ratio_l)))</div>
+<div class="line">&nbsp;</div>
+<div class="line">&nbsp; <span class="cmt">// 3. Update (plain gradient descent — no PPO, no clipping, no sampling)</span></div>
+<div class="line">&nbsp; loss.backward()</div>
+<div class="line">&nbsp; optimizer.step()</div>
+</div>
+<p style="margin-top:8px">That's it. No reward model to train. No episodes to sample. Just a supervised-style loop over preference pairs.</p>
+</div>
+
+<div class="card purple">
+<h3>Pros and cons — with concrete examples of each</h3>
+<table>
+<tr><th></th><th>RLHF (PPO)</th><th>DPO</th></tr>
+<tr style="background:#0a1a0a"><td style="text-align:left;color:#4caf50">Pros</td>
+<td style="text-align:left;font-size:.85em">
+  <strong>Can use any reward signal</strong> — not just A-vs-B pairs.<br>
+  e.g. "response must be &lt;200 tokens" → reward = 1 if short, 0 if long.<br>
+  DPO can't do this without converting it to pairs first.<br><br>
+  <strong>Explores during training</strong> — generates fresh responses each step, so it can discover good answers the preference data never contained.<br>
+  e.g. Prompt: "Write a poem about rain." Even if no good poem exists in your dataset, PPO can stumble into one through sampling.
+</td>
+<td style="text-align:left;font-size:.85em">
+  <strong>Dead simple</strong> — one forward pass per model, one loss, one backward pass. Same engineering as fine-tuning. No generation loop.<br><br>
+  <strong>No reward hacking</strong> — there's no reward model to exploit. PPO can find weird outputs that score high on the reward model but humans would hate:<br>
+  e.g. reward model gives 0.95 to "Sure! Sure! Sure! Here's a great answer!!!" because it learned "enthusiastic = good." DPO can't be tricked this way.
+</td></tr>
+<tr style="background:#1a0a0a"><td style="text-align:left;color:#ef5350">Cons</td>
+<td style="text-align:left;font-size:.85em">
+  <strong>Complex</strong> — 2 models in memory (LLM + reward model), generation in the loop (slow), PPO hyperparameters (clip ε, learning rate, batch size, etc.)<br><br>
+  <strong>Reward hacking</strong> — reward model can be exploited (example above)
+</td>
+<td style="text-align:left;font-size:.85em">
+  <strong>Stuck with your dataset</strong> — only learns from the preference pairs you collected. If every "winner" response in your dataset is mediocre, DPO makes mediocre more likely. It can't discover better answers on its own.<br><br>
+  <strong>Needs good contrastive pairs</strong> — works best when winner and loser are different in a clear, specific way. Noisy or ambiguous pairs hurt more than they hurt PPO.
+</td></tr>
+</table>
+</div>
+
+<div class="card orange">
+<h3>"Less data" — is that a problem?</h3>
+<p>You asked: DPO uses a fixed dataset of preference pairs. PPO generates fresh data every step. Doesn't DPO see less?</p>
+<p style="margin-top:8px"><strong>Yes, and here's what that means concretely:</strong></p>
+<div class="math">
+<div class="line"><span class="cmt">// PPO training (simplified):</span></div>
+<div class="line"><span class="lbl">Step 1:</span> generate 1000 responses to 1000 prompts <span class="cmt">// fresh data</span></div>
+<div class="line"><span class="lbl">Step 2:</span> score them with reward model</div>
+<div class="line"><span class="lbl">Step 3:</span> update LLM</div>
+<div class="line"><span class="lbl">Step 4:</span> generate 1000 NEW responses <span class="cmt">// model changed, so new outputs</span></div>
+<div class="line"><span class="lbl">Step 5:</span> score them, update again...</div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// After 100 steps: PPO has seen 100,000 unique model-generated responses</span></div>
+<div class="line"><span class="cmt">// Each one was generated AFTER the previous update, so they reflect</span></div>
+<div class="line"><span class="cmt">// the model's current state. The data is always "fresh."</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// DPO training:</span></div>
+<div class="line"><span class="lbl">Dataset:</span> 50,000 (prompt, winner, loser) pairs <span class="cmt">// collected ONCE, before training</span></div>
+<div class="line"><span class="lbl">Epoch 1:</span> loop through all 50,000 pairs</div>
+<div class="line"><span class="lbl">Epoch 2:</span> loop through the SAME 50,000 pairs again</div>
+<div class="line"><span class="lbl">Epoch 3:</span> same pairs again...</div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// The model keeps seeing the same examples. As it improves,</span></div>
+<div class="line"><span class="cmt">// the easy pairs become useless (model already gets them right)</span></div>
+<div class="line"><span class="cmt">// but there's no way to generate harder examples.</span></div>
+</div>
+<p style="margin-top:8px"><strong>When this matters:</strong> complex tasks like coding or math, where the model needs to discover novel strategies through exploration. PPO's sampling helps here.</p>
+<p style="margin-top:4px"><strong>When it doesn't matter:</strong> style alignment ("be polite", "don't be preachy"), where the preference data already covers the space well. DPO works great here.</p>
+</div>
+
+<div class="card blue">
+<h3>State of the art (as of early 2025)</h3>
+<table>
+<tr><th>Model</th><th>Method</th><th>Notes</th></tr>
+<tr><td>GPT-4 / ChatGPT</td><td>RLHF (PPO)</td><td>Pioneered the approach. Lots of engineering to stabilize PPO at scale.</td></tr>
+<tr><td>Claude (Anthropic)</td><td>RLHF + Constitutional AI</td><td>Uses a mix: AI-generated preferences + RLHF. Not pure DPO.</td></tr>
+<tr><td>Llama 2 (Meta)</td><td>RLHF (PPO)</td><td>Two reward models (helpfulness + safety).</td></tr>
+<tr><td>Llama 3 (Meta)</td><td>DPO</td><td>Switched from PPO to DPO — simpler, comparable results.</td></tr>
+<tr><td>Zephyr</td><td>DPO</td><td>One of the first open models to show DPO matches RLHF quality.</td></tr>
+<tr><td>Mixtral / Mistral</td><td>DPO</td><td>Most open-source models now default to DPO.</td></tr>
+</table>
+<p style="margin-top:8px;font-size:.85em;color:#aaa">The trend: big labs with massive compute (OpenAI, Anthropic) still use RLHF because they can afford the complexity and benefit from exploration. Open-source and smaller teams use DPO because it's 10x simpler to implement and works nearly as well for most use cases.</p>
+</div>
+
+<div class="card">
+<h3>Newer variants (the field is moving fast)</h3>
+<table>
+<tr><th>Method</th><th>One-line idea</th></tr>
+<tr><td>IPO</td><td>DPO but with a different loss function that's more robust to noisy labels</td></tr>
+<tr><td>KTO</td><td>Doesn't need pairs at all — just "this response is good" or "this is bad" (thumbs up/down)</td></tr>
+<tr><td>ORPO</td><td>Combines SFT and DPO into a single training stage</td></tr>
+<tr><td>Online DPO / RLHF-free</td><td>Generate fresh pairs during training (hybrid: DPO's loss + PPO's sampling)</td></tr>
+</table>
+<p style="margin-top:8px;font-size:.85em;color:#aaa">The boundary between RLHF and DPO is blurring. "Online DPO" basically reinvents RLHF's sampling loop but with DPO's simpler loss. The field hasn't settled yet.</p>
+</div>
+</div>
+
+<script>
+const pages = document.querySelectorAll('.page');
+const nav = document.getElementById('nav');
+pages.forEach((p,i) => {
+  const b = document.createElement('button');
+  b.textContent = p.dataset.t;
+  b.onclick = () => go(i);
+  if(i===0) b.classList.add('on');
+  nav.appendChild(b);
+});
+function go(n){
+  pages.forEach((p,i) => p.classList.toggle('on', i===n));
+  nav.querySelectorAll('button').forEach((b,i) => {
+    b.classList.remove('on');
+    if(i<n) b.classList.add('done'); else b.classList.remove('done');
+    if(i===n) b.classList.add('on');
+  });
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+</script>
+</body>
+</html>

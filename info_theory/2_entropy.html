@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chapter 2: Entropy</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0a0a1a;color:#e0e0e0;padding:20px 20px 80px;line-height:1.7}
+h1{text-align:center;color:#fff;margin-bottom:4px;font-size:1.5em}
+.sub{text-align:center;color:#888;margin-bottom:24px;font-size:.88em}
+.nav{display:flex;justify-content:center;gap:6px;margin-bottom:20px;flex-wrap:wrap}
+.nav button{padding:7px 13px;border:2px solid #333;background:#111;color:#888;border-radius:8px;cursor:pointer;font-size:.78em;transition:.2s}
+.nav button:hover{border-color:#555;color:#ccc}
+.nav button.on{border-color:#4fc3f7;color:#4fc3f7;background:#0d2137}
+.nav button.done{border-color:#4caf50;color:#4caf50}
+.page{display:none;max-width:860px;margin:0 auto}
+.page.on{display:block}
+.page h2{color:#4fc3f7;margin-bottom:12px;font-size:1.2em}
+.card{background:#12122a;border:1px solid #2a2a4a;border-radius:12px;padding:18px;margin-bottom:14px}
+.card.blue{border-color:#4fc3f7;background:#0d1b2a}
+.card.green{border-color:#4caf50;background:#0a1a0a}
+.card.orange{border-color:#ff9800;background:#1a1400}
+.card.purple{border-color:#ce93d8;background:#1a0a2a}
+.card h3{color:#ffb74d;margin-bottom:8px;font-size:1em}
+button.nx{padding:10px 24px;background:#4caf50;color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:.9em;margin-top:14px}
+button.nx:hover{background:#66bb6a}
+table{width:100%;border-collapse:collapse;margin:10px 0}
+th,td{padding:8px 12px;border:1px solid #333;text-align:center;font-size:.88em}
+th{background:#1a1a3a;color:#4fc3f7}
+.math{background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:14px;margin:10px 0;font-family:'Fira Code',monospace;font-size:.85em;line-height:1.8}
+.math .line{margin:2px 0}
+.math .hl{background:#264f78;padding:2px 6px;border-radius:4px;display:inline-block}
+.math .cmt{color:#6a9955}
+.math .val{color:#b5cea8}
+.math .lbl{color:#9cdcfe}
+.key{color:#ffb74d;font-weight:600}
+</style>
+</head>
+<body>
+<a href="../index.html" style="position:fixed;top:10px;left:14px;font-size:.75em;color:#555;text-decoration:none;z-index:999;padding:4px 8px;background:#0a0a1a;border:1px solid #333;border-radius:6px;">&larr; index</a>
+<h1>Chapter 2: Entropy</h1>
+<p class="sub">The minimum average bits to communicate — and a measure of uncertainty</p>
+<div class="nav" id="nav"></div>
+
+<!-- PAGE 0 -->
+<div class="page on" data-t="0. Just Average It">
+<h2>Entropy = Average Optimal Codeword Length</h2>
+
+<div class="card blue">
+<h3>From Chapter 1 we have:</h3>
+<table>
+<tr><th>Animal</th><th>p(x)</th><th>Optimal length = log&#x2082;(1/p(x))</th></tr>
+<tr><td>dog</td><td>1/2</td><td>1 bit</td></tr>
+<tr><td>cat</td><td>1/4</td><td>2 bits</td></tr>
+<tr><td>fish</td><td>1/8</td><td>3 bits</td></tr>
+<tr><td>bird</td><td>1/8</td><td>3 bits</td></tr>
+</table>
+<p>Entropy is just the <strong>weighted average</strong> of these lengths:</p>
+</div>
+
+<div class="card">
+<h3>The calculation</h3>
+<div class="math">
+<div class="line">H = <span class="lbl">p(dog)</span> &times; <span class="lbl">L(dog)</span> + <span class="lbl">p(cat)</span> &times; <span class="lbl">L(cat)</span> + <span class="lbl">p(fish)</span> &times; <span class="lbl">L(fish)</span> + <span class="lbl">p(bird)</span> &times; <span class="lbl">L(bird)</span></div>
+<div class="line">&nbsp;</div>
+<div class="line">&nbsp; = (1/2)&times;1 + (1/4)&times;2 + (1/8)&times;3 + (1/8)&times;3</div>
+<div class="line">&nbsp; = 0.5 &nbsp; + 0.5 &nbsp; + 0.375 + 0.375</div>
+<div class="line"><span class="hl">&nbsp; = <span class="val">1.75 bits</span></span></div>
+</div>
+</div>
+
+<div class="card green">
+<h3>The formula</h3>
+<div class="math">
+<div class="line"><span class="cmt">// Replace L(x) with log&#x2082;(1/p(x)):</span></div>
+<div class="line"><span class="hl">H(p) = &Sigma; p(x) &middot; log&#x2082;(1 / p(x))</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// Equivalent form (just algebra: log(1/a) = -log(a)):</span></div>
+<div class="line">H(p) = &minus;&Sigma; p(x) &middot; log&#x2082;(p(x))</div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// Both are the same number. The first is more intuitive.</span></div>
+</div>
+<p>That's entropy. <strong>The minimum average bits per message, using the best possible code.</strong></p>
+</div>
+<button class="nx" onclick="go(1)">Next: What entropy feels like &#x2192;</button>
+</div>
+
+<!-- PAGE 1 -->
+<div class="page" data-t="1. Entropy = Uncertainty">
+<h2>Entropy Measures Uncertainty</h2>
+
+<div class="card">
+<h3>Three distributions, three entropies</h3>
+<table>
+<tr><th>Distribution</th><th>dog</th><th>cat</th><th>fish</th><th>bird</th><th>Entropy</th></tr>
+<tr><td><strong>Certain</strong> (always dog)</td><td>1.0</td><td>0</td><td>0</td><td>0</td><td style="color:#4caf50;font-weight:700">0 bits</td></tr>
+<tr><td><strong>Bob's mix</strong></td><td>0.5</td><td>0.25</td><td>0.125</td><td>0.125</td><td style="color:#ffb74d;font-weight:700">1.75 bits</td></tr>
+<tr><td><strong>Uniform</strong> (all equal)</td><td>0.25</td><td>0.25</td><td>0.25</td><td>0.25</td><td style="color:#ef5350;font-weight:700">2.0 bits</td></tr>
+</table>
+</div>
+
+<div class="card blue">
+<h3>Verify the extremes with numbers</h3>
+<div class="math">
+<div class="line"><span class="cmt">// Certain: p(dog)=1, rest=0</span></div>
+<div class="line">H = 1 &times; log&#x2082;(1/1) + 0 + 0 + 0</div>
+<div class="line">&nbsp; = 1 &times; 0 = <span class="val">0 bits</span></div>
+<div class="line"><span class="cmt">// "I know exactly what you'll say — no message needed."</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// Uniform: p(x)=1/4 for all x</span></div>
+<div class="line">H = 4 &times; (1/4) &times; log&#x2082;(1/(1/4))</div>
+<div class="line">&nbsp; = 4 &times; (1/4) &times; 2</div>
+<div class="line">&nbsp; = <span class="val">2 bits</span></div>
+<div class="line"><span class="cmt">// "No idea what you'll say — need the full 2-bit code."</span></div>
+</div>
+</div>
+
+<div class="card green">
+<h3>The pattern</h3>
+<p><strong>More concentrated</strong> probability → shorter codes → <strong>lower entropy</strong> → less uncertainty</p>
+<p><strong>More spread out</strong> probability → longer codes → <strong>higher entropy</strong> → more uncertainty</p>
+<p style="margin-top:8px">Entropy is simultaneously:</p>
+<ul style="margin-left:18px">
+<li>The minimum average bits to communicate an event</li>
+<li>A measure of how uncertain/surprised you should expect to be</li>
+</ul>
+</div>
+
+<div class="card purple">
+<h3>One-hot labels have zero entropy</h3>
+<p>This will matter in Chapter 3. In neural network training, the true label is one-hot: [1, 0, 0, 0] = "this image is definitely a dog." That's a certain distribution. Entropy = 0.</p>
+<p><strong>This means: H(true label) = 0. Remember this for later.</strong></p>
+</div>
+<button class="nx" onclick="go(2)">Summary &#x2192;</button>
+</div>
+
+<!-- PAGE 2 -->
+<div class="page" data-t="2. Summary">
+<h2>Chapter 2 Summary</h2>
+<div class="card blue">
+<table>
+<tr><th>Concept</th><th>Formula</th><th>Meaning</th></tr>
+<tr><td>Entropy</td><td>H(p) = Σ p(x) · log&#x2082;(1/p(x))</td><td>Minimum avg bits with the best code</td></tr>
+<tr><td>Certain distribution</td><td>H = 0 bits</td><td>No surprise, no message needed</td></tr>
+<tr><td>Uniform over N items</td><td>H = log&#x2082;(N)</td><td>Maximum uncertainty = max entropy</td></tr>
+<tr><td>One-hot label</td><td>H = 0</td><td>Used in ML — this makes cross-entropy = KL divergence</td></tr>
+</table>
+</div>
+</div>
+
+<script>
+const pages=document.querySelectorAll('.page');const nav=document.getElementById('nav');
+pages.forEach((p,i)=>{const b=document.createElement('button');b.textContent=p.dataset.t;b.onclick=()=>go(i);if(i===0)b.classList.add('on');nav.appendChild(b);});
+function go(n){pages.forEach((p,i)=>p.classList.toggle('on',i===n));nav.querySelectorAll('button').forEach((b,i)=>{b.classList.remove('on');if(i<n)b.classList.add('done');else b.classList.remove('done');if(i===n)b.classList.add('on');});window.scrollTo({top:0,behavior:'smooth'});}
+</script>
+</body></html>

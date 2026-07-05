@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Diffusion Ch1: The Idea</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0a0a1a;color:#e0e0e0;padding:20px 20px 80px;line-height:1.7}
+h1{text-align:center;color:#fff;margin-bottom:4px;font-size:1.5em}
+.sub{text-align:center;color:#888;margin-bottom:24px;font-size:.88em}
+.nav{display:flex;justify-content:center;gap:6px;margin-bottom:20px;flex-wrap:wrap}
+.nav button{padding:7px 13px;border:2px solid #333;background:#111;color:#888;border-radius:8px;cursor:pointer;font-size:.78em;transition:.2s}
+.nav button:hover{border-color:#555;color:#ccc}
+.nav button.on{border-color:#4fc3f7;color:#4fc3f7;background:#0d2137}
+.nav button.done{border-color:#4caf50;color:#4caf50}
+.page{display:none;max-width:860px;margin:0 auto}
+.page.on{display:block}
+.page h2{color:#4fc3f7;margin-bottom:12px;font-size:1.2em}
+.card{background:#12122a;border:1px solid #2a2a4a;border-radius:12px;padding:18px;margin-bottom:14px}
+.card.blue{border-color:#4fc3f7;background:#0d1b2a}
+.card.green{border-color:#4caf50;background:#0a1a0a}
+.card.orange{border-color:#ff9800;background:#1a1400}
+.card.red{border-color:#ef5350;background:#1a0a0a}
+.card.purple{border-color:#ce93d8;background:#1a0a2a}
+.card h3{color:#ffb74d;margin-bottom:8px;font-size:1em}
+button.nx{padding:10px 24px;background:#4caf50;color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:.9em;margin-top:14px}
+button.nx:hover{background:#66bb6a}
+table{width:100%;border-collapse:collapse;margin:10px 0}
+th,td{padding:8px 12px;border:1px solid #333;text-align:center;font-size:.88em}
+th{background:#1a1a3a;color:#4fc3f7}
+td{text-align:left}
+.math{background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:14px;margin:10px 0;font-family:'Fira Code',Consolas,monospace;font-size:.85em;line-height:1.8}
+.math .line{margin:2px 0;display:block}
+.math .hl{background:#264f78;padding:2px 6px;border-radius:4px;display:inline-block}
+.math .cmt{color:#6a9955}
+.math .val{color:#b5cea8}
+.math .lbl{color:#9cdcfe}
+.key{color:#ffb74d;font-weight:600}
+.vs{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:10px 0}
+@media(max-width:650px){.vs{grid-template-columns:1fr}}
+/* pixel strip for showing noising steps */
+.noise-strip{display:flex;gap:4px;margin:14px 0;align-items:center;flex-wrap:wrap}
+.noise-cell{border-radius:6px;border:1px solid #333;text-align:center;padding:8px 6px;font-size:.72em;min-width:60px}
+.noise-arr{color:#555;font-size:1.2em}
+/* pipeline */
+.pipeline{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:center;margin:12px 0}
+.pipe-box{border-radius:8px;padding:8px 14px;font-size:.82em;text-align:center;border:2px solid}
+.pipe-box.p{border-color:#ce93d8;color:#ce93d8;background:#2a0a3a}
+.pipe-box.c{border-color:#4fc3f7;color:#4fc3f7;background:#1a3a5c}
+.pipe-box.a{border-color:#ffb74d;color:#ffb74d;background:#3a2a0a}
+.pipe-box.g{border-color:#4caf50;color:#4caf50;background:#0a3a0a}
+.pipe-arr{color:#666;font-size:1.3em}
+</style>
+</head>
+<body>
+<a href="../index.html" style="position:fixed;top:10px;left:14px;font-size:.75em;color:#555;text-decoration:none;z-index:999;padding:4px 8px;background:#0a0a1a;border:1px solid #333;border-radius:6px;">&larr; index</a>
+
+<h1>Diffusion Ch1: The Idea</h1>
+<p class="sub">Destroy an image with noise, then learn to reverse it</p>
+
+<div class="nav" id="nav"></div>
+
+<!-- PAGE 0 -->
+<div class="page on" data-t="0. The Setup">
+<h2>The Big Idea</h2>
+
+<div class="card blue">
+<h3>The generative modeling problem</h3>
+<p>You have a dataset of images — say, 10 million photos of cats. You want a model that can <strong>generate new cat images</strong> that weren't in the training set. The images should look real, not blurry or distorted.</p>
+<p style="margin-top:8px">Other approaches: GANs (hard to train — mode collapse, unstable), VAEs (blurry outputs — too much compression). Diffusion models produce sharper images, are more stable to train, and have a cleaner mathematical foundation.</p>
+</div>
+
+<div class="card green">
+<h3>The diffusion insight — two processes</h3>
+<div class="vs">
+  <div class="card orange" style="margin:0">
+    <h3>Forward process (easy)</h3>
+    <p>Add a tiny bit of Gaussian noise to an image. Repeat 1000 times. The image gradually becomes pure random noise. You can compute this <strong>without a neural network</strong>.</p>
+  </div>
+  <div class="card purple" style="margin:0">
+    <h3>Reverse process (learned)</h3>
+    <p>Train a neural network to remove a tiny bit of noise from a noisy image. If you can do that, you can generate by starting from pure noise and removing noise 1000 times.</p>
+  </div>
+</div>
+</div>
+
+<div class="card">
+<h3>Visualizing the forward process</h3>
+<div class="noise-strip">
+  <div class="noise-cell" style="background:#1a1a2e;border-color:#4fc3f7">
+    <div style="font-size:1.4em">🐱</div>
+    <div style="color:#4fc3f7;margin-top:4px">t=0</div>
+    <div style="color:#888">clean</div>
+  </div>
+  <span class="noise-arr">→</span>
+  <div class="noise-cell" style="background:#1a1a2e">
+    <div style="font-size:1.4em;opacity:0.9;filter:blur(0.3px)">🐱</div>
+    <div style="color:#888;margin-top:4px">t=200</div>
+    <div style="color:#666">slight noise</div>
+  </div>
+  <span class="noise-arr">→</span>
+  <div class="noise-cell" style="background:#1a1a2e">
+    <div style="font-size:1.4em;opacity:0.7;filter:blur(0.8px)">🐱</div>
+    <div style="color:#888;margin-top:4px">t=500</div>
+    <div style="color:#666">noisy</div>
+  </div>
+  <span class="noise-arr">→</span>
+  <div class="noise-cell" style="background:#1a1a2e">
+    <div style="font-size:1.4em;opacity:0.3;filter:blur(1.5px)">🐱</div>
+    <div style="color:#888;margin-top:4px">t=900</div>
+    <div style="color:#666">mostly noise</div>
+  </div>
+  <span class="noise-arr">→</span>
+  <div class="noise-cell" style="background:#1a1a2e;border-color:#ef5350">
+    <div style="font-size:1.4em;filter:blur(2px);opacity:0.15">🐱</div>
+    <div style="color:#ef5350;margin-top:4px">t=1000</div>
+    <div style="color:#888">pure noise</div>
+  </div>
+</div>
+<p style="font-size:.85em;color:#888">At t=1000 the image is indistinguishable from N(0,I). At generation time, we start from here and run the arrow backwards.</p>
+</div>
+
+<div class="card orange">
+<h3>Why not just train on x→noise directly?</h3>
+<p>If you tried to train a network to go straight from noise to image in one step, it would need to memorize all possible images — impossible. The key is breaking it into <strong>1000 tiny steps</strong>, each of which is a small, learnable denoising. Each step removes only a little noise, so the task is well-defined.</p>
+</div>
+
+<button class="nx" onclick="go(1)">The forward process — with numbers</button>
+</div>
+
+<!-- PAGE 1 -->
+<div class="page" data-t="1. Forward Process">
+<h2>Forward Process — Adding Noise Mathematically</h2>
+
+<div class="card blue">
+<h3>The noise schedule</h3>
+<p>At each step t, we define a noise level β_t (small, between 0 and 1). We set α_t = 1 − β_t (how much of the signal survives). Typical values: β ranges from 0.0001 at t=1 to 0.02 at t=1000 (linearly).</p>
+<div class="math">
+<span class="line cmt">// Forward step: add noise at step t</span>
+<span class="line"><span class="lbl">x_t</span> = sqrt(α_t) × x_{t-1} + sqrt(1 − α_t) × ε</span>
+<span class="line">                                  where ε ~ N(0, I)  <span class="cmt">// fresh noise each step</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// α_t = 1 − β_t    (fraction of signal kept)</span>
+<span class="line cmt">// β_t ≈ 0.001      (small noise per step)</span>
+</div>
+</div>
+
+<div class="card green">
+<h3>Concrete: trace one pixel through 3 steps</h3>
+<div class="math">
+<span class="line cmt">// Starting pixel value: x_0 = 0.8 (bright pixel, range -1 to 1)</span>
+<span class="line cmt">// β_1 = 0.001 → α_1 = 0.999</span>
+<span class="line cmt">// β_2 = 0.001 → α_2 = 0.999</span>
+<span class="line cmt">// β_3 = 0.001 → α_3 = 0.999</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Step 1: (assume ε₁ = +1.0 from N(0,1))</span>
+<span class="line"><span class="lbl">x_1</span> = sqrt(0.999) × 0.8 + sqrt(0.001) × 1.0</span>
+<span class="line">     = <span class="val">0.9995</span> × 0.8 + <span class="val">0.03162</span> × 1.0</span>
+<span class="line">     = <span class="val">0.7996</span> + <span class="val">0.0316</span> = <span class="hl val">0.8312</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Step 2: (assume ε₂ = -0.5)</span>
+<span class="line"><span class="lbl">x_2</span> = sqrt(0.999) × 0.8312 + sqrt(0.001) × (−0.5)</span>
+<span class="line">     = 0.9995 × 0.8312 + 0.03162 × (−0.5)</span>
+<span class="line">     = <span class="val">0.8308</span> − <span class="val">0.0158</span> = <span class="hl val">0.8150</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Step 3: (assume ε₃ = +0.3)</span>
+<span class="line"><span class="lbl">x_3</span> = sqrt(0.999) × 0.8150 + sqrt(0.001) × 0.3</span>
+<span class="line">     = <span class="val">0.8146</span> + <span class="val">0.0095</span> = <span class="hl val">0.8241</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// After 3 steps: pixel moved from 0.8 to 0.824</span>
+<span class="line cmt">// Still mostly the original value — noise is tiny per step</span>
+</div>
+</div>
+
+<div class="card">
+<h3>After many steps — signal decays exponentially</h3>
+<div class="math">
+<span class="line cmt">// What fraction of x_0 survives after t steps?</span>
+<span class="line cmt">// Each step multiplies by sqrt(α). After t steps: sqrt(α_1) × sqrt(α_2) × ... × sqrt(α_t)</span>
+<span class="line"><span class="lbl">signal_fraction</span> = sqrt(ᾱ_t) where ᾱ_t = α_1 × α_2 × ... × α_t</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// With β_t ≈ 0.001 for all steps:</span>
+<span class="line"><span class="lbl">ᾱ_100</span>  = 0.999^100  = <span class="val">0.905</span>  <span class="cmt">// 90% signal, 10% noise</span></span>
+<span class="line"><span class="lbl">ᾱ_500</span>  = 0.999^500  = <span class="val">0.607</span>  <span class="cmt">// 61% signal, 39% noise</span></span>
+<span class="line"><span class="lbl">ᾱ_1000</span> = 0.999^1000 = <span class="val">0.368</span>  <span class="cmt">// 37% signal</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Real DDPM uses a variance schedule that goes further:</span>
+<span class="line"><span class="lbl">ᾱ_1000</span> ≈ 0.0001  <span class="cmt">// basically pure noise by t=1000</span></span>
+</div>
+
+<table>
+<tr><th>Step t</th><th>ᾱ_t</th><th>Signal fraction</th><th>Image content</th></tr>
+<tr><td>0</td><td>1.000</td><td>100%</td><td>Clean original</td></tr>
+<tr><td>100</td><td>~0.36</td><td>60%</td><td>Recognizable, noisy</td></tr>
+<tr><td>500</td><td>~0.05</td><td>22%</td><td>Barely recognizable</td></tr>
+<tr><td>800</td><td>~0.002</td><td>4.5%</td><td>Noise with faint structure</td></tr>
+<tr><td>1000</td><td>~0.0001</td><td>1%</td><td>Pure noise — N(0,I)</td></tr>
+</table>
+</div>
+
+<button class="nx" onclick="go(2)">The closed form shortcut</button>
+</div>
+
+<!-- PAGE 2 -->
+<div class="page" data-t="2. Closed Form">
+<h2>The Closed Form — Jump Directly to Any Noise Level</h2>
+
+<div class="card blue">
+<h3>We don't need to apply 500 steps to get x_500</h3>
+<p>Because each forward step is Gaussian, the composition of many Gaussian steps is also Gaussian. This gives a closed-form expression that jumps directly from x_0 to x_t in one shot.</p>
+<div class="math">
+<span class="line cmt">// Key reparameterization (DDPM paper, Ho et al. 2020):</span>
+<span class="line"><span class="lbl">x_t</span> = sqrt(ᾱ_t) × x_0 + sqrt(1 − ᾱ_t) × ε</span>
+<span class="line">                             where ε ~ N(0, I)</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// ᾱ_t = product of all α_1 × α_2 × ... × α_t</span>
+<span class="line cmt">// No loop needed — compute x_t directly from x_0</span>
+</div>
+</div>
+
+<div class="card green">
+<h3>Concrete: x_0=0.8, compute x_500 directly</h3>
+<div class="math">
+<span class="line cmt">// DDPM linear schedule: ᾱ_500 ≈ 0.10</span>
+<span class="line"><span class="lbl">ᾱ_500</span> = 0.10   <span class="cmt">// 10% signal remains at step 500</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Sample a noise vector: ε ~ N(0,1)</span>
+<span class="line cmt">// Say ε = 0.43 (one random draw)</span>
+<span class="line">&nbsp;</span>
+<span class="line"><span class="lbl">x_500</span> = sqrt(0.10) × 0.8 + sqrt(1 − 0.10) × 0.43</span>
+<span class="line">       = sqrt(0.10) × 0.8 + sqrt(0.90) × 0.43</span>
+<span class="line">       = <span class="val">0.3162</span> × 0.8 + <span class="val">0.9487</span> × 0.43</span>
+<span class="line">       = <span class="val">0.253</span> + <span class="val">0.408</span></span>
+<span class="line">       = <span class="hl val">0.661</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Interpretation: x_500 is mostly noise (0.408 from noise)</span>
+<span class="line cmt">// with a faint signal contribution (0.253 from original 0.8)</span>
+</div>
+</div>
+
+<div class="card">
+<h3>What this means for training</h3>
+<p>The closed form means we can train efficiently. For each training sample x_0:</p>
+<ol style="margin-left:18px;margin-top:8px;line-height:2">
+  <li>Sample a random timestep t ~ Uniform(1, 1000)</li>
+  <li>Sample a noise vector ε ~ N(0, I)</li>
+  <li>Compute x_t = sqrt(ᾱ_t) × x_0 + sqrt(1−ᾱ_t) × ε  (closed form, one line)</li>
+  <li>Pass x_t and t to the network; ask it to predict ε</li>
+  <li>Loss = ||ε − ε_θ(x_t, t)||²</li>
+</ol>
+<p style="margin-top:8px">No loop over 1000 steps per training example. Each example uses one random t. Fast and parallelizable.</p>
+</div>
+
+<div class="card orange">
+<h3>x_1000 directly — pure noise with no memory of x_0</h3>
+<div class="math">
+<span class="line cmt">// ᾱ_1000 ≈ 0.0001 (DDPM schedule)</span>
+<span class="line"><span class="lbl">x_1000</span> = sqrt(0.0001) × x_0 + sqrt(0.9999) × ε</span>
+<span class="line">        = <span class="val">0.01</span> × 0.8 + <span class="val">0.9999</span> × ε</span>
+<span class="line">        = <span class="val">0.008</span> + <span class="val">0.9999</span> × ε</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// The x_0 contribution is 0.008 — essentially zero</span>
+<span class="line cmt">// x_1000 ≈ N(0, 1) — pure Gaussian noise, origin forgotten</span>
+<span class="line"><span class="lbl">Var(x_1000)</span> ≈ 0.0001 × Var(x_0) + 0.9999 ≈ <span class="val">1.0</span></span>
+</div>
+</div>
+
+<button class="nx" onclick="go(3)">The neural network</button>
+</div>
+
+<!-- PAGE 3 -->
+<div class="page" data-t="3. Reverse Process">
+<h2>Reverse Process — The Neural Network</h2>
+
+<div class="card blue">
+<h3>What the network learns</h3>
+<p>Train a U-Net ε_θ(x_t, t) that takes a noisy image x_t and the timestep t, and predicts the noise ε that was added. The network must learn: "given this noisy image at noise level t, what noise vector was mixed in?"</p>
+<div class="math">
+<span class="line cmt">// Training objective (simplified DDPM loss):</span>
+<span class="line"><span class="lbl">L</span> = E[||ε − ε_θ(x_t, t)||²]</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// ε:           the actual noise we added (we know this — it's the label)</span>
+<span class="line cmt">// ε_θ(x_t, t): the network's predicted noise</span>
+<span class="line cmt">// Minimize MSE between real noise and predicted noise</span>
+</div>
+</div>
+
+<div class="card green">
+<h3>Why predicting noise works — intuition</h3>
+<div class="math">
+<span class="line cmt">// We know: x_t = sqrt(ᾱ_t) × x_0 + sqrt(1−ᾱ_t) × ε</span>
+<span class="line"><span class="lbl">Rearranged for x_0</span>:</span>
+<span class="line">x_0 = (x_t − sqrt(1−ᾱ_t) × ε) / sqrt(ᾱ_t)</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// If the network can predict ε, we can recover x_0!</span>
+<span class="line cmt">// Concrete: x_t=0.661, ᾱ_t=0.10, network predicts ε̂=0.43</span>
+<span class="line"><span class="lbl">x̂_0</span> = (0.661 − sqrt(0.90) × 0.43) / sqrt(0.10)</span>
+<span class="line">      = (0.661 − 0.9487 × 0.43) / 0.3162</span>
+<span class="line">      = (0.661 − 0.408) / 0.3162</span>
+<span class="line">      = 0.253 / 0.3162 = <span class="hl val">0.800</span>  <span class="cmt">// recovered the original!</span></span>
+</div>
+</div>
+
+<div class="card">
+<h3>Sampling — generating new images from scratch</h3>
+<div class="math">
+<span class="line cmt">// Start from pure noise</span>
+<span class="line"><span class="lbl">x_T</span> ~ N(0, I)   <span class="cmt">// e.g. x_T = [0.43, -1.21, 0.87, ...]</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Iterative reverse: apply the denoising formula T times</span>
+<span class="line">for t in range(T, 0, -1):</span>
+<span class="line">    ε̂ = ε_θ(x_t, t)                    <span class="cmt">// network predicts noise</span></span>
+<span class="line">    x̂_0 = (x_t − sqrt(1−ᾱ_t)×ε̂) / sqrt(ᾱ_t)  <span class="cmt">// estimate clean image</span></span>
+<span class="line">    x_{t-1} = sqrt(ᾱ_{t-1}) × x̂_0</span>
+<span class="line">             + sqrt(1−ᾱ_{t-1}) × ε̂    <span class="cmt">// re-noise at level t-1</span></span>
+<span class="line">    <span class="cmt">// (+ small stochastic term for DDPM)</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// After 1000 iterations: x_0 is a new, never-before-seen image</span>
+</div>
+</div>
+
+<div class="card orange">
+<h3>Why does the network know what to generate?</h3>
+<p>At training time, the network saw <strong>millions of (x_t, t, ε)</strong> triples across all noise levels. It learned: at low noise (t≈0), small adjustments; at high noise (t≈1000), predict rough structure. Starting from noise, each reverse step moves slightly toward the learned data distribution.</p>
+<p style="margin-top:8px">The network never explicitly told "generate a cat." It just learned "at this noise level, the most likely clean image underlying this pattern looks like...". Emergently, it learns to generate images from the training distribution.</p>
+</div>
+
+<button class="nx" onclick="go(4)">Summary</button>
+</div>
+
+<!-- PAGE 4 -->
+<div class="page" data-t="4. Summary">
+<h2>Chapter 1 Summary</h2>
+<div class="card blue">
+<table>
+<tr><th>Process</th><th>Direction</th><th>Needs network?</th><th>Formula</th></tr>
+<tr><td>Forward</td><td>Image → Noise</td><td>No — closed form</td><td>x_t = sqrt(ᾱ_t)×x_0 + sqrt(1−ᾱ_t)×ε</td></tr>
+<tr><td>Reverse (train)</td><td>Noisy → less noisy</td><td>Yes — U-Net</td><td>Minimize ||ε − ε_θ(x_t, t)||²</td></tr>
+<tr><td>Reverse (sample)</td><td>Noise → Image</td><td>Yes — same U-Net</td><td>1000 steps from x_T ~ N(0,I)</td></tr>
+</table>
+</div>
+<div class="card green">
+<h3>Key numbers</h3>
+<div class="math">
+<span class="line"><span class="lbl">T</span>         = 1000 timesteps (DDPM)</span>
+<span class="line"><span class="lbl">β_t</span>       = linearly from 0.0001 to 0.02</span>
+<span class="line"><span class="lbl">ᾱ_t</span>       = product of all (1−β_k) for k=1..t</span>
+<span class="line"><span class="lbl">ᾱ_1000</span>    ≈ 0.0001  <span class="cmt">// essentially pure noise</span></span>
+<span class="line"><span class="lbl">Training</span>  = predict noise ε, MSE loss</span>
+<span class="line"><span class="lbl">Inference</span> = 1000 steps of noise removal</span>
+</div>
+</div>
+<div class="card orange">
+<h3>What comes next</h3>
+<p>Chapter 2: Score matching — the mathematical lens that explains <em>why</em> noise prediction works. Chapter 3: U-Net architecture and classifier-free guidance — how to steer generation toward a text prompt.</p>
+</div>
+</div>
+
+<script>
+const pages=document.querySelectorAll('.page'),nav=document.getElementById('nav');
+pages.forEach((p,i)=>{const b=document.createElement('button');b.textContent=p.dataset.t;b.onclick=()=>go(i);if(i===0)b.classList.add('on');nav.appendChild(b);});
+function go(n){pages.forEach((p,i)=>p.classList.toggle('on',i===n));nav.querySelectorAll('button').forEach((b,i)=>{b.classList.remove('on');if(i<n)b.classList.add('done');else b.classList.remove('done');if(i===n)b.classList.add('on');});window.scrollTo({top:0,behavior:'smooth'});}
+</script>
+</body>
+</html>

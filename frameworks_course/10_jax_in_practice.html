@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JAX in practice — for a PyTorch person</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0a0a1a;color:#e0e0e0;padding:20px 20px 80px;line-height:1.7}
+h1{text-align:center;color:#fff;margin-bottom:4px;font-size:1.5em}
+.sub{text-align:center;color:#888;margin-bottom:24px;font-size:.88em}
+.nav{display:flex;justify-content:center;gap:6px;margin-bottom:20px;flex-wrap:wrap}
+.nav button{padding:7px 13px;border:2px solid #333;background:#111;color:#888;border-radius:8px;cursor:pointer;font-size:.78em;transition:.2s}
+.nav button:hover{border-color:#555;color:#ccc}
+.nav button.on{border-color:#4fc3f7;color:#4fc3f7;background:#0d2137}
+.nav button.done{border-color:#4caf50;color:#4caf50}
+.page{display:none;max-width:880px;margin:0 auto}
+.page.on{display:block}
+.page h2{color:#4fc3f7;margin-bottom:12px;font-size:1.2em}
+.card{background:#12122a;border:1px solid #2a2a4a;border-radius:12px;padding:18px;margin-bottom:14px}
+.card.blue{border-color:#4fc3f7;background:#0d1b2a}
+.card.green{border-color:#4caf50;background:#0a1a0a}
+.card.orange{border-color:#ff9800;background:#1a1400}
+.card.red{border-color:#ef5350;background:#1a0a0a}
+.card.purple{border-color:#ce93d8;background:#1a0a2a}
+.card h3{color:#ffb74d;margin-bottom:8px;font-size:1em}
+button.nx{padding:10px 24px;background:#4caf50;color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:.9em;margin-top:14px}
+button.nx:hover{background:#66bb6a}
+a.nx{display:inline-block;padding:10px 24px;background:#4caf50;color:#000;border-radius:8px;font-weight:700;font-size:.9em;margin-top:14px;text-decoration:none}
+table{width:100%;border-collapse:collapse;margin:10px 0}
+th,td{padding:8px 10px;border:1px solid #333;text-align:left;font-size:.84em}
+th{background:#1a1a3a;color:#4fc3f7}
+.math{background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:14px;margin:10px 0;font-family:'Fira Code',Consolas,monospace;font-size:.82em;line-height:1.75;overflow-x:auto}
+.math .line{margin:2px 0;display:block;white-space:pre}
+.math .cmt{color:#6a9955}
+.math .val{color:#b5cea8}
+.math .lbl{color:#9cdcfe}
+.math .kw{color:#c586c0}
+.math .fn{color:#dcdcaa}
+.math.out{border-left:3px solid #4caf50;background:#0d1a12}
+.outlabel{display:block;font-size:.72em;color:#4caf50;letter-spacing:.08em;text-transform:uppercase;margin-bottom:6px}
+.key{color:#ffb74d;font-weight:600}
+.inline{font-family:'Fira Code',Consolas,monospace;background:#1a1a2e;border:1px solid #333;border-radius:4px;padding:1px 6px;font-size:.86em;color:#9cdcfe}
+.faded{color:#888;font-size:.86em}
+ul{margin-left:20px;margin-top:6px}
+li{margin:4px 0}
+details{margin-top:12px}
+details summary{cursor:pointer;color:#888;font-size:.85em;padding:8px 12px;background:#12122a;border:1px solid #333;border-radius:8px}
+details summary:hover{color:#ccc;border-color:#555}
+details[open] summary{color:#4fc3f7;border-color:#4fc3f7}
+.fw{display:inline-block;font-weight:700;padding:1px 8px;border-radius:4px;font-size:.82em;border:1px solid}
+.fw.np{color:#4fc3f7;border-color:rgba(79,195,247,.4);background:rgba(79,195,247,.08)}
+.fw.tf{color:#ff9800;border-color:rgba(255,152,0,.4);background:rgba(255,152,0,.08)}
+.fw.pt{color:#ef5350;border-color:rgba(239,83,80,.4);background:rgba(239,83,80,.08)}
+.fw.jx{color:#ce93d8;border-color:rgba(206,147,216,.4);background:rgba(206,147,216,.08)}
+</style>
+</head>
+<body>
+<a href="../index.html" style="position:fixed;top:10px;left:14px;font-size:.75em;color:#555;text-decoration:none;z-index:999;padding:4px 8px;background:#0a0a1a;border:1px solid #333;border-radius:6px;">&larr; index</a>
+
+<h1><span style="font-size:.7em;vertical-align:middle;color:#4fc3f7;border:1px solid rgba(79,195,247,.4);border-radius:4px;padding:1px 8px;background:rgba(79,195,247,.08);font-weight:700">Part 3</span> JAX in practice — for a PyTorch person</h1>
+<p class="sub">The phrasebook, the idioms, the debugging moves, and the modern Flax NNX stack — everything you need to be dangerous in JAX this week.</p>
+
+<div class="nav" id="nav"></div>
+
+<!-- PAGE 0 -->
+<div class="page on" data-t="0. Phrasebook">
+<h2>torch → jax, phrase by phrase</h2>
+
+<div class="card purple">
+<h3>The translation table</h3>
+<table>
+<tr><th>You want</th><th><span class="fw pt">torch</span></th><th><span class="fw jx">jax</span></th></tr>
+<tr><td>an array</td><td><span class="inline">torch.tensor([1., 2.])</span></td><td><span class="inline">jnp.array([1., 2.])</span> — the NumPy API, so <span class="inline">axis=</span> not <span class="inline">dim=</span></td></tr>
+<tr><td>in-place edit</td><td><span class="inline">t[0] = 9</span></td><td><span class="inline">x = x.at[0].set(9)</span> — returns new array, rebind it</td></tr>
+<tr><td>masked update</td><td><span class="inline">t[t &lt; 0] = 0</span></td><td><span class="inline">x = jnp.where(x &lt; 0, 0, x)</span></td></tr>
+<tr><td>gradients</td><td><span class="inline">loss.backward(); p.grad</span></td><td><span class="inline">loss, g = value_and_grad(loss_fn)(params)</span></td></tr>
+<tr><td>no-grad zone</td><td><span class="inline">with torch.no_grad():</span></td><td>not needed — nothing records; use <span class="inline">jax.lax.stop_gradient(x)</span> to block flow through a value</td></tr>
+<tr><td>randomness</td><td><span class="inline">torch.manual_seed(0); randn(2)</span></td><td><span class="inline">key = random.key(0); k1, k2 = random.split(key); random.normal(k1, (2,))</span></td></tr>
+<tr><td>to device</td><td><span class="inline">t.to('cuda')</span></td><td>usually automatic; explicit: <span class="inline">jax.device_put(x, device)</span></td></tr>
+<tr><td>speed</td><td><span class="inline">torch.compile(f)</span></td><td><span class="inline">jax.jit(f)</span> — but stricter (Ch. 5's promise difference)</td></tr>
+<tr><td>print inside fast fn</td><td>just print (graph break)</td><td><span class="inline">jax.debug.print("x={x}", x=x)</span></td></tr>
+<tr><td>the model</td><td><span class="inline">nn.Module</span> instance</td><td>a params pytree + pure function (or Flax NNX, page 4)</td></tr>
+<tr><td>data loading</td><td><span class="inline">DataLoader</span></td><td>plain Python/NumPy loops, or Grain; convert to jnp at the device edge</td></tr>
+</table>
+<div class="math out"><span class="outlabel">output — real run of the mutation row</span>
+<span class="line">torch mutate  : tensor([0., 2., 0.])</span>
+<span class="line">jax rebind    : [0. 2. 0.]</span>
+</div>
+<p>The mental switch behind every row: <span class="key">stop editing things; start computing new things from old things.</span></p>
+</div>
+<button class="nx" onclick="go(1)">Next: pytrees, properly</button>
+</div>
+
+<!-- PAGE 1 -->
+<div class="page" data-t="1. Pytrees">
+<h2>Pytrees: the data structure that replaces the object model</h2>
+
+<div class="card">
+<h3>Any nesting of dict/list/tuple with array leaves</h3>
+<div class="math">
+<span class="line">params = {<span class="val">'enc'</span>: {<span class="val">'W'</span>: jnp.<span class="fn">ones</span>((<span class="val">2</span>,<span class="val">3</span>)), <span class="val">'b'</span>: jnp.<span class="fn">zeros</span>(<span class="val">3</span>)},</span>
+<span class="line">          <span class="val">'dec'</span>: [jnp.<span class="fn">ones</span>(<span class="val">3</span>), jnp.<span class="fn">ones</span>(<span class="val">1</span>)]}</span>
+<span class="line">leaves, treedef = jax.tree.<span class="fn">flatten</span>(params)</span>
+</div>
+<div class="math out"><span class="outlabel">output — real run</span>
+<span class="line">leaves  : [(3,), (1,), (2, 3), (3,)]</span>
+<span class="line">treedef : PyTreeDef({'dec': [*, *], 'enc': {'W': *, 'b': *}})</span>
+</div>
+<p>JAX sees any parameter structure as <span class="key">leaves + shape-of-the-nesting</span> (the treedef). Every transformation works leaf-wise through arbitrary nesting: <span class="inline">grad</span> of a dict-taking function returns a matching dict; <span class="inline">jit</span> flattens inputs; checkpointing serializes leaves. Three idioms cover 95% of use:</p>
+<div class="math">
+<span class="line">jax.tree.<span class="fn">map</span>(<span class="kw">lambda</span> p: p.shape, params)          <span class="cmt"># inspect anything</span></span>
+<span class="line">jax.tree.<span class="fn">map</span>(<span class="kw">lambda</span> p, g: p - lr*g, params, grads)  <span class="cmt"># zip trees: SGD in one line</span></span>
+<span class="line">leaves, treedef = jax.tree.<span class="fn">flatten</span>(params)       <span class="cmt"># escape hatch to a flat list</span></span>
+</div>
+<p class="faded">torch equivalent-ish: <span class="inline">state_dict()</span> — but that's a serialization snapshot; a pytree IS the live model.</p>
+</div>
+<button class="nx" onclick="go(2)">Next: vmap patterns</button>
+</div>
+
+<!-- PAGE 2 -->
+<div class="page" data-t="2. vmap patterns">
+<h2>vmap: stop writing batch dimensions (and batch whole models)</h2>
+
+<div class="card green">
+<h3>Pattern 1 — per-sample gradients (the classic)</h3>
+<div class="math">
+<span class="line"><span class="cmt"># loss_fn(w, x, t) written for ONE example — no batch dim anywhere</span></span>
+<span class="line">per_ex = jax.<span class="fn">vmap</span>(jax.<span class="fn">grad</span>(loss_fn), in_axes=(<span class="kw">None</span>, <span class="val">0</span>, <span class="val">0</span>))(w, xs, ts)</span>
+</div>
+<div class="math out"><span class="outlabel">output — real run (chapter 4)</span>
+<span class="line">grads for w=2 on 4 examples: [  0.  -4. -24.  -8.]</span>
+</div>
+<p><span class="inline">in_axes=(None, 0, 0)</span>: don't map <span class="inline">w</span>; map axis 0 of <span class="inline">xs</span> and <span class="inline">ts</span>. You write the single-example math; the batching is a transformation. Composition order matters and reads like math: <span class="inline">vmap(grad(f))</span> = "gradient per example," <span class="inline">grad(vmap-and-mean)</span> = "gradient of the batch mean."</p>
+</div>
+
+<div class="card blue">
+<h3>Pattern 2 — an ensemble of models in one call</h3>
+<div class="math">
+<span class="line">keys = jax.random.<span class="fn">split</span>(jax.random.<span class="fn">key</span>(<span class="val">0</span>), <span class="val">3</span>)</span>
+<span class="line">three = jax.<span class="fn">vmap</span>(init)(keys)          <span class="cmt"># init one model → init THREE: a stacked pytree</span></span>
+<span class="line">outs  = jax.<span class="fn">vmap</span>(apply, in_axes=(<span class="val">0</span>, <span class="kw">None</span>))(three, x)   <span class="cmt"># 3 models, same input</span></span>
+</div>
+<div class="math out"><span class="outlabel">output — real run</span>
+<span class="line">stacked W shape: (3, 2, 4)</span>
+<span class="line">3 model outputs, one x: [-1.8463868 -2.3337657 -2.5913959]</span>
+</div>
+<p>Look at what happened to the <em>parameters</em>: vmap over <span class="inline">init</span> produced a pytree whose every leaf grew a leading axis of 3 — <span class="key">three models stored as one stacked pytree</span>, run in one fused call. Deep ensembles, hyperparameter sweeps, population-based training — all this one trick. This is the demo that's genuinely awkward in torch (torch.func can do it, fighting the Module system the whole way).</p>
+</div>
+<button class="nx" onclick="go(3)">Next: jit discipline &amp; debugging</button>
+</div>
+
+<!-- PAGE 3 -->
+<div class="page" data-t="3. jit discipline">
+<h2>Living with the compiler: statics, recompiles, and seeing inside</h2>
+
+<div class="card orange">
+<h3>static_argnums — Python values as compile-time constants, on purpose</h3>
+<div class="math">
+<span class="line"><span class="kw">@partial</span>(jax.jit, static_argnums=<span class="val">1</span>)</span>
+<span class="line"><span class="kw">def</span> <span class="fn">repeat_square</span>(x, n):</span>
+<span class="line">    <span class="kw">for</span> _ <span class="kw">in</span> <span class="fn">range</span>(n):     <span class="cmt"># python loop → UNROLLED at trace time</span></span>
+<span class="line">        x = x * x</span>
+<span class="line">    <span class="kw">return</span> x</span>
+</div>
+<div class="math out"><span class="outlabel">output — real run</span>
+<span class="line">  [tracing] n=2</span>
+<span class="line">16.0</span>
+<span class="line">16.0          &lt;- cached</span>
+<span class="line">  [tracing] n=3   &lt;- new n, new program</span>
+<span class="line">256.0</span>
+</div>
+<p>The Python <span class="inline">for</span> ran at trace time — n=2 produced a program of two multiplies (2²²=16 ✓), n=3 three (2⁸=256 ✓). <span class="inline">static_argnums</span> says "this argument selects <em>which program</em>, don't trace it" — deliberate, useful, and a retrace per value. The recompile checklist when JAX feels slow: <span class="key">changing shapes? changing dtypes? changing statics?</span> One of those, almost always. (<span class="inline">jax.jit(f).lower(x).as_text()</span> or setting <span class="inline">JAX_LOG_COMPILES=1</span> confirms it.)</p>
+</div>
+
+<div class="card red">
+<h3>Seeing inside a jit — the two moves</h3>
+<div class="math">
+<span class="line"><span class="kw">@jax.jit</span></span>
+<span class="line"><span class="kw">def</span> <span class="fn">dbg</span>(x):</span>
+<span class="line">    jax.debug.<span class="fn">print</span>(<span class="val">"  runtime value is {v}"</span>, v=x)   <span class="cmt"># a real runtime print op</span></span>
+<span class="line">    <span class="kw">return</span> x * <span class="val">2</span></span>
+</div>
+<div class="math out"><span class="outlabel">output — real run: dbg(21.0); dbg(4.0)</span>
+<span class="line">  runtime value is 21.0</span>
+<span class="line">  runtime value is 4.0</span>
+</div>
+<p>Fires every call with real values — it's compiled <em>into</em> the program (TF's <span class="inline">tf.print</span> move, Chapter 2). Second move: <span class="inline">with jax.disable_jit():</span> runs everything eagerly so plain print/pdb work — slow, perfect for hunting NaNs. (Third, for hard cases: <span class="inline">jax.config.update("jax_debug_nans", True)</span>.)</p>
+</div>
+<button class="nx" onclick="go(4)">Next: the modern stack (Flax NNX)</button>
+</div>
+
+<!-- PAGE 4 -->
+<div class="page" data-t="4. NNX & beyond">
+<h2>Flax NNX: module comfort, JAX engine — the 2026 default stack</h2>
+
+<div class="card purple">
+<h3>The XOR model, one more time — NNX + optax, complete &amp; real</h3>
+<div class="math">
+<span class="line"><span class="kw">from</span> flax <span class="kw">import</span> nnx</span>
+<span class="line"><span class="kw">import</span> optax</span>
+<span class="line"></span>
+<span class="line"><span class="kw">class</span> <span class="fn">MLP</span>(nnx.Module):</span>
+<span class="line">    <span class="kw">def</span> <span class="fn">__init__</span>(self, rngs):</span>
+<span class="line">        self.hidden = nnx.<span class="fn">Linear</span>(<span class="val">2</span>, <span class="val">8</span>, rngs=rngs)   <span class="cmt"># explicit RNG, even here</span></span>
+<span class="line">        self.out = nnx.<span class="fn">Linear</span>(<span class="val">8</span>, <span class="val">1</span>, rngs=rngs)</span>
+<span class="line">    <span class="kw">def</span> <span class="fn">__call__</span>(self, x):</span>
+<span class="line">        <span class="kw">return</span> jax.nn.<span class="fn">sigmoid</span>(self.out(jnp.<span class="fn">tanh</span>(self.hidden(x))))</span>
+<span class="line"></span>
+<span class="line">model = <span class="fn">MLP</span>(nnx.<span class="fn">Rngs</span>(<span class="val">0</span>))</span>
+<span class="line">opt = nnx.<span class="fn">Optimizer</span>(model, optax.<span class="fn">adam</span>(<span class="val">0.05</span>), wrt=nnx.Param)</span>
+<span class="line"></span>
+<span class="line"><span class="kw">@nnx.jit</span>                                       <span class="cmt"># jit that understands modules</span></span>
+<span class="line"><span class="kw">def</span> <span class="fn">step</span>(model, opt):</span>
+<span class="line">    loss, grads = nnx.<span class="fn">value_and_grad</span>(<span class="kw">lambda</span> m: ((m(X) - Y)**<span class="val">2</span>).<span class="fn">mean</span>())(model)</span>
+<span class="line">    opt.<span class="fn">update</span>(model, grads)                   <span class="cmt"># yes — this MUTATES, torch-style</span></span>
+<span class="line">    <span class="kw">return</span> loss</span>
+</div>
+<div class="math out"><span class="outlabel">output — real run</span>
+<span class="line">  step   0  loss 0.254735</span>
+<span class="line">  step 100  loss 0.000208</span>
+<span class="line">  step 500  loss 0.000026</span>
+<span class="line">  preds: [0.004 0.995 0.996 0.007]</span>
+</div>
+<p>Read it as a peace treaty between Chapters 3 and 4: <span class="key">NNX gives you back mutable module objects and a mutating optimizer</span> (the torch ergonomics), and under the hood <span class="inline">nnx.jit</span>/<span class="inline">nnx.value_and_grad</span> split each module into a pytree-of-params + pure function (graph/state split), feed it to ordinary JAX, and write results back. The functional core never went away — you just stopped hand-threading it. If you understood Chapter 9's raw-JAX loop, NNX is "that, with the plumbing automated."</p>
+</div>
+
+<div class="card blue">
+<h3>Your JAX starter kit</h3>
+<table>
+<tr><th>Need</th><th>Reach for</th></tr>
+<tr><td>models / optimizers / checkpoints</td><td>Flax NNX / Optax / Orbax</td></tr>
+<tr><td>understand JAX's core deeply</td><td>the <span class="key">autodidax</span> doc (build-JAX-from-scratch — Chapter 8's spirit, official version)</td></tr>
+<tr><td>scaling mental models</td><td>the JAX "scaling book" (jax-ml.github.io/scaling-book) — how TPU-pod training actually works</td></tr>
+<tr><td>real LLM training code to read</td><td>MaxText</td></tr>
+<tr><td>practice env on this laptop</td><td>CPU JAX is fine for everything in this course; fake 8 devices with <span class="inline">XLA_FLAGS=--xla_force_host_platform_device_count=8</span> (as Chapter 4 did)</td></tr>
+</table>
+</div>
+
+<div class="card green">
+<h3>Course complete — the whole thing in four sentences</h3>
+<ul>
+<li><span class="fw np">NumPy</span> made arrays a shared substrate: buffer + strides, one C loop per op, the API everyone else implements.</li>
+<li><span class="fw tf">TensorFlow</span> made programs into shippable graphs, and paid for it in debuggability until eager+tracing split the difference.</li>
+<li><span class="fw pt">PyTorch</span> made the program the model — a tape over honest Python — and later learned to steal graphs from bytecode.</li>
+<li><span class="fw jx">JAX</span> made programs pure so that gradients, batching, compilation and sharding are all just function transformations.</li>
+</ul>
+<p>Four answers to "where does the fast code live, and what is Python's job?" — you can now give all four, with the receipts.</p>
+</div>
+<a class="nx" href="../index.html">Back to the course index →</a>
+</div>
+
+<script>
+const pages=document.querySelectorAll('.page'),nav=document.getElementById('nav');
+pages.forEach((p,i)=>{
+  const b=document.createElement('button');
+  b.textContent=p.dataset.t;
+  b.onclick=()=>go(i);
+  if(i===0)b.classList.add('on');
+  nav.appendChild(b);
+});
+function go(n){
+  pages.forEach((p,i)=>p.classList.toggle('on',i===n));
+  nav.querySelectorAll('button').forEach((b,i)=>{
+    b.classList.remove('on');
+    if(i<n)b.classList.add('done');
+    else b.classList.remove('done');
+    if(i===n)b.classList.add('on');
+  });
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+</script>
+</body>
+</html>

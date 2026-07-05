@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Transformer Ch6: Autoregressive Decoding &amp; KV Cache</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0a0a1a;color:#e0e0e0;padding:20px 20px 80px;line-height:1.7}
+h1{text-align:center;color:#fff;margin-bottom:4px;font-size:1.5em}
+.sub{text-align:center;color:#888;margin-bottom:24px;font-size:.88em}
+.nav{display:flex;justify-content:center;gap:6px;margin-bottom:20px;flex-wrap:wrap}
+.nav button{padding:7px 13px;border:2px solid #333;background:#111;color:#888;border-radius:8px;cursor:pointer;font-size:.78em;transition:.2s}
+.nav button:hover{border-color:#555;color:#ccc}
+.nav button.on{border-color:#4fc3f7;color:#4fc3f7;background:#0d2137}
+.nav button.done{border-color:#4caf50;color:#4caf50}
+.page{display:none;max-width:860px;margin:0 auto}
+.page.on{display:block}
+.page h2{color:#4fc3f7;margin-bottom:12px;font-size:1.2em}
+.card{background:#12122a;border:1px solid #2a2a4a;border-radius:12px;padding:18px;margin-bottom:14px}
+.card.blue{border-color:#4fc3f7;background:#0d1b2a}
+.card.green{border-color:#4caf50;background:#0a1a0a}
+.card.orange{border-color:#ff9800;background:#1a1400}
+.card.red{border-color:#ef5350;background:#1a0a0a}
+.card.purple{border-color:#ce93d8;background:#1a0a2a}
+.card h3{color:#ffb74d;margin-bottom:8px;font-size:1em}
+button.nx{padding:10px 24px;background:#4caf50;color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:.9em;margin-top:14px}
+button.nx:hover{background:#66bb6a}
+table{width:100%;border-collapse:collapse;margin:10px 0}
+th,td{padding:8px 12px;border:1px solid #333;text-align:center;font-size:.88em}
+th{background:#1a1a3a;color:#4fc3f7}
+td{text-align:left}
+.math{background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:14px;margin:10px 0;font-family:'Fira Code',Consolas,monospace;font-size:.85em;line-height:1.8}
+.math .line{margin:2px 0;display:block}
+.math .hl{background:#264f78;padding:2px 6px;border-radius:4px;display:inline-block}
+.math .cmt{color:#6a9955}
+.math .val{color:#b5cea8}
+.math .lbl{color:#9cdcfe}
+.key{color:#ffb74d;font-weight:600}
+.vs{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:10px 0}
+@media(max-width:650px){.vs{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<a href="../index.html" style="position:fixed;top:10px;left:14px;font-size:.75em;color:#555;text-decoration:none;z-index:999;padding:4px 8px;background:#0a0a1a;border:1px solid #333;border-radius:6px;">&larr; index</a>
+
+<h1>Transformer Ch6: Autoregressive Decoding &amp; KV Cache</h1>
+<p class="sub">How generation actually works — and why it's slow without caching</p>
+
+<div class="nav" id="nav"></div>
+
+<!-- PAGE 0 -->
+<div class="page on" data-t="0. Autoregressive Generation">
+<h2>0. Autoregressive Generation</h2>
+
+<div class="card blue">
+<h3>One token at a time</h3>
+<p>GPT generates text sequentially. Each new token requires a complete forward pass through all N transformer layers.</p>
+<div class="math">
+  <span class="line"><span class="cmt">// Generating "The cat sat on the mat" from nothing:</span></span>
+  <span class="line"></span>
+  <span class="line"><span class="lbl">Pass 1:</span> input=[BOS]           → predict "The"   → sequence=[BOS, The]</span>
+  <span class="line"><span class="lbl">Pass 2:</span> input=[BOS, The]      → predict "cat"   → sequence=[BOS, The, cat]</span>
+  <span class="line"><span class="lbl">Pass 3:</span> input=[BOS, The, cat] → predict "sat"   → sequence=[...]</span>
+  <span class="line"><span class="lbl">...</span></span>
+  <span class="line"><span class="cmt">// To generate T tokens: T forward passes</span></span>
+</div>
+</div>
+
+<div class="card red">
+<h3>The cost problem: O(T²) per generation</h3>
+<p>In each forward pass, attention is O(T²) — every token attends to every other. As generation proceeds, sequences get longer and each pass gets more expensive:</p>
+<div class="math">
+  <span class="line"><span class="cmt">// Attention ops at each generation step (seq len × seq len):</span></span>
+  <span class="line"><span class="lbl">Step 1:</span>   1 × 1 =    <span class="val">1</span>   ops</span>
+  <span class="line"><span class="lbl">Step 10:</span>  10 × 10 = <span class="val">100</span>   ops</span>
+  <span class="line"><span class="lbl">Step 50:</span>  50 × 50 = <span class="val">2,500</span> ops</span>
+  <span class="line"><span class="lbl">Step 100:</span> 100 × 100 = <span class="val">10,000</span> ops</span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// Total attention ops for 100 tokens: 1²+2²+...+100² = 338,350</span></span>
+  <span class="line"><span class="cmt">// But worse: we're RECOMPUTING K and V for past tokens every step!</span></span>
+</div>
+</div>
+
+<div class="card orange">
+<h3>The key insight about redundancy</h3>
+<p>At generation step 50, when processing the new token, we compute K and V for all 50 tokens — including the 49 we already processed in previous steps. <span class="key">Their K and V values haven't changed</span>. We're doing redundant work.</p>
+<div class="math">
+  <span class="line"><span class="cmt">// Step 50 (generating token 50):</span></span>
+  <span class="line"><span class="lbl">K[0..49]</span> = same as computed in steps 1..49  <span class="cmt">// redundant!</span></span>
+  <span class="line"><span class="lbl">V[0..49]</span> = same as computed in steps 1..49  <span class="cmt">// redundant!</span></span>
+  <span class="line"><span class="lbl">K[50]</span>    = new token's key                  <span class="cmt">// only new work</span></span>
+  <span class="line"><span class="lbl">V[50]</span>    = new token's value                <span class="cmt">// only new work</span></span>
+</div>
+</div>
+
+<button class="nx" onclick="go(1)">Next: The KV Cache →</button>
+</div>
+
+<!-- PAGE 1 -->
+<div class="page" data-t="1. The KV Cache">
+<h2>1. The KV Cache</h2>
+
+<div class="card green">
+<h3>The fix: cache K and V for all past tokens</h3>
+<p>Keep K and V for every past token in memory. When generating a new token, only compute K and V for the <em>new</em> token, then append to the cache.</p>
+<div class="math">
+  <span class="line"><span class="cmt">// Initialization (process the prompt "The cat" in one batch):</span></span>
+  <span class="line"><span class="lbl">cache_K</span> = [K_The, K_cat]   <span class="cmt">// 2 × d_k × num_layers</span></span>
+  <span class="line"><span class="lbl">cache_V</span> = [V_The, V_cat]   <span class="cmt">// 2 × d_v × num_layers</span></span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// Generating step: new token "sat"</span></span>
+  <span class="line"><span class="lbl">new_K</span> = sat_embedding · W_K  <span class="cmt">// only 1 token!</span></span>
+  <span class="line"><span class="lbl">new_V</span> = sat_embedding · W_V  <span class="cmt">// only 1 token!</span></span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// Attention for "sat": attend to all cached + new key/value</span></span>
+  <span class="line"><span class="lbl">all_K</span> = [cache_K, new_K]   <span class="cmt">// shape: 3 × d_k</span></span>
+  <span class="line"><span class="lbl">all_V</span> = [cache_V, new_V]   <span class="cmt">// shape: 3 × d_v</span></span>
+  <span class="line"><span class="lbl">score</span> = new_Q · all_K^T / sqrt(d_k)   <span class="cmt">// shape: 1 × 3</span></span>
+  <span class="line"><span class="lbl">attn</span>  = softmax(score)                 <span class="cmt">// shape: 1 × 3</span></span>
+  <span class="line"><span class="lbl">out</span>   = attn · all_V                   <span class="cmt">// shape: 1 × d_v</span></span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// Append to cache:</span></span>
+  <span class="line"><span class="lbl">cache_K</span> = [K_The, K_cat, K_sat]   <span class="cmt">// now 3 entries</span></span>
+  <span class="line"><span class="lbl">cache_V</span> = [V_The, V_cat, V_sat]</span>
+</div>
+</div>
+
+<div class="card blue">
+<h3>Complexity comparison</h3>
+<div class="math">
+  <span class="line"><span class="cmt">// Without cache — generating token t from sequence of length t:</span></span>
+  <span class="line"><span class="lbl">compute K, V for all t tokens</span> = O(t · d_model · d_k)</span>
+  <span class="line"><span class="lbl">attention</span>                     = O(t²)  <span class="cmt">// matrix multiply</span></span>
+  <span class="line"><span class="cmt">// Total for generating T tokens: O(T³) — cubic!</span></span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// With cache — generating token t:</span></span>
+  <span class="line"><span class="lbl">compute K, V for new token only</span> = O(1 · d_model · d_k)</span>
+  <span class="line"><span class="lbl">attention (1 query vs t keys)</span>   = O(t)  <span class="cmt">// just a vector-matrix multiply</span></span>
+  <span class="line"><span class="cmt">// Total for generating T tokens: O(T²) — quadratic, much better</span></span>
+</div>
+</div>
+
+<div class="card orange">
+<h3>Why Q isn't cached</h3>
+<p>Only K and V are cached, not Q. The query for each new token is fresh — it depends on the new token's content. But the keys and values of all past tokens are determined purely by those past tokens (they don't depend on future tokens due to the causal mask). So they're immutable once computed.</p>
+</div>
+
+<button class="nx" onclick="go(2)">Next: Concrete Numbers →</button>
+</div>
+
+<!-- PAGE 2 -->
+<div class="page" data-t="2. Concrete Numbers">
+<h2>2. Concrete Numbers</h2>
+
+<div class="card orange">
+<h3>Scenario: generate 100 tokens, d_model=512, 6 layers</h3>
+<div class="math">
+  <span class="line"><span class="cmt">// Attention operations at each step:</span></span>
+  <span class="line"><span class="cmt">// "ops" = number of dot products in Q·K^T</span></span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// WITHOUT KV Cache (recompute everything each step):</span></span>
+  <span class="line"><span class="lbl">Step 10:</span>   10 queries × 10 keys = <span class="val">100</span> dot products</span>
+  <span class="line"><span class="lbl">Step 50:</span>   50 queries × 50 keys = <span class="val">2,500</span> dot products</span>
+  <span class="line"><span class="lbl">Step 100:</span> 100 queries × 100 keys = <span class="val">10,000</span> dot products</span>
+  <span class="line"><span class="lbl">Total (all 100 steps):</span> 1² + 2² + ... + 100² = <span class="hl">338,350</span></span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// WITH KV Cache:</span></span>
+  <span class="line"><span class="lbl">Step 10:</span>   1 query × 10 keys = <span class="val">10</span> dot products</span>
+  <span class="line"><span class="lbl">Step 50:</span>   1 query × 50 keys = <span class="val">50</span> dot products</span>
+  <span class="line"><span class="lbl">Step 100:</span>  1 query × 100 keys = <span class="val">100</span> dot products</span>
+  <span class="line"><span class="lbl">Total (all 100 steps):</span> 1 + 2 + ... + 100 = <span class="hl">5,050</span></span>
+</div>
+</div>
+
+<table>
+<tr><th>Step</th><th>Without KV Cache (ops)</th><th>With KV Cache (ops)</th><th>Speedup</th></tr>
+<tr><td>10</td><td>100</td><td>10</td><td>10×</td></tr>
+<tr><td>25</td><td>625</td><td>25</td><td>25×</td></tr>
+<tr><td>50</td><td>2,500</td><td>50</td><td>50×</td></tr>
+<tr><td>100</td><td>10,000</td><td>100</td><td>100×</td></tr>
+<tr><td><span class="key">Total (T=100)</span></td><td><span class="key">338,350</span></td><td><span class="key">5,050</span></td><td><span class="key">~67×</span></td></tr>
+</table>
+
+<div class="card green">
+<h3>Real-world impact</h3>
+<div class="math">
+  <span class="line"><span class="cmt">// Llama-2-7B generating 1000 tokens:</span></span>
+  <span class="line"><span class="cmt">// Without cache: ~hours (each pass processes 1000 tokens)</span></span>
+  <span class="line"><span class="cmt">// With cache: ~30 seconds on A100 GPU</span></span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// At context length 2048, the speedup is ~2048×</span></span>
+  <span class="line"><span class="cmt">// KV cache is not optional for production inference</span></span>
+</div>
+</div>
+
+<button class="nx" onclick="go(3)">Next: Memory Tradeoff →</button>
+</div>
+
+<!-- PAGE 3 -->
+<div class="page" data-t="3. Memory Tradeoff">
+<h2>3. The Memory Cost of KV Cache</h2>
+
+<div class="card red">
+<h3>KV cache size formula</h3>
+<div class="math">
+  <span class="line"><span class="lbl">cache_size</span> = 2 × num_layers × num_heads × d_k × seq_len × bytes_per_element</span>
+  <span class="line"><span class="cmt">// Factor of 2: both K and V</span></span>
+  <span class="line"><span class="cmt">// num_heads × d_k = d_model for the key/value projection</span></span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// Simplified:</span></span>
+  <span class="line"><span class="lbl">cache_size</span> = 2 × num_layers × d_model × seq_len × dtype_bytes</span>
+</div>
+</div>
+
+<div class="card orange">
+<h3>Llama-2-7B: KV cache per request</h3>
+<div class="math">
+  <span class="line"><span class="cmt">// Llama-2-7B config:</span></span>
+  <span class="line"><span class="lbl">num_layers</span> = <span class="val">32</span></span>
+  <span class="line"><span class="lbl">d_model</span>    = <span class="val">4096</span></span>
+  <span class="line"><span class="lbl">seq_len</span>    = <span class="val">4096</span>  <span class="cmt">// context window</span></span>
+  <span class="line"><span class="lbl">dtype</span>      = float16 = <span class="val">2</span> bytes</span>
+  <span class="line"></span>
+  <span class="line"><span class="lbl">cache_size</span> = 2 × <span class="val">32</span> × <span class="val">4096</span> × <span class="val">4096</span> × <span class="val">2</span></span>
+  <span class="line">           = 2 × 32 × 4096 × 4096 × 2</span>
+  <span class="line">           = 2,147,483,648 bytes</span>
+  <span class="line">           = <span class="hl">~2 GB per request</span></span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// Compare: model weights = 7B × 2 bytes = ~14 GB</span></span>
+  <span class="line"><span class="cmt">// At seq_len=4096: KV cache = 14% of model size per request!</span></span>
+</div>
+</div>
+
+<div class="card blue">
+<h3>Why this matters: memory bound, not compute bound</h3>
+<p>For batch size 1 (single user), each new token generation step:</p>
+<div class="math">
+  <span class="line"><span class="cmt">// Compute: one query dot-product against T cached keys</span></span>
+  <span class="line"><span class="lbl">FLOPs per step</span> = 2 × T × d_model  <span class="cmt">// small</span></span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// Memory: must load entire KV cache from HBM (GPU memory)</span></span>
+  <span class="line"><span class="lbl">Bytes read</span> = 2 × num_layers × 2 × d_model × T × 2  <span class="cmt">// large</span></span>
+  <span class="line"></span>
+  <span class="line"><span class="cmt">// A100 GPU: 312 TFLOPS compute, 2 TB/s memory bandwidth</span></span>
+  <span class="line"><span class="cmt">// At T=1000, tokens: need ~650 MB/s reads, get 2 TB/s → underutilized</span></span>
+  <span class="line"><span class="cmt">// The GPU is waiting for data, not running out of compute</span></span>
+</div>
+<p style="margin-top:8px"><span class="key">Memory bandwidth is the bottleneck for autoregressive generation, not FLOPs.</span> This is why batching is critical: serving 100 requests simultaneously amortizes memory reads across tokens, approaching compute-bound operation.</p>
+</div>
+
+<div class="card purple">
+<h3>Optimizations that reduce KV cache size</h3>
+<table>
+<tr><th>Technique</th><th>How it works</th><th>Reduction</th></tr>
+<tr><td><span class="key">GQA (Grouped Query Attention)</span></td><td>Multiple query heads share one K, V head (Llama-2-70B uses GQA with 8 KV heads for 64 query heads)</td><td>8×</td></tr>
+<tr><td><span class="key">MQA (Multi-Query Attention)</span></td><td>All query heads share one K, V (used in Falcon, PaLM)</td><td>num_heads ×</td></tr>
+<tr><td><span class="key">Quantized KV cache</span></td><td>Store K, V in int8 instead of float16</td><td>2×</td></tr>
+<tr><td><span class="key">Sliding window attention</span></td><td>Only cache last W tokens (Mistral uses W=4096)</td><td>context_len / W ×</td></tr>
+</table>
+</div>
+</div>
+
+<script>
+const pages=document.querySelectorAll('.page'),nav=document.getElementById('nav');
+pages.forEach((p,i)=>{const b=document.createElement('button');b.textContent=p.dataset.t;b.onclick=()=>go(i);if(i===0)b.classList.add('on');nav.appendChild(b);});
+function go(n){pages.forEach((p,i)=>p.classList.toggle('on',i===n));nav.querySelectorAll('button').forEach((b,i)=>{b.classList.remove('on');if(i<n)b.classList.add('done');else b.classList.remove('done');if(i===n)b.classList.add('on');});window.scrollTo({top:0,behavior:'smooth'});}
+</script>
+</body>
+</html>

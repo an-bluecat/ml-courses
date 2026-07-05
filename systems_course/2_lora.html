@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Systems Ch2: LoRA</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0a0a1a;color:#e0e0e0;padding:20px 20px 80px;line-height:1.7}
+h1{text-align:center;color:#fff;margin-bottom:4px;font-size:1.5em}
+.sub{text-align:center;color:#888;margin-bottom:24px;font-size:.88em}
+.nav{display:flex;justify-content:center;gap:6px;margin-bottom:20px;flex-wrap:wrap}
+.nav button{padding:7px 13px;border:2px solid #333;background:#111;color:#888;border-radius:8px;cursor:pointer;font-size:.78em;transition:.2s}
+.nav button:hover{border-color:#555;color:#ccc}
+.nav button.on{border-color:#4fc3f7;color:#4fc3f7;background:#0d2137}
+.nav button.done{border-color:#4caf50;color:#4caf50}
+.page{display:none;max-width:860px;margin:0 auto}
+.page.on{display:block}
+.page h2{color:#4fc3f7;margin-bottom:12px;font-size:1.2em}
+.card{background:#12122a;border:1px solid #2a2a4a;border-radius:12px;padding:18px;margin-bottom:14px}
+.card.blue{border-color:#4fc3f7;background:#0d1b2a}
+.card.green{border-color:#4caf50;background:#0a1a0a}
+.card.orange{border-color:#ff9800;background:#1a1400}
+.card.red{border-color:#ef5350;background:#1a0a0a}
+.card.purple{border-color:#ce93d8;background:#1a0a2a}
+.card h3{color:#ffb74d;margin-bottom:8px;font-size:1em}
+button.nx{padding:10px 24px;background:#4caf50;color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:.9em;margin-top:14px}
+button.nx:hover{background:#66bb6a}
+table{width:100%;border-collapse:collapse;margin:10px 0}
+th,td{padding:8px 12px;border:1px solid #333;text-align:center;font-size:.88em}
+th{background:#1a1a3a;color:#4fc3f7}
+td{text-align:left}
+.math{background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:14px;margin:10px 0;font-family:'Fira Code',Consolas,monospace;font-size:.85em;line-height:1.8}
+.math .line{margin:2px 0;display:block}
+.math .hl{background:#264f78;padding:2px 6px;border-radius:4px;display:inline-block}
+.math .cmt{color:#6a9955}
+.math .val{color:#b5cea8}
+.math .lbl{color:#9cdcfe}
+.key{color:#ffb74d;font-weight:600}
+.vs{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:10px 0}
+@media(max-width:650px){.vs{grid-template-columns:1fr}}
+.pipeline{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:center;margin:14px 0}
+.pipe-box{border-radius:8px;padding:8px 12px;font-size:.8em;text-align:center;border:2px solid}
+.pipe-box.p{border-color:#ce93d8;color:#ce93d8;background:#2a0a3a}
+.pipe-box.c{border-color:#4fc3f7;color:#4fc3f7;background:#1a3a5c}
+.pipe-box.a{border-color:#ffb74d;color:#ffb74d;background:#3a2a0a}
+.pipe-box.g{border-color:#4caf50;color:#4caf50;background:#0a3a0a}
+.pipe-arr{color:#666;font-size:1.2em}
+.chip{display:inline-block;padding:2px 8px;border-radius:4px;font-size:.72em;font-weight:600;margin:2px}
+.chip.big{background:rgba(239,83,80,.15);color:#ef5350;border:1px solid rgba(239,83,80,.4)}
+.chip.small{background:rgba(76,175,80,.15);color:#4caf50;border:1px solid rgba(76,175,80,.4)}
+.chip.freeze{background:rgba(79,195,247,.15);color:#4fc3f7;border:1px solid rgba(79,195,247,.4)}
+.step-head{font-size:.82em;font-weight:700;color:#4fc3f7;margin:16px 0 8px;padding-top:12px;border-top:1px solid #2a2a4a}
+.step-head:first-child{border-top:none;padding-top:0;margin-top:0}
+.matrix-row{display:flex;gap:4px;align-items:center;font-family:monospace;font-size:.8em;margin:4px 0}
+.mat-box{border:1px solid #444;border-radius:4px;padding:4px 8px;background:#1a1a2e;color:#9cdcfe}
+.mat-dim{color:#666;font-size:.85em;margin-left:4px}
+</style>
+</head>
+<body>
+<a href="../index.html" style="position:fixed;top:10px;left:14px;font-size:.75em;color:#555;text-decoration:none;z-index:999;padding:4px 8px;background:#0a0a1a;border:1px solid #333;border-radius:6px;">&larr; index</a>
+
+<h1>Systems Ch2: LoRA</h1>
+<p class="sub">Fine-tune a 7B model with 0.1% of the parameters</p>
+
+<div class="nav" id="nav"></div>
+
+<!-- PAGE 0 -->
+<div class="page on" data-t="0. The Problem">
+<h2>Fine-Tuning a 7B Model — The Memory Math</h2>
+
+<div class="card red">
+<h3>Full fine-tune: the numbers are brutal</h3>
+<div class="math">
+<span class="line cmt">// Llama-2-7B parameter count and size</span>
+<span class="line"><span class="lbl">Params</span>      = 7,000,000,000</span>
+<span class="line"><span class="lbl">Size (FP32)</span> = 7B × 4 bytes = <span class="val">28 GB</span></span>
+<span class="line"><span class="lbl">Size (BF16)</span> = 7B × 2 bytes = <span class="val">14 GB</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Adam optimizer states (momentum + variance = 2× params)</span>
+<span class="line"><span class="lbl">Adam states</span> = 7B × 2 × 4 bytes = <span class="val">56 GB</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Activations for backprop (depends on batch size, seq len)</span>
+<span class="line"><span class="lbl">Activations</span> ≈ 20–40 GB (batch=4, seq=2048)</span>
+<span class="line">&nbsp;</span>
+<span class="line"><span class="hl">Total ≈ 14 + 56 + 30 = ~100 GB</span></span>
+<span class="line"><span class="lbl">A100 80GB VRAM</span>: ← <span class="val">doesn't fit</span></span>
+</div>
+</div>
+
+<div class="card orange">
+<h3>Storage problem — 100 fine-tuned variants</h3>
+<div class="math">
+<span class="line cmt">// Each fine-tuned model is a separate 14GB copy</span>
+<span class="line"><span class="lbl">1 variant</span>  = 14 GB</span>
+<span class="line"><span class="lbl">10 variants</span> = 140 GB</span>
+<span class="line"><span class="lbl">100 variants</span>= <span class="val">1.4 TB</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Real use case: a company with 100 customer-specific LLM models</span>
+<span class="line cmt">// Full fine-tune: each customer needs a full 14GB model checkpoint</span>
+<span class="line cmt">// LoRA: shared 14GB base + 34MB adapter per customer</span>
+<span class="line"><span class="hl">LoRA 100 variants: 14 GB base + 100 × 34 MB = 17.4 GB total</span></span>
+</div>
+</div>
+
+<div class="card">
+<h3>What we need</h3>
+<p>A way to adapt the model to a new task that:</p>
+<ul style="margin-left:18px;margin-top:6px">
+  <li>Fits in GPU memory (&lt;80GB, ideally &lt;10GB)</li>
+  <li>Stores a tiny diff, not the entire model</li>
+  <li>Doesn't hurt model quality by more than a few percent</li>
+</ul>
+<p style="margin-top:10px"><span class="key">LoRA (Low-Rank Adaptation) does all three.</span></p>
+</div>
+
+<button class="nx" onclick="go(1)">The LoRA idea →</button>
+</div>
+
+<!-- PAGE 1 -->
+<div class="page" data-t="1. The LoRA Idea">
+<h2>Low-Rank Adaptation — The Core Idea</h2>
+
+<div class="card blue">
+<h3>Instead of updating W, add a small detour</h3>
+<div class="math">
+<span class="line cmt">// Standard fine-tuning: update W directly</span>
+<span class="line"><span class="lbl">W_new</span> = W + ΔW     <span class="cmt">// ΔW is same shape as W: (d × d)</span></span>
+<span class="line"><span class="lbl">Size of ΔW</span> (d=4096) = 4096 × 4096 × 2 bytes = <span class="val">32 MB per layer</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// LoRA: decompose ΔW into two thin matrices</span>
+<span class="line"><span class="lbl">ΔW</span> = B × A</span>
+<span class="line"><span class="lbl">A</span>  is shape (r × d)  <span class="cmt">// "down-projection"</span></span>
+<span class="line"><span class="lbl">B</span>  is shape (d × r)  <span class="cmt">// "up-projection"</span></span>
+<span class="line"><span class="lbl">r</span>  << d              <span class="cmt">// rank, typically 4–64</span></span>
+</div>
+</div>
+
+<div class="card">
+<h3>Parameter count comparison — d=4096, r=8</h3>
+<div class="math">
+<span class="line cmt">// Full weight matrix W</span>
+<span class="line"><span class="lbl">W params</span> = 4096 × 4096 = <span class="val">16,777,216</span>  (16M)</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// LoRA matrices A and B</span>
+<span class="line"><span class="lbl">A params</span> = r × d = 8 × 4096     = <span class="val">32,768</span>  (32K)</span>
+<span class="line"><span class="lbl">B params</span> = d × r = 4096 × 8     = <span class="val">32,768</span>  (32K)</span>
+<span class="line"><span class="lbl">Total</span>    = 32K + 32K              = <span class="val hl">65,536</span>  (64K)</span>
+<span class="line">&nbsp;</span>
+<span class="line"><span class="lbl">Compression ratio</span> = 16M / 64K = <span class="val">256×</span> fewer parameters</span>
+</div>
+<p style="margin-top:8px">W is <span class="chip big">frozen</span> during training — only A and B are updated.</p>
+</div>
+
+<div class="card green">
+<h3>Initialization — why B starts at zero</h3>
+<div class="math">
+<span class="line cmt">// Initialization</span>
+<span class="line"><span class="lbl">A</span> ~ random Gaussian (normal init)</span>
+<span class="line"><span class="lbl">B</span> = 0  (zero init)</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// At the start of training: ΔW = B × A = 0 × A = 0</span>
+<span class="line cmt">// The model starts identical to the pretrained model.</span>
+<span class="line cmt">// As training proceeds, B learns to use the directions in A.</span>
+</div>
+<p style="margin-top:8px">This is important — if ΔW started non-zero, we'd introduce noise before training even starts. The zero-B initialization means the adapter is a no-op initially.</p>
+</div>
+
+<div class="card orange">
+<h3>Scaling factor alpha/r</h3>
+<div class="math">
+<span class="line cmt">// LoRA uses a scaling constant to control adaptation strength</span>
+<span class="line"><span class="lbl">output</span> = W×x + (alpha/r) × B×A×x</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Typical: alpha=16, r=8 → scale = 2.0</span>
+<span class="line cmt">// alpha=r → scale = 1.0 (no scaling)</span>
+<span class="line cmt">// Purpose: decouple learning rate from rank choice</span>
+<span class="line cmt">// When you double r, halving alpha keeps same effective LR</span>
+</div>
+</div>
+
+<button class="nx" onclick="go(2)">The math — why low rank? →</button>
+</div>
+
+<!-- PAGE 2 -->
+<div class="page" data-t="2. The Math">
+<h2>Why Low Rank? — The Forward Pass with Numbers</h2>
+
+<div class="card blue">
+<h3>The hypothesis: fine-tuning has low intrinsic dimensionality</h3>
+<p>When you fine-tune a pretrained model on a specific task (e.g., turning GPT into a chat model), the weight updates ΔW have many near-zero singular values. Most of the "useful change" happens in just a few directions.</p>
+<div class="math">
+<span class="line cmt">// Singular value decomposition of ΔW during fine-tuning</span>
+<span class="line"><span class="lbl">ΔW</span> = U × Σ × Vᵀ</span>
+<span class="line"><span class="lbl">Σ</span> = diag([12.3, 8.7, 4.1, 1.2, 0.3, 0.07, 0.02, ...])</span>
+<span class="line cmt">// Most singular values are small. Top-8 capture ~98% of the update.</span>
+<span class="line cmt">// LoRA with r=8 approximates this without computing the full SVD.</span>
+</div>
+</div>
+
+<div class="card">
+<h3>The forward pass — step by step, with shapes</h3>
+<div class="math">
+<span class="line cmt">// Input x, output h. d=4096, r=8</span>
+<span class="line"><span class="lbl">x</span>    : (4096 × 1)  <span class="cmt">// one token embedding</span></span>
+<span class="line"><span class="lbl">W</span>    : (4096 × 4096) <span class="cmt">// frozen, loaded from pretrained model</span></span>
+<span class="line"><span class="lbl">A</span>    : (8 × 4096)   <span class="cmt">// trainable, small</span></span>
+<span class="line"><span class="lbl">B</span>    : (4096 × 8)   <span class="cmt">// trainable, small</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Step 1: original path (frozen W)</span>
+<span class="line"><span class="lbl">W×x</span>  = (4096×4096) × (4096×1) = <span class="val">(4096×1)</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Step 2: LoRA path (A×x first — cheap!)</span>
+<span class="line"><span class="lbl">A×x</span>  = (8×4096) × (4096×1)   = <span class="val">(8×1)</span>    ← 8-dim bottleneck</span>
+<span class="line"><span class="lbl">B×(A×x)</span> = (4096×8) × (8×1)  = <span class="val">(4096×1)</span> ← back to full dim</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Step 3: add</span>
+<span class="line"><span class="lbl">h</span> = W×x + (alpha/r) × B×(A×x)</span>
+</div>
+</div>
+
+<div class="card green">
+<h3>FLOPs comparison</h3>
+<div class="math">
+<span class="line cmt">// FLOPs for one forward pass, one token (d=4096, r=8)</span>
+<span class="line"><span class="lbl">W×x FLOPs</span>    = 2 × 4096 × 4096 = <span class="val">33.6M</span>  (frozen, same as before)</span>
+<span class="line"><span class="lbl">A×x FLOPs</span>    = 2 × 8 × 4096    = <span class="val">65K</span>   (0.2% of W×x)</span>
+<span class="line"><span class="lbl">B×(A×x) FLOPs</span>= 2 × 4096 × 8   = <span class="val">65K</span></span>
+<span class="line"><span class="lbl">LoRA overhead</span>= 130K / 33.6M   = <span class="val">0.4%</span>  ← negligible inference cost</span>
+</div>
+<p style="margin-top:8px">At inference, you can also <strong>merge the weights</strong>: W_merged = W + B×A. Then the merged model is exactly as fast as the original — zero overhead.</p>
+</div>
+
+<div class="card orange">
+<h3>Why not just use rank 1? Why rank 8?</h3>
+<div class="math">
+<span class="line cmt">// Rank 1: only 1 direction of adaptation</span>
+<span class="line"><span class="lbl">r=1</span>: A is (1×4096), B is (4096×1)</span>
+<span class="line"><span class="lbl">Params</span>: 4096 + 4096 = 8K   ← very cheap</span>
+<span class="line"><span class="lbl">Expressivity</span>: can only change one direction in weight space</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Rank 8: 8 independent directions</span>
+<span class="line"><span class="lbl">r=8</span>: Params = 64K. Can capture 8 orthogonal task-specific directions.</span>
+<span class="line cmt">// Typical sweet spot for instruction fine-tuning and chat tasks</span>
+<span class="line cmt">// r=16 or r=32 for complex tasks (code generation, reasoning)</span>
+<span class="line cmt">// r=64 rarely helps — most task updates fit in r=8-16</span>
+</div>
+</div>
+
+<button class="nx" onclick="go(3)">Concrete numbers for Llama-2-7B →</button>
+</div>
+
+<!-- PAGE 3 -->
+<div class="page" data-t="3. Concrete Numbers">
+<h2>Llama-2-7B Fine-Tuning — All the Numbers</h2>
+
+<div class="card blue">
+<h3>Where LoRA is applied — attention projections</h3>
+<div class="math">
+<span class="line cmt">// Llama-2-7B attention projections per layer</span>
+<span class="line"><span class="lbl">Q projection</span>: W_Q shape = (4096 × 4096)</span>
+<span class="line"><span class="lbl">K projection</span>: W_K shape = (4096 × 4096)</span>
+<span class="line"><span class="lbl">V projection</span>: W_V shape = (4096 × 4096)</span>
+<span class="line"><span class="lbl">O projection</span>: W_O shape = (4096 × 4096)</span>
+<span class="line"><span class="lbl">Layers</span>      : 32</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// LoRA r=8 on all 4 projections, all 32 layers</span>
+<span class="line"><span class="lbl">Per projection</span> = 2 × r × d = 2 × 8 × 4096 = 65,536 params</span>
+<span class="line"><span class="lbl">Per layer</span>      = 4 × 65,536 = 262,144 params</span>
+<span class="line"><span class="lbl">All layers</span>     = 32 × 262,144 = <span class="val hl">8,388,608 ≈ 8.4M params</span></span>
+<span class="line">&nbsp;</span>
+<span class="line"><span class="lbl">Fraction of 7B</span> = 8.4M / 7000M = <span class="val">0.12%</span></span>
+</div>
+</div>
+
+<div class="card green">
+<h3>Memory at training time</h3>
+<div class="math">
+<span class="line cmt">// Full fine-tune memory (BF16 weights, FP32 optimizer)</span>
+<span class="line"><span class="lbl">Model weights (BF16)</span>  = 7B × 2 = <span class="val">14 GB</span></span>
+<span class="line"><span class="lbl">Adam momentum (FP32)</span>  = 7B × 4 = 28 GB</span>
+<span class="line"><span class="lbl">Adam variance (FP32)</span>  = 7B × 4 = 28 GB</span>
+<span class="line"><span class="lbl">Activations</span>          ≈ 30 GB</span>
+<span class="line"><span class="hl">Total: ~100 GB</span>  ← needs 2× A100 at minimum</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// LoRA fine-tune memory (frozen base + trainable adapters)</span>
+<span class="line"><span class="lbl">Frozen model (BF16)</span>   = 7B × 2 = 14 GB  (no optimizer states!)</span>
+<span class="line"><span class="lbl">LoRA weights (FP32)</span>   = 8.4M × 4 = 34 MB</span>
+<span class="line"><span class="lbl">Adam on LoRA only</span>     = 8.4M × 8 = 67 MB</span>
+<span class="line"><span class="lbl">Activations (no grad)</span>≈ 2–4 GB  (frozen layers need no grad)</span>
+<span class="line"><span class="hl">Total: ~16–18 GB</span>  ← fits on a single 24GB consumer GPU!</span>
+</div>
+</div>
+
+<div class="card">
+<h3>Quality comparison</h3>
+<table>
+<tr><th>Method</th><th>Trainable Params</th><th>Memory</th><th>MT-Bench Score</th></tr>
+<tr><td>Full fine-tune</td><td>7B (100%)</td><td>~100 GB</td><td>6.27</td></tr>
+<tr><td>LoRA r=8</td><td>8.4M (0.12%)</td><td>~18 GB</td><td>6.13</td></tr>
+<tr><td>LoRA r=64</td><td>67M (0.96%)</td><td>~19 GB</td><td>6.22</td></tr>
+</table>
+<p style="margin-top:8px;font-size:.85em;color:#888">LoRA r=8 is within 2% of full fine-tune quality while using 5× less memory. The gap closes further with QLoRA.</p>
+</div>
+
+<div class="card purple">
+<h3>Adapter file size — what you actually ship</h3>
+<div class="math">
+<span class="line cmt">// The LoRA checkpoint contains only A and B matrices</span>
+<span class="line"><span class="lbl">8.4M params × 2 bytes (BF16)</span> = <span class="val">16.8 MB</span></span>
+<span class="line"><span class="lbl">With metadata</span>                  ≈ <span class="val">34 MB</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Compare to full fine-tuned model</span>
+<span class="line"><span class="lbl">Full checkpoint</span>                = 13 GB (BF16) + 5 GB (FP32 layers)</span>
+<span class="line"><span class="hl">Compression: 13 GB → 34 MB = 400× smaller</span></span>
+</div>
+</div>
+
+<button class="nx" onclick="go(4)">QLoRA and 4-bit →</button>
+</div>
+
+<!-- PAGE 4 -->
+<div class="page" data-t="4. QLoRA and 4-bit">
+<h2>QLoRA — Fine-Tuning a 7B Model on 4GB</h2>
+
+<div class="card blue">
+<h3>QLoRA = quantized base model + LoRA adapters in full precision</h3>
+<div class="math">
+<span class="line cmt">// QLoRA idea (Dettmers et al., 2023)</span>
+<span class="line">1. Quantize base model to 4-bit (NF4 format)    ← saves ~8×</span>
+<span class="line">2. Add LoRA adapters in BF16                    ← full precision</span>
+<span class="line">3. During forward pass: dequantize NF4 → BF16 on the fly</span>
+<span class="line">4. Compute gradients only for LoRA params</span>
+</div>
+</div>
+
+<div class="card green">
+<h3>Memory numbers — Llama-2-7B in 4-bit</h3>
+<div class="math">
+<span class="line cmt">// NF4 quantization: 4 bits per weight = 0.5 bytes</span>
+<span class="line"><span class="lbl">Base model (NF4)</span>    = 7B × 0.5 bytes = <span class="val">3.5 GB</span></span>
+<span class="line"><span class="lbl">NF4 scales/offsets</span> ≈ 0.2 GB</span>
+<span class="line"><span class="lbl">LoRA params (BF16)</span> = 8.4M × 2 = 17 MB</span>
+<span class="line"><span class="lbl">Adam on LoRA</span>       = 8.4M × 8 = 67 MB</span>
+<span class="line"><span class="lbl">Activations</span>       ≈ 1–2 GB</span>
+<span class="line"><span class="hl">Total: ~5–6 GB</span>  ← fits on RTX 3060 (12GB)!</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// Llama-2-70B in QLoRA</span>
+<span class="line"><span class="lbl">Base (NF4)</span>         = 70B × 0.5 = <span class="val">35 GB</span></span>
+<span class="line"><span class="lbl">LoRA + optimizer</span>  ≈ 2 GB</span>
+<span class="line"><span class="hl">Total: ~37 GB  ← fits on a single A100 80GB!</span></span>
+</div>
+</div>
+
+<div class="card orange">
+<h3>NF4 — why "Normal Float 4"?</h3>
+<div class="math">
+<span class="line cmt">// Standard INT4: 16 evenly-spaced values from -8 to +7</span>
+<span class="line"><span class="lbl">INT4 values</span> = [-8, -7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7]</span>
+<span class="line cmt">// Problem: weights are normally distributed (many near 0, few large)</span>
+<span class="line cmt">// Evenly-spaced bins waste precision — most weights in middle</span>
+<span class="line">&nbsp;</span>
+<span class="line cmt">// NF4: 16 values chosen to be the quantiles of N(0,1)</span>
+<span class="line"><span class="lbl">NF4 values</span> = [-1.00, -0.69, -0.52, -0.40, -0.28, -0.17, -0.09, -0.01,</span>
+<span class="line">               0.07,  0.18,  0.28,  0.39,  0.52,  0.69,  1.00]</span>
+<span class="line cmt">// Values are denser near 0 where most weights actually live</span>
+<span class="line cmt">// This minimizes quantization error for normally-distributed weights</span>
+</div>
+<p style="margin-top:8px">The key property: each NF4 bin has the same probability mass under a standard normal. This means each code captures an equal "amount" of the weight distribution — no wasted bins.</p>
+</div>
+
+<div class="card">
+<h3>The dequantize-on-the-fly trick</h3>
+<p>NF4 weights can't do math directly. During the forward pass, each block of weights is dequantized from 4-bit to BF16 just before the matrix multiply, then discarded. The memory footprint stays at 4-bit.</p>
+<div class="math">
+<span class="line cmt">// Per matrix multiply in forward pass:</span>
+<span class="line">1. Load 4-bit weight block from HBM → SRAM (0.5 bytes/weight)</span>
+<span class="line">2. Dequantize: 4-bit → BF16 (lookup table, fast)  → SRAM</span>
+<span class="line">3. Compute BF16 GEMM                              → SRAM</span>
+<span class="line">4. Discard BF16 weights (don't write back to HBM)</span>
+<span class="line cmt">// Cost: ~20% slower than native BF16 due to dequantize overhead</span>
+<span class="line cmt">// Benefit: base model fits in 4× less memory</span>
+</div>
+</div>
+
+<div class="card blue">
+<h3>What LoRA can't adapt — the FFN layers</h3>
+<p>Standard LoRA targets only attention Q/K/V/O projections. The FFN layers (which are ~2/3 of parameters) are usually left frozen. Some recent work (DoRA, LoRA+) also applies LoRA to FFN, using more rank or targeting specific important layers. For most chat/instruction tasks, Q/V alone (2 projections per layer) is sufficient.</p>
+</div>
+</div>
+
+<script>
+const pages=document.querySelectorAll('.page'),nav=document.getElementById('nav');
+pages.forEach((p,i)=>{const b=document.createElement('button');b.textContent=p.dataset.t;b.onclick=()=>go(i);if(i===0)b.classList.add('on');nav.appendChild(b);});
+function go(n){pages.forEach((p,i)=>p.classList.toggle('on',i===n));nav.querySelectorAll('button').forEach((b,i)=>{b.classList.remove('on');if(i<n)b.classList.add('done');else b.classList.remove('done');if(i===n)b.classList.add('on');});window.scrollTo({top:0,behavior:'smooth'});}
+</script>
+</body>
+</html>

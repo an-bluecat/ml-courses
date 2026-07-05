@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chapter 4: Actor-Critic — Taming the Variance</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Segoe UI',system-ui,sans-serif;background:#0a0a1a;color:#e0e0e0;padding:20px;line-height:1.6}
+  h1{text-align:center;color:#fff;margin-bottom:6px;font-size:1.5em}
+  .sub{text-align:center;color:#888;margin-bottom:24px;font-size:.9em}
+  .nav{display:flex;justify-content:center;gap:5px;margin-bottom:20px;flex-wrap:wrap}
+  .nav button{padding:7px 12px;border:2px solid #333;background:#111;color:#888;border-radius:8px;cursor:pointer;font-size:.8em;transition:.2s}
+  .nav button:hover{border-color:#555;color:#ccc}
+  .nav button.on{border-color:#4fc3f7;color:#4fc3f7;background:#0d2137}
+  .nav button.done{border-color:#4caf50;color:#4caf50}
+  .step{display:none;max-width:920px;margin:0 auto}
+  .step.on{display:block}
+  .step h2{color:#4fc3f7;margin-bottom:10px;font-size:1.25em}
+  .step h3{color:#ffb74d;margin:14px 0 6px;font-size:1em}
+  .card{background:#12122a;border:1px solid #2a2a4a;border-radius:12px;padding:18px;margin-bottom:14px}
+  .card.hi{border-color:#4fc3f7;background:#0d1b2a}
+  .card.warn{border-color:#ff9800;background:#1a1400}
+  .card.ok{border-color:#4caf50;background:#0a1a0a}
+  .card.red{border-color:#ef5350;background:#1a0a0a}
+  pre{background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:14px;overflow-x:auto;margin:10px 0;font-size:.88em;line-height:1.5}
+  code{font-family:'Fira Code',Consolas,monospace}
+  .cmt{color:#6a9955}.kw{color:#c586c0}.num{color:#b5cea8}.str{color:#ce9178}.var{color:#9cdcfe}.fn{color:#dcdcaa}.hl{background:#264f78;display:inline-block;width:100%;padding:0 4px;margin:0 -4px;border-radius:3px}
+  .diagram{display:flex;align-items:center;justify-content:center;gap:10px;margin:14px 0;flex-wrap:wrap}
+  .box{padding:10px 16px;border-radius:10px;text-align:center;font-weight:600;font-size:.9em}
+  .b-bl{background:#1a3a5c;border:2px solid #4fc3f7;color:#4fc3f7}
+  .b-or{background:#3a2a0a;border:2px solid #ffb74d;color:#ffb74d}
+  .b-gr{background:#0a3a0a;border:2px solid #4caf50;color:#4caf50}
+  .b-rd{background:#3a0a0a;border:2px solid #ef5350;color:#ef5350}
+  .b-pu{background:#2a0a3a;border:2px solid #ce93d8;color:#ce93d8}
+  .arr{color:#666;font-size:1.4em}
+  .cmp{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:10px 0}
+  @media(max-width:650px){.cmp{grid-template-columns:1fr}}
+  table{width:100%;border-collapse:collapse;margin:10px 0}
+  th,td{padding:7px 10px;border:1px solid #333;text-align:center;font-size:.9em}
+  th{background:#1a1a3a;color:#4fc3f7}
+  .key{color:#ffb74d;font-weight:600}
+  button.nx{padding:10px 22px;background:#4caf50;color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:.9em;margin-top:14px}
+  button.nx:hover{background:#66bb6a}
+  button.run{padding:9px 20px;background:#4fc3f7;color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:.9em}
+  button.run:hover{background:#81d4fa}
+  canvas{border-radius:8px;display:block;margin:10px auto}
+  .val{color:#4fc3f7;font-weight:700;min-width:40px}
+  .controls{display:flex;gap:10px;align-items:center;margin:10px 0;flex-wrap:wrap}
+</style>
+</head>
+<body>
+<a href="../index.html" style="position:fixed;top:10px;left:14px;font-size:.75em;color:#555;text-decoration:none;z-index:999;padding:4px 8px;background:#0a0a1a;border:1px solid #333;border-radius:6px;">&larr; index</a>
+
+<h1>Chapter 4: Actor-Critic</h1>
+<p class="sub">The variance problem and why you need a baseline</p>
+
+<div class="nav" id="nav"></div>
+
+<!-- ===== STEP 0 ===== -->
+<div class="step on" data-s="0. The Problem">
+  <h2>Why REINFORCE Is Noisy</h2>
+
+  <div class="card red">
+    <h3>A concrete example of the problem</h3>
+<pre><code><span class="cmt"># Three episodes of the gridworld, all reaching treasure:</span>
+
+<span class="cmt"># Episode A: stumbles around, 15 steps → return = -5 + 10 = +5</span>
+<span class="cmt"># Episode B: lucky direct path, 6 steps → return = -5 + 10 = +5</span>
+<span class="cmt"># Episode C: terrible luck, 40 steps  → return = -39 + 10 = -29</span>
+</code></pre>
+    <p>REINFORCE treats episode A and B equally (same return!) even though B's actions were much better. And C's actions get punished even though some of them were perfectly fine.</p>
+  </div>
+
+  <div class="card warn">
+    <h3>The root cause: "good" vs "bad" depends on context</h3>
+    <div class="cmp">
+      <div class="card">
+        <p><strong>At state (3,2)</strong> — one step from treasure</p>
+        <p>Expected return from here: about <strong>+9</strong></p>
+        <p>If you get +9: totally normal</p>
+        <p>If you get +5: that's <em>bad</em> (below expectation)</p>
+      </div>
+      <div class="card">
+        <p><strong>At state (0,0)</strong> — far from treasure</p>
+        <p>Expected return from here: about <strong>+3</strong></p>
+        <p>If you get +5: that's <em>great</em> (above expectation)</p>
+        <p>If you get +3: totally normal</p>
+      </div>
+    </div>
+    <p><strong>Return = +5</strong> can be great news OR bad news depending on <em>where you are</em>. Raw return can't tell you which.</p>
+  </div>
+
+  <div class="card ok">
+    <h3>The fix is obvious once you see the problem</h3>
+    <p>Don't ask "was the return high?"</p>
+    <p>Ask <strong>"was the return higher than I EXPECTED?"</strong></p>
+    <div style="font-size:1.2em;text-align:center;margin:14px 0;font-weight:700;">
+      <span style="color:#ce93d8;">Advantage = Actual Return &minus; Expected Return</span>
+    </div>
+  </div>
+  <button class="nx" onclick="go(1)">Next: What is "expected return"? &#x2192;</button>
+</div>
+
+<!-- ===== STEP 1 ===== -->
+<div class="step" data-s="1. The Value Function">
+  <h2>V(s) — The Critic's Job</h2>
+
+  <div class="card hi">
+    <h3>The Value Function: "From this state, what do I usually get?"</h3>
+<pre><code><span class="cmt"># V(s) = expected return starting from state s, following current policy</span>
+<span class="cmt">#</span>
+<span class="cmt"># V(3,2) ≈ +9    "one step from treasure, usually get ~9"</span>
+<span class="cmt"># V(0,0) ≈ +3    "far from treasure, usually get ~3 after all those -1 steps"</span>
+<span class="cmt"># V(1,0) ≈ -2    "near the pit, often fall in, usually bad"</span>
+<span class="cmt"># V(3,3) = 0     "at treasure, game's over, no more rewards"</span>
+</code></pre>
+    <p>V(s) is the <strong>baseline</strong>. It's what you'd expect if you did nothing special — just followed your current policy.</p>
+  </div>
+
+  <div class="card">
+    <h3>How do we learn V(s)?</h3>
+    <p>Same way the Q-table learned: after each episode, compare prediction to reality.</p>
+<pre><code><span class="cmt"># The Critic is a second neural network (or a second output head)</span>
+<span class="cmt"># Input: state → Output: a single number V(s)</span>
+<span class="cmt">#</span>
+<span class="cmt"># After an episode, we know the actual return G at each step.</span>
+<span class="cmt"># Train the Critic to predict it:</span>
+<span class="var">critic_loss</span> = (<span class="var">V</span>(<span class="var">state</span>) - <span class="var">G_actual</span>)&#xB2;  <span class="cmt"># simple MSE</span>
+<span class="cmt"># "Make V(s) closer to the return we actually observed"</span>
+<span class="cmt"># Over many episodes, V(s) converges to the true expected return.</span>
+</code></pre>
+  </div>
+  <button class="nx" onclick="go(2)">Next: Advantage — the clean signal &#x2192;</button>
+</div>
+
+<!-- ===== STEP 2 ===== -->
+<div class="step" data-s="2. Advantage">
+  <h2>Advantage = "Better or Worse Than Expected?"</h2>
+
+  <div class="card hi">
+    <h3>The formula (you already know every piece)</h3>
+<pre><code><span class="var">advantage</span> = <span class="var">G_actual</span> - <span class="var">V</span>(<span class="var">state</span>)
+<span class="cmt">#            ^^^^^^^^    ^^^^^^^^</span>
+<span class="cmt">#            what I got   what I expected</span>
+</code></pre>
+  </div>
+
+  <div class="card">
+    <h3>Three scenarios with numbers</h3>
+    <table>
+      <tr><th>State</th><th>V(s)</th><th>Actual G</th><th>Advantage</th><th>Meaning</th></tr>
+      <tr>
+        <td>(0,0)</td><td>+3</td><td>+7</td>
+        <td style="color:#4caf50;font-weight:700">+4</td>
+        <td style="text-align:left">Much better than expected! <strong>Reinforce this action hard.</strong></td>
+      </tr>
+      <tr>
+        <td>(3,2)</td><td>+9</td><td>+9</td>
+        <td style="color:#888;font-weight:700">0</td>
+        <td style="text-align:left">Exactly as expected. <strong>Don't change anything.</strong></td>
+      </tr>
+      <tr>
+        <td>(2,1)</td><td>+4</td><td>-2</td>
+        <td style="color:#ef5350;font-weight:700">-6</td>
+        <td style="text-align:left">Much worse than expected! <strong>Discourage this action.</strong></td>
+      </tr>
+    </table>
+  </div>
+
+  <div class="card ok">
+    <h3>This fixes REINFORCE's problem</h3>
+    <div class="cmp">
+      <div class="card red">
+        <p><strong>REINFORCE (Ch.3)</strong></p>
+<pre><code><span class="var">loss</span> = -<span class="fn">log</span>(<span class="var">P</span>) * <span class="var">G</span>
+<span class="cmt"># G=+5 at start: "push hard!"</span>
+<span class="cmt"># G=+5 near treasure: "push hard!"</span>
+<span class="cmt"># Same push. But +5 at start is</span>
+<span class="cmt"># great, +5 near treasure is bad.</span>
+</code></pre>
+      </div>
+      <div class="card ok">
+        <p><strong>Actor-Critic (Ch.4)</strong></p>
+<pre><code><span class="var">loss</span> = -<span class="fn">log</span>(<span class="var">P</span>) * <span class="var">advantage</span>
+<span class="cmt"># adv=+2 at start: "push a bit"</span>
+<span class="cmt"># adv=-4 near treasure: "back off!"</span>
+<span class="cmt"># Context-aware. Clean signal.</span>
+</code></pre>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Interactive: feel the difference</h3>
+    <p>Drag the sliders to see how advantage changes the learning signal.</p>
+    <div class="controls">
+      <label>V(s) expected:</label>
+      <input type="range" id="vs" min="-10" max="10" value="3" style="width:150px">
+      <span class="val" id="vs-v">3</span>
+      <label style="margin-left:16px;">G actual:</label>
+      <input type="range" id="ga" min="-10" max="10" value="7" style="width:150px">
+      <span class="val" id="ga-v">7</span>
+    </div>
+    <canvas id="adv-cv" width="860" height="140"></canvas>
+  </div>
+  <button class="nx" onclick="go(3)">Next: The two networks &#x2192;</button>
+</div>
+
+<!-- ===== STEP 3 ===== -->
+<div class="step" data-s="3. Architecture">
+  <h2>Actor + Critic = Two Jobs, One Network</h2>
+
+  <div class="card hi">
+    <h3>The Actor-Critic architecture</h3>
+    <div class="diagram">
+      <div class="box b-pu">State</div>
+      <span class="arr">&#x2192;</span>
+      <div class="box b-bl">Shared<br>Hidden Layers</div>
+      <span class="arr">&#x2192;</span>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <div class="box b-gr">Actor Head &#x03C0;(a|s)<br><small>action probabilities</small></div>
+        <div class="box b-or">Critic Head V(s)<br><small>expected return (1 number)</small></div>
+      </div>
+    </div>
+<pre><code><span class="kw">class</span> <span class="fn">ActorCritic</span>:
+    <span class="var">shared</span>  = Linear(16, 64) + ReLU   <span class="cmt"># shared understanding of state</span>
+    <span class="var">actor</span>   = Linear(64, 4) + Softmax  <span class="cmt"># → P(up), P(down), P(left), P(right)</span>
+    <span class="var">critic</span>  = Linear(64, 1)            <span class="cmt"># → V(s), a single number</span>
+
+    <span class="kw">def</span> <span class="fn">forward</span>(<span class="var">state</span>):
+        <span class="var">h</span> = <span class="var">shared</span>(<span class="var">state</span>)
+        <span class="kw">return</span> <span class="var">actor</span>(<span class="var">h</span>), <span class="var">critic</span>(<span class="var">h</span>)  <span class="cmt"># two outputs, one forward pass</span>
+</code></pre>
+    <p><strong>Why share?</strong> Both the actor and critic need to understand the state. The shared layers learn that understanding; the heads specialize.</p>
+  </div>
+
+  <div class="card warn">
+    <h3>Why does the critic output 1 number, not 4?</h3>
+    <p>The actor outputs 4 numbers (one probability per action). Why doesn't the critic also output 4?</p>
+    <p style="margin-top:8px">Because they answer <strong>different questions</strong>:</p>
+<pre><code><span class="cmt"># Actor answers: "given this state, which action should I take?"</span>
+<span class="cmt"># → needs one probability per action → 4 outputs</span>
+
+<span class="cmt"># Critic answers: "given this state, how much reward do I expect overall?"</span>
+<span class="cmt"># → one number for the whole state → 1 output</span>
+<span class="cmt">#</span>
+<span class="cmt"># V(s) = expected return from state s, following current policy</span>
+<span class="cmt"># It doesn't care WHICH action you take — it averages over all of them.</span>
+<span class="cmt">#</span>
+<span class="cmt"># Example: robot at (2,2), trained policy mostly goes right</span>
+<span class="var">V</span>((2,2)) = <span class="num">6.8</span>   <span class="cmt"># "from here I usually get 6.8 reward"</span>
+<span class="cmt">#</span>
+<span class="cmt"># Not: "if I go right I get X, if I go up I get Y" — that's Q(s,a)</span>
+<span class="cmt"># Just: "from this state, following my policy, I expect 6.8"</span>
+</code></pre>
+    <p style="margin-top:8px">If the critic output 4 numbers, you'd be computing Q(s,a) — the value of each specific action. That's what the Q-table in Chapter 2 did. Actor-Critic doesn't need that. It only needs V(s) as a <strong>baseline</strong> to subtract from the actual return:</p>
+<pre><code><span class="var">advantage</span> = <span class="var">G_actual</span> - <span class="var">V</span>(<span class="var">s</span>)
+<span class="cmt">#            ^^^^^^^^    ^^^^^^</span>
+<span class="cmt">#            what I got   what I expected</span>
+<span class="cmt">#</span>
+<span class="cmt"># V(s) is one number. G_actual is one number. Advantage is one number.</span>
+<span class="cmt"># Clean. No need to know which action had which value.</span>
+</code></pre>
+  </div>
+
+  <div class="card ok">
+    <h3>The two losses</h3>
+<pre><code><span class="cmt"># After collecting an episode:</span>
+
+<span class="cmt"># ACTOR loss: same as REINFORCE, but with advantage instead of G</span>
+<span class="var">actor_loss</span> = -<span class="fn">log</span>(<span class="var">P</span>(<span class="var">action</span>)) * <span class="var">advantage</span>
+
+<span class="cmt"># CRITIC loss: teach V(s) to predict actual returns</span>
+<span class="var">critic_loss</span> = (<span class="var">V</span>(<span class="var">state</span>) - <span class="var">G_actual</span>)&#xB2;
+
+<span class="cmt"># Total: both train together</span>
+<span class="var">total_loss</span> = <span class="var">actor_loss</span> + <span class="num">0.5</span> * <span class="var">critic_loss</span>
+</code></pre>
+    <p>The critic gets better at predicting returns → advantage becomes more accurate → actor gets cleaner learning signal → better policy → better data for critic. <strong>A virtuous cycle.</strong></p>
+  </div>
+  <button class="nx" onclick="go(4)">Next: Full walkthrough with numbers &#x2192;</button>
+</div>
+
+<!-- ===== STEP 4 ===== -->
+<div class="step" data-s="4. Full Walkthrough">
+  <h2>One Episode of Actor-Critic — Every Number</h2>
+
+  <div class="card hi">
+    <h3>Step 1: Run the episode — actor picks actions, critic predicts V at each step</h3>
+    <p style="font-size:.88em;color:#aaa">At every step, the same network pass gives you TWO things: probs (actor) and V (critic).</p>
+<pre><code><span class="cmt"># t=0, state=(0,0)</span>
+<span class="var">probs</span> = [↑0.05, ↓0.10, ←0.05, →0.80]   <span class="cmt"># actor: "go right 80% of the time"</span>
+<span class="var">V</span>     = <span class="num">3.1</span>                              <span class="cmt"># critic: "I expect 3.1 reward from here"</span>
+<span class="var">action</span> = RIGHT  <span class="cmt"># sampled from probs (random 0.73 lands in right region)</span>
+<span class="var">reward</span> = -1     <span class="cmt"># environment gives -1 for each step</span>
+
+<span class="cmt"># t=1, state=(0,1)</span>
+<span class="var">probs</span> = [↑0.06, ↓0.62, ←0.04, →0.28]   <span class="cmt"># actor: "mostly go down from here"</span>
+<span class="var">V</span>     = <span class="num">5.8</span>                              <span class="cmt"># critic: "better state, expect 5.8"</span>
+<span class="var">action</span> = DOWN
+<span class="var">reward</span> = -1
+
+<span class="cmt"># t=2, state=(1,1) = PIT!</span>
+<span class="var">reward</span> = -10  <span class="cmt"># fell in pit. episode over.</span>
+</code></pre>
+  </div>
+
+  <div class="card">
+    <h3>Step 2: Compute returns by walking backward</h3>
+<pre><code><span class="cmt"># rewards collected: [-1, -1, -10]</span>
+<span class="cmt"># Walk backward with gamma=0.99:</span>
+
+<span class="cmt"># t=2 (last step): G = -10</span>
+<span class="cmt"># t=1:             G = -1 + 0.99 × (-10) = -1 - 9.9 = -10.9</span>
+<span class="cmt"># t=0:             G = -1 + 0.99 × (-10.9) = -1 - 10.8 = -11.8</span>
+
+<span class="var">returns</span> = [-11.8, -10.9, -10.0]
+</code></pre>
+  </div>
+
+  <div class="card ok">
+    <h3>Step 3: Advantage = actual return − what critic expected</h3>
+<pre><code><span class="cmt"># Compare what actually happened (returns) to what critic predicted (V):</span>
+
+<span class="cmt"># t=0: V=(0,0) predicted 3.1,   actual return = -11.8</span>
+<span class="hl"><span class="var">advantage</span>[0] = -11.8 - 3.1 = <span class="cmt" style="color:#ef5350">-14.9</span>  <span class="cmt"># WAY worse than expected</span></span>
+
+<span class="cmt"># t=1: V=(0,1) predicted 5.8,   actual return = -10.9</span>
+<span class="hl"><span class="var">advantage</span>[1] = -10.9 - 5.8 = <span class="cmt" style="color:#ef5350">-16.7</span>  <span class="cmt"># also terrible</span></span>
+
+<span class="cmt"># Both negative: "this episode was much worse than the critic expected"</span>
+<span class="cmt"># → push DOWN the actions that were taken (RIGHT at t=0, DOWN at t=1)</span>
+</code></pre>
+  </div>
+
+  <div class="card">
+    <h3>Step 4: Actor loss — use advantage to update probabilities</h3>
+<pre><code><span class="cmt"># t=0: took RIGHT, P(RIGHT) was 0.80, advantage = -14.9</span>
+<span class="var">actor_loss_t0</span> = -log(0.80) × (-14.9) = 0.223 × (-14.9) = <span class="cmt" style="color:#ef5350">-3.32</span>
+<span class="cmt"># Loss is NEGATIVE → gradient pushes RIGHT probability DOWN</span>
+<span class="cmt"># Before: probs = [0.05, 0.10, 0.05, 0.80]</span>
+<span class="cmt"># After:  probs = [0.07, 0.13, 0.07, 0.73]  ← RIGHT went from 0.80 → 0.73</span>
+
+<span class="cmt"># t=1: took DOWN, P(DOWN) was 0.62, advantage = -16.7</span>
+<span class="var">actor_loss_t1</span> = -log(0.62) × (-16.7) = 0.478 × (-16.7) = <span class="cmt" style="color:#ef5350">-7.98</span>
+<span class="cmt"># Before: probs = [0.06, 0.62, 0.04, 0.28]</span>
+<span class="cmt"># After:  probs = [0.09, 0.50, 0.07, 0.34]  ← DOWN went from 0.62 → 0.50</span>
+</code></pre>
+  </div>
+
+  <div class="card">
+    <h3>Step 5: Critic loss — update V to predict better next time</h3>
+<pre><code><span class="cmt"># Critic predicted V=3.1 at (0,0), actual return was -11.8.</span>
+<span class="cmt"># That's a huge error. Train critic to predict closer to -11.8 next time.</span>
+<span class="var">critic_loss</span> = (3.1 - (-11.8))² + (5.8 - (-10.9))²
+            = (14.9)² + (16.7)²
+            = 222 + 279 = 501   <span class="cmt"># large! critic was very wrong.</span>
+
+<span class="cmt"># After update: V(0,0) moves from 3.1 toward -11.8</span>
+<span class="cmt">#               V(0,1) moves from 5.8 toward -10.9</span>
+<span class="cmt"># Next episode, critic knows (0,0) near the pit is dangerous.</span>
+<span class="cmt"># Advantage estimates become more accurate. Actor gets cleaner signal.</span>
+
+<span class="var">total_loss</span> = <span class="var">actor_loss</span> + 0.5 × <span class="var">critic_loss</span>
+<span class="var">total_loss</span>.<span class="fn">backward</span>()
+<span class="fn">optimizer</span>.<span class="fn">step</span>()   <span class="cmt"># both actor and critic weights updated</span>
+</code></pre>
+  </div>
+  <button class="nx" onclick="go(5)">Next: Watch it train &#x2192;</button>
+</div>
+
+<!-- ===== STEP 5 ===== -->
+<div class="step" data-s="5. Live Comparison">
+  <h2>REINFORCE vs Actor-Critic — Side by Side</h2>
+
+  <div class="card hi">
+    <p>Both train on the same 4x4 gridworld (each step costs &minus;1, treasure gives +10, pit gives &minus;10). Higher reward = better.</p>
+    <div class="controls">
+      <button class="run" onclick="runBoth()">Train Both (300 episodes each)</button>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:16px;justify-content:center;margin-top:10px;">
+      <div>
+        <canvas id="cmp-r" width="420" height="260"></canvas>
+      </div>
+      <div>
+        <canvas id="cmp-ac" width="420" height="260"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <div class="card ok">
+    <h3>What to notice</h3>
+    <table>
+      <tr><th></th><th>REINFORCE</th><th>Actor-Critic</th></tr>
+      <tr><td>Learning signal</td><td>Raw return G</td><td>Advantage = G - V(s)</td></tr>
+      <tr><td>Noise</td><td style="color:#ef5350">High (same G means different things in different states)</td><td style="color:#4caf50">Lower (advantage is relative to expectation)</td></tr>
+      <tr><td>Convergence</td><td>Slower, bumpier</td><td>Faster, smoother</td></tr>
+      <tr><td>Extra cost</td><td>None</td><td>One extra output head (cheap)</td></tr>
+    </table>
+    <p style="margin-top:10px"><span class="key">Key insight:</span> the only difference in the code is <code>G</code> vs <code>G - V(s)</code>. One subtraction. That's it. But it makes training dramatically better.</p>
+  </div>
+
+  <div class="card">
+    <h3>The journey so far</h3>
+    <table>
+      <tr><th>Chapter</th><th>What it adds</th><th>Problem it solves</th></tr>
+      <tr><td>0</td><td>Policy gradient idea</td><td>"How to learn without labels"</td></tr>
+      <tr><td>1</td><td>Bandit</td><td>"Which action is good?"</td></tr>
+      <tr><td>2</td><td>Q-learning</td><td>"Which action in which state?"</td></tr>
+      <tr><td>3</td><td>REINFORCE</td><td>"Scale to big state spaces with neural nets"</td></tr>
+      <tr><td style="color:#4fc3f7;font-weight:700">4</td><td style="color:#4fc3f7;font-weight:700">Actor-Critic</td><td style="color:#4fc3f7;font-weight:700">"Reduce noise with a baseline"</td></tr>
+      <tr><td>5 (next)</td><td>PPO</td><td>"Don't let one update wreck the policy"</td></tr>
+    </table>
+  </div>
+</div>
+
+<script>
+const steps=document.querySelectorAll('.step');
+const nav=document.getElementById('nav');
+steps.forEach((s,i)=>{const b=document.createElement('button');b.textContent=s.dataset.s;b.onclick=()=>go(i);if(i===0)b.classList.add('on');nav.appendChild(b);});
+function go(n){steps.forEach((s,i)=>s.classList.toggle('on',i===n));nav.querySelectorAll('button').forEach((b,i)=>{b.classList.remove('on');if(i<n)b.classList.add('done');else b.classList.remove('done');if(i===n)b.classList.add('on');});window.scrollTo({top:0,behavior:'smooth'});}
+
+// Advantage slider
+const vsS=document.getElementById('vs'),gaS=document.getElementById('ga');
+const vsV=document.getElementById('vs-v'),gaV=document.getElementById('ga-v');
+const acv=document.getElementById('adv-cv'),actx=acv.getContext('2d');
+
+function drawAdv(){
+  const vs=+vsS.value,ga=+gaS.value;
+  vsV.textContent=vs;gaV.textContent=ga;
+  const adv=ga-vs;
+  actx.clearRect(0,0,860,140);actx.fillStyle='#12122a';actx.fillRect(0,0,860,140);
+
+  const cx=430,cy=70,barMax=300;
+  // V(s) bar
+  actx.fillStyle='#ffb74d44';
+  actx.fillRect(cx,cy-15,vs/10*barMax,30);
+  actx.strokeStyle='#ffb74d';actx.lineWidth=2;
+  actx.strokeRect(cx,cy-15,vs/10*barMax,30);
+
+  // G bar
+  actx.fillStyle='#4fc3f744';
+  actx.fillRect(cx,cy-15,ga/10*barMax,30);
+  actx.strokeStyle='#4fc3f7';actx.lineWidth=2;
+  actx.strokeRect(cx,cy-15,ga/10*barMax,30);
+
+  // Labels
+  actx.fillStyle='#ffb74d';actx.font='bold 13px sans-serif';actx.textAlign='right';
+  actx.fillText(`V(s) = ${vs}`,cx-10,cy-5);
+  actx.fillStyle='#4fc3f7';
+  actx.fillText(`G = ${ga}`,cx-10,cy+15);
+
+  // Advantage
+  const col=adv>0?'#4caf50':adv<0?'#ef5350':'#888';
+  actx.fillStyle=col;actx.font='bold 24px sans-serif';actx.textAlign='center';
+  const label=adv>0?`Advantage = +${adv} (REINFORCE!)`:adv<0?`Advantage = ${adv} (DISCOURAGE!)`:` Advantage = 0 (DO NOTHING)`;
+  actx.fillText(label,cx,130);
+}
+vsS.addEventListener('input',drawAdv);gaS.addEventListener('input',drawAdv);
+setTimeout(drawAdv,100);
+
+// Gridworld env
+const GS=4,ACTS=[[-1,0],[1,0],[0,-1],[0,1]];
+function envStep(s,a){let nr=s[0]+ACTS[a][0],nc=s[1]+ACTS[a][1];nr=Math.max(0,Math.min(3,nr));nc=Math.max(0,Math.min(3,nc));if(nr===3&&nc===3) return [[nr,nc],10,true];if(nr===1&&nc===1) return [[nr,nc],-10,true];return [[nr,nc],-1,false];}
+
+// Tiny net helper
+function makeNet(inD,hD,outD){
+  const W1=[],b1=[],W2=[],b2=[];
+  for(let i=0;i<inD;i++){W1[i]=[];for(let j=0;j<hD;j++) W1[i][j]=(Math.random()-0.5)*0.3;}
+  for(let i=0;i<hD;i++) b1[i]=0;
+  for(let i=0;i<hD;i++){W2[i]=[];for(let j=0;j<outD;j++) W2[i][j]=(Math.random()-0.5)*0.3;}
+  for(let i=0;i<outD;i++) b2[i]=0;
+  return {W1,b1,W2,b2,inD,hD,outD};
+}
+
+function fwd(net,inp){
+  const h=new Array(net.hD).fill(0);
+  for(let i=0;i<net.hD;i++){let s=net.b1[i];for(let j=0;j<net.inD;j++) s+=inp[j]*net.W1[j][i];h[i]=Math.max(0,s);}
+  const out=new Array(net.outD).fill(0);
+  for(let i=0;i<net.outD;i++){let s=net.b2[i];for(let j=0;j<net.hD;j++) s+=h[j]*net.W2[j][i];out[i]=s;}
+  return {h,out,inp};
+}
+
+function softmax(logits){const mx=Math.max(...logits);const e=logits.map(l=>Math.exp(l-mx));const s=e.reduce((a,b)=>a+b);return e.map(v=>v/s);}
+function sample(p){let r=Math.random(),c=0;for(let i=0;i<p.length;i++){c+=p[i];if(r<c) return i;}return p.length-1;}
+
+function trainAgent(useBaseline){
+  const pNet=makeNet(16,16,4); // policy network (both methods)
+  const vTable=useBaseline?new Array(16).fill(0):null; // V-table: one value per state
+  const gamma=0.99,lr=0.01,vlr=0.1;
+  const rewards=[],eps=300;
+
+  for(let ep=0;ep<eps;ep++){
+    const traj=[];
+    let s=[0,0],done=false;
+    for(let t=0;t<50&&!done;t++){
+      const si=s[0]*4+s[1];
+      const inp=new Array(16).fill(0);inp[si]=1;
+      const pf=fwd(pNet,inp);
+      const probs=softmax(pf.out);
+      const a=sample(probs);
+      const v=useBaseline?vTable[si]:0;
+      const [ns,r,d]=envStep(s,a);
+      traj.push({si,a,r,pf,probs,v,inp});
+      s=ns;done=d;
+    }
+
+    const rets=new Array(traj.length);
+    let G=0;
+    for(let t=traj.length-1;t>=0;t--){G=traj[t].r+gamma*G;rets[t]=G;}
+
+    // Normalize for policy gradient (both methods)
+    // REINFORCE: normalize returns directly
+    // Actor-Critic: compute raw advantages, then normalize them for the actor
+    let advs;
+    if(useBaseline){
+      advs=rets.map((g,t)=>g-traj[t].v);
+      if(advs.length>1){const mu=advs.reduce((a,b)=>a+b)/advs.length;const std=Math.sqrt(advs.reduce((a,b)=>a+(b-mu)**2,0)/advs.length)+1e-8;for(let i=0;i<advs.length;i++) advs[i]=(advs[i]-mu)/std;}
+    } else {
+      advs=rets.slice();
+      if(advs.length>1){const mu=advs.reduce((a,b)=>a+b)/advs.length;const std=Math.sqrt(advs.reduce((a,b)=>a+(b-mu)**2,0)/advs.length)+1e-8;for(let i=0;i<advs.length;i++) advs[i]=(advs[i]-mu)/std;}
+    }
+
+    for(let t=0;t<traj.length;t++){
+      const {si,a,pf,probs,v,inp}=traj[t];
+      const Gt=rets[t];
+      const adv=advs[t];
+
+      // Policy gradient
+      const dlogits=probs.slice();
+      dlogits[a]-=1;
+      for(let i=0;i<4;i++) dlogits[i]*=adv;
+
+      for(let j=0;j<16;j++) for(let i=0;i<4;i++) pNet.W2[j][i]-=lr*pf.h[j]*dlogits[i];
+      for(let i=0;i<4;i++) pNet.b2[i]-=lr*dlogits[i];
+      const dh=new Array(16).fill(0);
+      for(let j=0;j<16;j++){for(let i=0;i<4;i++) dh[j]+=pNet.W2[j][i]*dlogits[i];dh[j]*=pf.h[j]>0?1:0;}
+      for(let j=0;j<16;j++) for(let i=0;i<16;i++) pNet.W1[j][i]-=lr*inp[j]*dh[i];
+      for(let i=0;i<16;i++) pNet.b1[i]-=lr*dh[i];
+
+      // V-table update: V(s) += lr * (G - V(s))
+      if(useBaseline) vTable[si]+=vlr*(Gt-v);
+    }
+    rewards.push(traj.reduce((a,b)=>a+b.r,0));
+  }
+  return rewards;
+}
+
+function drawCurve(cvId,rewards,color,title,yMin,yMax){
+  const cv=document.getElementById(cvId),ctx=cv.getContext('2d');
+  const W=420,H=260;
+  ctx.clearRect(0,0,W,H);ctx.fillStyle='#12122a';ctx.fillRect(0,0,W,H);
+  const p={l:52,r:14,t:30,b:42},w=W-p.l-p.r,h=H-p.t-p.b;
+  const rng=yMax-yMin||1;
+
+  // Title
+  ctx.fillStyle=color;ctx.font='bold 13px sans-serif';ctx.textAlign='center';
+  ctx.fillText(title,p.l+w/2,18);
+
+  // Grid lines + y-axis labels
+  ctx.strokeStyle='#2a2a4a';ctx.lineWidth=1;
+  const nTicks=5;
+  for(let i=0;i<=nTicks;i++){
+    const y=p.t+h*i/nTicks;
+    ctx.beginPath();ctx.moveTo(p.l,y);ctx.lineTo(p.l+w,y);ctx.stroke();
+    ctx.fillStyle='#888';ctx.font='11px monospace';ctx.textAlign='right';
+    ctx.fillText((yMax-rng*i/nTicks).toFixed(0),p.l-6,y+4);
+  }
+
+  // Y-axis label
+  ctx.save();ctx.translate(12,p.t+h/2);ctx.rotate(-Math.PI/2);
+  ctx.fillStyle='#aaa';ctx.font='11px sans-serif';ctx.textAlign='center';
+  ctx.fillText('Total reward per episode',0,0);ctx.restore();
+
+  // X-axis label
+  ctx.fillStyle='#aaa';ctx.font='11px sans-serif';ctx.textAlign='center';
+  ctx.fillText('Episode',p.l+w/2,H-6);
+
+  // X-axis tick marks
+  ctx.fillStyle='#888';ctx.font='10px monospace';ctx.textAlign='center';
+  for(let ep=0;ep<=300;ep+=100){
+    const x=p.l+(ep/rewards.length)*w;
+    ctx.fillText(ep,x,p.t+h+16);
+  }
+
+  // Axes
+  ctx.strokeStyle='#555';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(p.l,p.t);ctx.lineTo(p.l,p.t+h);ctx.lineTo(p.l+w,p.t+h);ctx.stroke();
+
+  // Raw data points
+  for(let i=0;i<rewards.length;i++){
+    const x=p.l+(i/rewards.length)*w,y=p.t+h*((yMax-rewards[i])/rng);
+    ctx.fillStyle='#ffffff18';
+    ctx.beginPath();ctx.arc(x,Math.max(p.t,Math.min(p.t+h,y)),1.5,0,Math.PI*2);ctx.fill();
+  }
+
+  // 20-episode moving average
+  const avg=[];
+  for(let i=0;i<rewards.length;i++){const s=Math.max(0,i-19);let sm=0;for(let j=s;j<=i;j++) sm+=rewards[j];avg.push(sm/(i-s+1));}
+  ctx.strokeStyle=color;ctx.lineWidth=2.5;ctx.beginPath();
+  for(let i=0;i<avg.length;i++){
+    const x=p.l+(i/rewards.length)*w,y=p.t+h*((yMax-avg[i])/rng);
+    const cy=Math.max(p.t,Math.min(p.t+h,y));
+    if(i===0) ctx.moveTo(x,cy);else ctx.lineTo(x,cy);
+  }
+  ctx.stroke();
+
+  // Legend
+  const lx=p.l+w-120,ly=p.t+10;
+  ctx.fillStyle='#0a0a1acc';ctx.fillRect(lx,ly,118,36);ctx.strokeStyle='#333';ctx.lineWidth=1;ctx.strokeRect(lx,ly,118,36);
+  ctx.fillStyle='#ffffff30';ctx.beginPath();ctx.arc(lx+10,ly+10,3,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#aaa';ctx.font='10px sans-serif';ctx.textAlign='left';ctx.fillText('each episode',lx+18,ly+13);
+  ctx.strokeStyle=color;ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(lx+4,ly+26);ctx.lineTo(lx+16,ly+26);ctx.stroke();
+  ctx.fillStyle='#aaa';ctx.fillText('20-ep avg',lx+18,ly+30);
+}
+
+function runBoth(){
+  const r1=trainAgent(false);
+  const r2=trainAgent(true);
+  const all=r1.concat(r2);
+  const yMin=Math.min(...all,-15),yMax=Math.max(...all,12);
+  drawCurve('cmp-r',r1,'#ef5350','REINFORCE (no baseline)',yMin,yMax);
+  drawCurve('cmp-ac',r2,'#4caf50','Actor-Critic (with baseline V(s))',yMin,yMax);
+}
+
+setTimeout(runBoth,200);
+</script>
+</body>
+</html>

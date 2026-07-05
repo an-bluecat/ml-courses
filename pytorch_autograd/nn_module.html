@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Why super().__init__() in every nn.Module</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0a0a1a;color:#e0e0e0;padding:20px 20px 80px;line-height:1.7}
+h1{text-align:center;color:#fff;margin-bottom:4px;font-size:1.5em}
+.sub{text-align:center;color:#888;margin-bottom:24px;font-size:.88em}
+.nav{display:flex;justify-content:center;gap:6px;margin-bottom:20px;flex-wrap:wrap}
+.nav button{padding:7px 13px;border:2px solid #333;background:#111;color:#888;border-radius:8px;cursor:pointer;font-size:.78em;transition:.2s}
+.nav button:hover{border-color:#555;color:#ccc}
+.nav button.on{border-color:#4fc3f7;color:#4fc3f7;background:#0d2137}
+.nav button.done{border-color:#4caf50;color:#4caf50}
+.page{display:none;max-width:860px;margin:0 auto}
+.page.on{display:block}
+.page h2{color:#4fc3f7;margin-bottom:12px;font-size:1.2em}
+.card{background:#12122a;border:1px solid #2a2a4a;border-radius:12px;padding:18px;margin-bottom:14px}
+.card.blue{border-color:#4fc3f7;background:#0d1b2a}
+.card.green{border-color:#4caf50;background:#0a1a0a}
+.card.orange{border-color:#ff9800;background:#1a1400}
+.card.red{border-color:#ef5350;background:#1a0a0a}
+.card.purple{border-color:#ce93d8;background:#1a0a2a}
+.card h3{color:#ffb74d;margin-bottom:8px;font-size:1em}
+button.nx{padding:10px 24px;background:#4caf50;color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:.9em;margin-top:14px}
+button.nx:hover{background:#66bb6a}
+table{width:100%;border-collapse:collapse;margin:10px 0}
+th,td{padding:8px 12px;border:1px solid #333;text-align:center;font-size:.86em}
+th{background:#1a1a3a;color:#4fc3f7}
+td{text-align:left}
+.math{background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:14px;margin:10px 0;font-family:'Fira Code',Consolas,monospace;font-size:.84em;line-height:1.8;overflow-x:auto}
+.math .line{margin:2px 0;display:block;white-space:pre}
+.math .cmt{color:#6a9955}
+.math .val{color:#b5cea8}
+.math .lbl{color:#9cdcfe}
+.math .kw{color:#c586c0}
+.math .fn{color:#dcdcaa}
+.math .str{color:#ce9178}
+.math .err{color:#ef5350}
+.key{color:#ffb74d;font-weight:600}
+.step-head{font-size:.82em;font-weight:700;color:#4fc3f7;margin:16px 0 8px;padding-top:12px;border-top:1px solid #2a2a4a}
+.step-head:first-child{border-top:none;padding-top:0;margin-top:0}
+.inline{font-family:'Fira Code',Consolas,monospace;background:#1a1a2e;border:1px solid #333;border-radius:4px;padding:1px 6px;font-size:.86em;color:#9cdcfe}
+.faded{color:#888;font-size:.86em}
+ul{margin-left:20px;margin-top:6px}
+li{margin:4px 0}
+/* container / registry diagram */
+.reg{border:2px solid #4fc3f7;border-radius:10px;padding:12px 14px;margin:12px 0;background:#0d1b2a}
+.reg .title{font-family:'Fira Code',monospace;color:#4fc3f7;font-size:.85em;margin-bottom:8px}
+.slot{font-family:'Fira Code',monospace;font-size:.8em;background:#12122a;border:1px solid #2a2a4a;border-radius:6px;padding:6px 10px;margin:5px 0}
+.slot .k{color:#ce93d8}
+.slot .empty{color:#666}
+.reg.child{border-color:#ffb74d;background:#1a1400;margin-left:26px}
+.reg.child .title{color:#ffb74d}
+.pipe{color:#666;margin:0 4px}
+</style>
+</head>
+<body>
+<a href="../index.html" style="position:fixed;top:10px;left:14px;font-size:.75em;color:#555;text-decoration:none;z-index:999;padding:4px 8px;background:#0a0a1a;border:1px solid #333;border-radius:6px;">&larr; index</a>
+
+<h1>Why <span style="color:#4fc3f7">super().__init__()</span> in every nn.Module?</h1>
+<p class="sub">PyTorch Mechanics · Chapter 2 — the one line you copy without knowing why</p>
+
+<div class="nav" id="nav"></div>
+
+<!-- PAGE 0 -->
+<div class="page on" data-t="0. The mystery line">
+<h2>The line everyone copies and nobody questions</h2>
+
+<div class="card">
+<h3>What you wrote</h3>
+<div class="math">
+<span class="line"><span class="kw">class</span> <span class="fn">Transformer</span>(nn.Module):</span>
+<span class="line">    <span class="kw">def</span> <span class="fn">__init__</span>(self):</span>
+<span class="line">        super.<span class="fn">__init__</span>(self)</span>
+</div>
+</div>
+
+<div class="card red">
+<h3>Two things are off here — and they teach the whole lesson</h3>
+<ul>
+<li><span class="key">It's the wrong syntax.</span> <span class="inline">super.__init__(self)</span> isn't how you call it — it should be <span class="inline">super().__init__()</span>. Those parentheses and the missing <span class="inline">self</span> matter. (Page 6 decodes exactly why, with the real error your version throws.)</li>
+<li><span class="key">Why is the line there at all?</span> You never wrote a parent class. What "init" is it running, and what would break if you deleted it?</li>
+</ul>
+</div>
+
+<div class="card green">
+<h3>The answer in one sentence</h3>
+<p><span class="inline">nn.Module</span> is really just a <span class="key">container with a few registries</span> inside it (<span class="inline">_parameters</span>, <span class="inline">_modules</span>, …). <span class="inline">super().__init__()</span> is the line that <span class="key">creates those empty registries</span> — and without them, the moment you write <span class="inline">self.fc = nn.Linear(...)</span>, PyTorch has nowhere to file that layer, so it refuses.</p>
+<p style="margin-top:8px">By the end you'll see that this one line is what makes <span class="inline">model.parameters()</span> work — the exact list the optimizer needs (Chapter 1).</p>
+</div>
+<button class="nx" onclick="go(1)">But doesn't inheriting handle this?</button>
+</div>
+
+<!-- PAGE 1 — NEW: Python isn't C++ -->
+<div class="page" data-t="1. Python isn't C++">
+<h2>Doesn't <span class="inline" style="font-size:.9em">class Child(Parent)</span> automatically run Parent's init?</h2>
+
+<div class="card red">
+<h3>No. That's C++. Python works differently.</h3>
+<p>In C++, the base-class constructor runs <strong>automatically</strong> before the derived-class body:</p>
+<div class="math">
+<span class="line cmt">// C++ — Parent() runs automatically, you never call it</span>
+<span class="line"><span class="kw">class</span> Child : <span class="kw">public</span> Parent {</span>
+<span class="line"><span class="kw">public</span>:</span>
+<span class="line">    Child() {</span>
+<span class="line">        <span class="cmt">// by the time you reach this line, Parent() already ran</span></span>
+<span class="line">    }</span>
+<span class="line">};</span>
+</div>
+<p style="margin-top:8px">In Python, if you define <span class="inline">__init__</span> in the child, it <strong>completely overrides</strong> the parent's. The parent's <span class="inline">__init__</span> does <em>not</em> run unless you explicitly call it:</p>
+<div class="math">
+<span class="line cmt"># Python — Parent.__init__ does NOT run automatically</span>
+<span class="line"><span class="kw">class</span> <span class="fn">Child</span>(Parent):</span>
+<span class="line">    <span class="kw">def</span> <span class="fn">__init__</span>(self):</span>
+<span class="line">        <span class="cmt"># Parent.__init__ never ran. You must call it yourself:</span></span>
+<span class="line">        super().<span class="fn">__init__</span>()</span>
+</div>
+</div>
+
+<div class="card blue">
+<h3>So what DO you get from <span class="inline">class Child(Parent)</span> alone?</h3>
+<div class="math">
+<span class="line"><span class="kw">class</span> <span class="fn">Parent</span>:</span>
+<span class="line">    <span class="kw">def</span> <span class="fn">__init__</span>(self):</span>
+<span class="line">        self.x = 10          <span class="cmt"># setup code — creates self.x</span></span>
+<span class="line">&nbsp;</span>
+<span class="line">    <span class="kw">def</span> <span class="fn">greet</span>(self):</span>
+<span class="line">        <span class="kw">return</span> <span class="str">"hello"</span></span>
+<span class="line">&nbsp;</span>
+<span class="line"><span class="kw">class</span> <span class="fn">Child</span>(Parent):</span>
+<span class="line">    <span class="kw">def</span> <span class="fn">__init__</span>(self):</span>
+<span class="line">        <span class="kw">pass</span>                 <span class="cmt"># forgot super().__init__()</span></span>
+<span class="line">&nbsp;</span>
+<span class="line">c = <span class="fn">Child</span>()</span>
+<span class="line"><span class="fn">isinstance</span>(c, Parent)   <span class="cmt"># True  ← still IS a Parent</span></span>
+<span class="line">c.<span class="fn">greet</span>()               <span class="cmt"># "hello" ← inherited method works</span></span>
+<span class="line">c.x                     <span class="err"># AttributeError ← .x was never created</span></span>
+</div>
+</div>
+
+<div class="card orange">
+<h3>The split: class membership vs instance setup</h3>
+<table>
+<tr><th>What you get from <span class="inline">class Child(Parent)</span></th><th>What you only get if Parent.__init__ runs</th></tr>
+<tr><td>isinstance(c, Parent) → True</td><td>self.x = 10 (instance attributes)</td></tr>
+<tr><td>All parent methods (greet, etc.)</td><td>Any setup code in Parent.__init__</td></tr>
+<tr><td>Method resolution order (MRO)</td><td>Internal state the methods depend on</td></tr>
+</table>
+<p style="margin-top:8px"><span class="key">Inheritance gives you the blueprint (methods). <span class="inline">__init__</span> builds what those methods expect to find on <span class="inline">self</span>.</span></p>
+</div>
+
+<div class="card green">
+<h3>For nn.Module specifically</h3>
+<p>You inherit all the methods — <span class="inline">.parameters()</span>, <span class="inline">.to()</span>, <span class="inline">.state_dict()</span>, <span class="inline">.train()</span> — just by writing <span class="inline">class Transformer(nn.Module)</span>. But those methods all try to read <span class="inline">self._modules</span> / <span class="inline">self._parameters</span>, which are only created inside <span class="inline">nn.Module.__init__</span>. So the methods exist, but <strong>they crash</strong> because the data they operate on was never built.</p>
+<p style="margin-top:8px"><span class="inline">super().__init__()</span> = "run the parent's setup so the inherited methods actually work."</p>
+</div>
+
+<div class="card purple">
+<h3>One exception: if you DON'T define __init__ at all</h3>
+<div class="math">
+<span class="line"><span class="kw">class</span> <span class="fn">Child</span>(Parent):</span>
+<span class="line">    <span class="kw">pass</span>          <span class="cmt"># no __init__ defined anywhere in this class</span></span>
+<span class="line">&nbsp;</span>
+<span class="line">c = <span class="fn">Child</span>()    <span class="cmt"># → Parent.__init__ IS called (inherited, not overridden)</span></span>
+<span class="line">c.x            <span class="cmt"># 10 ← works! Parent.__init__ ran.</span></span>
+</div>
+<p>If the child has no <span class="inline">__init__</span>, it inherits the parent's, so it runs. The moment you write <span class="inline">def __init__(self):</span> in the child, you've overridden it — now it's your job to call the parent's.</p>
+</div>
+<button class="nx" onclick="go(2)">What super().__init__() builds</button>
+</div>
+
+<!-- PAGE 2 -->
+<div class="page" data-t="2. What it builds">
+<h2>A Module is just a container with registries inside</h2>
+
+<div class="card blue">
+<h3>Make an empty module and look inside it</h3>
+<div class="math">
+<span class="line"><span class="kw">class</span> <span class="fn">Blank</span>(nn.Module):</span>
+<span class="line">    <span class="kw">def</span> <span class="fn">__init__</span>(self):</span>
+<span class="line">        super().<span class="fn">__init__</span>()    <span class="cmt"># the line in question</span></span>
+<span class="line">&nbsp;</span>
+<span class="line">b = <span class="fn">Blank</span>()</span>
+<span class="line"><span class="fn">print</span>(b._parameters)  <span class="cmt"># {}   ← empty registry, ready</span></span>
+<span class="line"><span class="fn">print</span>(b._modules)     <span class="cmt"># {}</span></span>
+<span class="line"><span class="fn">print</span>(b._buffers)     <span class="cmt"># {}</span></span>
+<span class="line"><span class="fn">print</span>(b.training)     <span class="cmt"># True</span></span>
+</div>
+<p>That's the entire effect of <span class="inline">super().__init__()</span> on a fresh module: it created four things that didn't exist a moment ago. (These outputs are copied from a real run, not invented.)</p>
+</div>
+
+<div class="card">
+<h3>What each registry is for</h3>
+<table>
+<tr><th>Slot</th><th>Holds</th><th>Filled when you assign…</th></tr>
+<tr><td><span class="inline">_parameters</span></td><td>learnable tensors</td><td><span class="inline">self.w = nn.Parameter(...)</span></td></tr>
+<tr><td><span class="inline">_modules</span></td><td>child modules</td><td><span class="inline">self.fc = nn.Linear(...)</span></td></tr>
+<tr><td><span class="inline">_buffers</span></td><td>non-learnable tensors</td><td>BatchNorm running mean, etc.</td></tr>
+<tr><td><span class="inline">training</span></td><td>a bool</td><td>flipped by <span class="inline">.train()</span> / <span class="inline">.eval()</span></td></tr>
+</table>
+</div>
+
+<div class="card orange">
+<h3>What super().__init__() actually runs (simplified)</h3>
+<div class="math">
+<span class="line cmt"># nn.Module.__init__, stripped to the essentials</span>
+<span class="line"><span class="kw">def</span> <span class="fn">__init__</span>(self):</span>
+<span class="line">    self._parameters = {}    <span class="cmt"># registry for Parameters you assign</span></span>
+<span class="line">    self._modules    = {}    <span class="cmt"># registry for sub-Modules you assign</span></span>
+<span class="line">    self._buffers    = {}    <span class="cmt"># registry for non-grad tensors</span></span>
+<span class="line">    self.training    = <span class="kw">True</span></span>
+</div>
+<p>Nothing magic — it just makes empty dicts. The magic is what happens <em>next</em>, when you start assigning layers. That's page 3.</p>
+<p class="faded" style="margin-top:8px">Tiny detail you'll appreciate after page 3: the real version uses <span class="inline">object.__setattr__</span> to create these dicts, because its own <span class="inline">__setattr__</span> <em>needs the dicts to already exist</em>. Chicken, meet egg — and that egg is this line.</p>
+</div>
+<button class="nx" onclick="go(3)">The trick: how layers register themselves</button>
+</div>
+
+<!-- PAGE 3 -->
+<div class="page" data-t="3. Auto-registration">
+<h2>The trick: assignments file themselves into registries</h2>
+
+<div class="card blue">
+<h3>nn.Module intercepts every attribute assignment</h3>
+<p>When you write <span class="inline">self.anything = ...</span>, <span class="inline">nn.Module</span> overrides <span class="inline">__setattr__</span> to check what you're assigning and files it into the right registry:</p>
+<div class="math">
+<span class="line cmt"># nn.Module.__setattr__, stripped to the essentials</span>
+<span class="line"><span class="kw">def</span> <span class="fn">__setattr__</span>(self, name, value):</span>
+<span class="line">    <span class="kw">if</span> <span class="fn">isinstance</span>(value, nn.Parameter):</span>
+<span class="line">        self._parameters[name] = value     <span class="cmt"># → _parameters registry</span></span>
+<span class="line">    <span class="kw">elif</span> <span class="fn">isinstance</span>(value, nn.Module):</span>
+<span class="line">        self._modules[name] = value        <span class="cmt"># → _modules registry</span></span>
+<span class="line">    <span class="kw">else</span>:</span>
+<span class="line">        <span class="fn">object</span>.<span class="fn">__setattr__</span>(self, name, value)  <span class="cmt"># plain attribute, no registry</span></span>
+</div>
+</div>
+
+<div class="card green">
+<h3>Case 1: A direct parameter — goes into _parameters</h3>
+<p>When you want a raw learnable tensor that doesn't belong to any sub-layer:</p>
+<div class="math">
+<span class="line"><span class="kw">class</span> <span class="fn">Scaler</span>(nn.Module):</span>
+<span class="line">    <span class="kw">def</span> <span class="fn">__init__</span>(self):</span>
+<span class="line">        super().<span class="fn">__init__</span>()</span>
+<span class="line">        self.w = nn.<span class="fn">Parameter</span>(torch.<span class="fn">tensor</span>([1.0, 2.0, 3.0]))  <span class="cmt"># 3 numbers</span></span>
+<span class="line">&nbsp;</span>
+<span class="line">s = <span class="fn">Scaler</span>()</span>
+<span class="line"><span class="fn">print</span>(s._parameters)  <span class="cmt"># {'w': Parameter([1., 2., 3.])}</span></span>
+<span class="line"><span class="fn">print</span>(s._modules)     <span class="cmt"># {}  ← no sub-modules</span></span>
+</div>
+<div class="reg">
+  <div class="title">s  (Scaler)</div>
+  <div class="slot"><span class="k">_parameters</span> = { <span class="str" style="color:#ce9178">'w'</span> (3,) }</div>
+  <div class="slot"><span class="k">_modules</span> = <span class="empty">{ }</span></div>
+</div>
+<p><span class="inline">self.w = nn.Parameter(...)</span> → PyTorch sees it's a Parameter → files it into <span class="inline">_parameters</span>. The optimizer will train <span class="inline">w</span> directly.</p>
+</div>
+
+<div class="card orange">
+<h3>Case 2: A sub-module — goes into _modules (and it has its own _parameters inside)</h3>
+<div class="math">
+<span class="line"><span class="kw">class</span> <span class="fn">TinyNet</span>(nn.Module):</span>
+<span class="line">    <span class="kw">def</span> <span class="fn">__init__</span>(self):</span>
+<span class="line">        super().<span class="fn">__init__</span>()</span>
+<span class="line">        self.fc = nn.<span class="fn">Linear</span>(2, 1)   <span class="cmt"># a sub-module (not a raw Parameter)</span></span>
+<span class="line">&nbsp;</span>
+<span class="line">m = <span class="fn">TinyNet</span>()</span>
+<span class="line"><span class="fn">print</span>(m._parameters)       <span class="cmt"># {}  ← TinyNet has no DIRECT params</span></span>
+<span class="line"><span class="fn">print</span>(m._modules)          <span class="cmt"># {'fc': Linear(in_features=2, out_features=1)}</span></span>
+<span class="line"><span class="fn">print</span>(m.fc._parameters)    <span class="cmt"># {'weight': ...(1×2), 'bias': ...(1,)}</span></span>
+</div>
+<div class="reg">
+  <div class="title">m  (TinyNet)</div>
+  <div class="slot"><span class="k">_parameters</span> = <span class="empty">{ }</span></div>
+  <div class="slot"><span class="k">_modules</span> = { <span class="str" style="color:#ce9178">'fc'</span> <span class="pipe">→</span></div>
+  <div class="reg child">
+    <div class="title">fc  (Linear)</div>
+    <div class="slot"><span class="k">_parameters</span> = { <span class="str" style="color:#ce9178">'weight'</span> (1×2), <span class="str" style="color:#ce9178">'bias'</span> (1) }</div>
+  </div>
+  <div class="slot">}</div>
+</div>
+<p><span class="inline">nn.Linear</span> is itself an <span class="inline">nn.Module</span>. Inside <em>its</em> <span class="inline">__init__</span>, it does <span class="inline">self.weight = nn.Parameter(...)</span>. So the weight lives in <span class="inline">fc._parameters</span>, not in TinyNet's <span class="inline">_parameters</span>.</p>
+</div>
+
+<div class="card purple">
+<h3>Case 3: Both — direct params + sub-modules together</h3>
+<div class="math">
+<span class="line"><span class="kw">class</span> <span class="fn">MixedNet</span>(nn.Module):</span>
+<span class="line">    <span class="kw">def</span> <span class="fn">__init__</span>(self):</span>
+<span class="line">        super().<span class="fn">__init__</span>()</span>
+<span class="line">        self.scale = nn.<span class="fn">Parameter</span>(torch.<span class="fn">tensor</span>(0.5))  <span class="cmt"># direct param</span></span>
+<span class="line">        self.fc = nn.<span class="fn">Linear</span>(2, 1)                      <span class="cmt"># sub-module</span></span>
+<span class="line">&nbsp;</span>
+<span class="line">net = <span class="fn">MixedNet</span>()</span>
+<span class="line"><span class="fn">print</span>(net._parameters)     <span class="cmt"># {'scale': Parameter(0.5)}</span></span>
+<span class="line"><span class="fn">print</span>(net._modules)        <span class="cmt"># {'fc': Linear(...)}</span></span>
+<span class="line"><span class="fn">print</span>(net.fc._parameters)  <span class="cmt"># {'weight': ..., 'bias': ...}</span></span>
+</div>
+<div class="reg">
+  <div class="title">net  (MixedNet)</div>
+  <div class="slot"><span class="k">_parameters</span> = { <span class="str" style="color:#ce9178">'scale'</span> (scalar) }</div>
+  <div class="slot"><span class="k">_modules</span> = { <span class="str" style="color:#ce9178">'fc'</span> <span class="pipe">→</span></div>
+  <div class="reg child">
+    <div class="title">fc  (Linear)</div>
+    <div class="slot"><span class="k">_parameters</span> = { <span class="str" style="color:#ce9178">'weight'</span> (1×2), <span class="str" style="color:#ce9178">'bias'</span> (1) }</div>
+  </div>
+  <div class="slot">}</div>
+</div>
+<p><span class="key">Both registries populated.</span> <span class="inline">scale</span> went into <span class="inline">_parameters</span>; <span class="inline">fc</span> went into <span class="inline">_modules</span>; <span class="inline">fc</span>'s own weight and bias went into <span class="inline">fc._parameters</span>.</p>
+</div>
+
+<div class="card red">
+<h3>The dependency: these registries must exist first</h3>
+<p><span class="inline">__setattr__</span> reads <span class="inline">self._parameters</span> and <span class="inline">self._modules</span> on every assignment. Those dicts only exist after <span class="inline">super().__init__()</span>. Skip it → <span class="inline">__setattr__</span> crashes (page 5).</p>
+</div>
+<button class="nx" onclick="go(4)">Why the registry is the whole point</button>
+</div>
+
+<!-- PAGE 4 -->
+<div class="page" data-t="4. Why it matters">
+<h2>The registry <em>is</em> <span class="inline" style="font-size:.9em">model.parameters()</span></h2>
+
+<div class="card blue">
+<h3>parameters() just walks the registries</h3>
+<div class="math">
+<span class="line cmt"># simplified — how the optimizer gets your weights</span>
+<span class="line"><span class="kw">def</span> <span class="fn">parameters</span>(self):</span>
+<span class="line">    <span class="kw">for</span> p <span class="kw">in</span> self._parameters.<span class="fn">values</span>():</span>
+<span class="line">        <span class="kw">yield</span> p</span>
+<span class="line">    <span class="kw">for</span> child <span class="kw">in</span> self._modules.<span class="fn">values</span>():</span>
+<span class="line">        <span class="kw">yield from</span> child.<span class="fn">parameters</span>()   <span class="cmt"># recurse into every sub-module</span></span>
+</div>
+<p>It reads <span class="inline">_parameters</span>, then recurses through <span class="inline">_modules</span>. If your layers never got registered, this yields <strong>nothing</strong>.</p>
+</div>
+
+<div class="card green">
+<h3>Real output from MixedNet — both kinds show up</h3>
+<div class="math">
+<span class="line"><span class="kw">for</span> name, p <span class="kw">in</span> net.<span class="fn">named_parameters</span>():</span>
+<span class="line">    <span class="fn">print</span>(name, <span class="fn">tuple</span>(p.shape))</span>
+<span class="line cmt"># scale     ()       ← from net._parameters (direct param)</span></span>
+<span class="line cmt"># fc.weight (1, 2)   ← from net._modules['fc']._parameters</span></span>
+<span class="line cmt"># fc.bias   (1,)     ← from net._modules['fc']._parameters</span></span>
+</div>
+<p><span class="key">parameters() found all three</span> — the direct one from <span class="inline">_parameters</span> AND the ones nested inside the sub-module. It walks both registries, recursively. Now hand them to the optimizer:</p>
+<div class="math">
+<span class="line">optimizer = torch.optim.<span class="fn">Adam</span>(net.<span class="fn">parameters</span>())  <span class="cmt"># all 4 numbers (scale + weight + bias)</span></span>
+</div>
+<p class="faded">Recall Chapter 1: the optimizer holds references to exactly these tensors, reads their <span class="inline">.grad</span> after <span class="inline">backward()</span>, and updates them in <span class="inline">step()</span>. No registration → empty list → optimizer has nothing to train.</p>
+</div>
+
+<div class="card orange">
+<h3>The same registries power four things you use constantly</h3>
+<table>
+<tr><th>You call…</th><th>It walks the registries to…</th></tr>
+<tr><td><span class="inline">model.parameters()</span></td><td>collect weights for the optimizer</td></tr>
+<tr><td><span class="inline">model.to("cuda")</span></td><td>move every param &amp; buffer to the GPU</td></tr>
+<tr><td><span class="inline">model.state_dict()</span></td><td>gather everything to save to disk</td></tr>
+<tr><td><span class="inline">model.train()</span> / <span class="inline">.eval()</span></td><td>flip <span class="inline">training</span> on every sub-module</td></tr>
+</table>
+<p>All four are just tree-walks over <span class="inline">_parameters</span> / <span class="inline">_modules</span> / <span class="inline">_buffers</span>. Forget <span class="inline">super().__init__()</span> and none of them can see your layers.</p>
+<p style="margin-top:8px" class="faded">Connect this back to page 1: you <em>inherit</em> all four methods for free. But they crash without the registries — the methods are there, the data they operate on isn't.</p>
+</div>
+<button class="nx" onclick="go(5)">What actually breaks without it</button>
+</div>
+
+<!-- PAGE 5 -->
+<div class="page" data-t="5. What breaks">
+<h2>Forget the line — here's the real error</h2>
+
+<div class="card red">
+<h3>Assign a sub-module without super().__init__()</h3>
+<div class="math">
+<span class="line"><span class="kw">class</span> <span class="fn">Broken</span>(nn.Module):</span>
+<span class="line">    <span class="kw">def</span> <span class="fn">__init__</span>(self):</span>
+<span class="line">        <span class="cmt"># super().__init__()   ← forgotten</span></span>
+<span class="line">        self.fc = nn.<span class="fn">Linear</span>(2, 1)</span>
+<span class="line">&nbsp;</span>
+<span class="line"><span class="fn">Broken</span>()</span>
+<span class="line"><span class="err"># AttributeError: cannot assign module before Module.__init__() call</span></span>
+</div>
+<p>That's the literal error PyTorch raises. Read it against page 3: <span class="inline">__setattr__</span> saw an <span class="inline">nn.Module</span>, tried <span class="inline">self._modules[name] = value</span>, and <span class="inline">self._modules</span> didn't exist yet. So it stops you with a message that names the exact fix.</p>
+</div>
+
+<div class="card orange">
+<h3>Same story for a raw Parameter</h3>
+<div class="math">
+<span class="line"><span class="kw">class</span> <span class="fn">BrokenParam</span>(nn.Module):</span>
+<span class="line">    <span class="kw">def</span> <span class="fn">__init__</span>(self):</span>
+<span class="line">        self.w = nn.<span class="fn">Parameter</span>(torch.<span class="fn">tensor</span>([1.0, 2.0]))</span>
+<span class="line">&nbsp;</span>
+<span class="line"><span class="err"># AttributeError: cannot assign parameters before Module.__init__() call</span></span>
+</div>
+<p>Different registry (<span class="inline">_parameters</span>), same root cause, same kind of message.</p>
+</div>
+
+<div class="card green">
+<h3>Why a clear error is a gift</h3>
+<p>Older mental models worried about a <em>silent</em> failure — layers that quietly don't register, an optimizer that trains nothing, and a loss that never drops. Modern PyTorch closes that trap: it refuses the assignment up front and tells you precisely what's missing. The fix is always the same one line:</p>
+<div class="math">
+<span class="line"><span class="kw">def</span> <span class="fn">__init__</span>(self):</span>
+<span class="line">    super().<span class="fn">__init__</span>()        <span class="cmt"># ← first line, always</span></span>
+<span class="line">    self.fc = nn.<span class="fn">Linear</span>(2, 1)</span>
+</div>
+<p class="faded"><span class="key">Rule of thumb:</span> <span class="inline">super().__init__()</span> is the <strong>first statement</strong> of every <span class="inline">nn.Module.__init__</span> — before you assign any layer or parameter.</p>
+</div>
+<button class="nx" onclick="go(6)">Decode the syntax (and your typo)</button>
+</div>
+
+<!-- PAGE 6 -->
+<div class="page" data-t="6. The syntax">
+<h2>super().__init__() — every piece, and why your version failed</h2>
+
+<div class="card blue">
+<h3>Reading it left to right</h3>
+<div class="math">
+<span class="line">super()        <span class="cmt"># a proxy object pointing at the PARENT class (nn.Module),</span></span>
+<span class="line">               <span class="cmt"># already bound to THIS instance (self)</span></span>
+<span class="line">.__init__()    <span class="cmt"># call the parent's __init__ on this instance</span></span>
+</div>
+<ul>
+<li><span class="inline">super</span> is a builtin you <strong>call</strong>: <span class="inline">super()</span> with parentheses. It returns a proxy.</li>
+<li>Inside a method, <span class="inline">super()</span> auto-fills the class and <span class="inline">self</span> — so you <strong>don't pass self</strong> to <span class="inline">__init__</span>.</li>
+<li>Net effect: it runs <span class="inline">nn.Module.__init__(self)</span> — the dict-creating code from page 2.</li>
+</ul>
+</div>
+
+<div class="card red">
+<h3>Your version: <span class="inline">super.__init__(self)</span></h3>
+<div class="math">
+<span class="line">super.<span class="fn">__init__</span>(self)</span>
+<span class="line"><span class="err"># TypeError: descriptor '__init__' requires a 'super' object</span></span>
+<span class="line"><span class="err">#            but received a 'Transformer'</span></span>
+</div>
+<p>Two mistakes in one:</p>
+<ul>
+<li><span class="key">No parentheses on super.</span> <span class="inline">super</span> (the bare type) ≠ <span class="inline">super()</span> (a proxy instance). You grabbed <span class="inline">__init__</span> off the type itself.</li>
+<li><span class="key">Passing self.</span> That made Python treat your <span class="inline">Transformer</span> instance as if it were a <span class="inline">super</span> object — hence the message "requires a 'super' object but received a 'Transformer'".</li>
+</ul>
+</div>
+
+<div class="card orange">
+<h3>The three forms you'll see in the wild</h3>
+<table>
+<tr><th>Form</th><th>Verdict</th></tr>
+<tr><td><span class="inline">super().__init__()</span></td><td><span style="color:#4caf50">✓ modern, use this</span></td></tr>
+<tr><td><span class="inline">super(Transformer, self).__init__()</span></td><td><span style="color:#ff9800">works — old Python-2 long form, redundant in Py3</span></td></tr>
+<tr><td><span class="inline">nn.Module.__init__(self)</span></td><td><span style="color:#ff9800">works — explicit, but breaks with multiple inheritance</span></td></tr>
+<tr><td><span class="inline">super.__init__(self)</span></td><td><span style="color:#ef5350">✗ TypeError — your version</span></td></tr>
+</table>
+<p class="faded">The middle two are equivalent to the top in the single-parent case. <span class="inline">super()</span> is preferred because it does the right thing automatically and cooperates with multiple inheritance.</p>
+</div>
+
+<div class="card green">
+<h3>Chapter 2 in one screen</h3>
+<ul>
+<li><span class="key">Python ≠ C++:</span> defining <span class="inline">__init__</span> overrides the parent's — it doesn't run automatically.</li>
+<li>You <em>inherit</em> methods (<span class="inline">.parameters()</span>, etc.) but not the instance state they depend on.</li>
+<li><span class="inline">super().__init__()</span> creates the registries (<span class="inline">_parameters</span>, <span class="inline">_modules</span>, <span class="inline">_buffers</span>).</li>
+<li>Assigning <span class="inline">self.x = nn.Linear/Parameter</span> auto-registers via the overridden <span class="inline">__setattr__</span> — which needs those registries to exist.</li>
+<li>The registries <em>are</em> <span class="inline">model.parameters()</span>, <span class="inline">.to()</span>, <span class="inline">.state_dict()</span>, <span class="inline">.train()</span>. No registration → optimizer trains nothing.</li>
+<li>Call it as <span class="inline">super().__init__()</span> — with parens, without <span class="inline">self</span>.</li>
+</ul>
+</div>
+</div>
+
+<script>
+const pages=document.querySelectorAll('.page'),nav=document.getElementById('nav');
+pages.forEach((p,i)=>{
+  const b=document.createElement('button');
+  b.textContent=p.dataset.t;
+  b.onclick=()=>go(i);
+  if(i===0)b.classList.add('on');
+  nav.appendChild(b);
+});
+function go(n){
+  pages.forEach((p,i)=>p.classList.toggle('on',i===n));
+  nav.querySelectorAll('button').forEach((b,i)=>{
+    b.classList.remove('on');
+    if(i<n)b.classList.add('done');
+    else b.classList.remove('done');
+    if(i===n)b.classList.add('on');
+  });
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+</script>
+</body>
+</html>

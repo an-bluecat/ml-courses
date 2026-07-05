@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>How PyTorch Actually Works — Autograd, backward, optimizer</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0a0a1a;color:#e0e0e0;padding:20px 20px 80px;line-height:1.7}
+h1{text-align:center;color:#fff;margin-bottom:4px;font-size:1.5em}
+.sub{text-align:center;color:#888;margin-bottom:24px;font-size:.88em}
+.nav{display:flex;justify-content:center;gap:6px;margin-bottom:20px;flex-wrap:wrap}
+.nav button{padding:7px 13px;border:2px solid #333;background:#111;color:#888;border-radius:8px;cursor:pointer;font-size:.78em;transition:.2s}
+.nav button:hover{border-color:#555;color:#ccc}
+.nav button.on{border-color:#4fc3f7;color:#4fc3f7;background:#0d2137}
+.nav button.done{border-color:#4caf50;color:#4caf50}
+.page{display:none;max-width:860px;margin:0 auto}
+.page.on{display:block}
+.page h2{color:#4fc3f7;margin-bottom:12px;font-size:1.2em}
+.card{background:#12122a;border:1px solid #2a2a4a;border-radius:12px;padding:18px;margin-bottom:14px}
+.card.blue{border-color:#4fc3f7;background:#0d1b2a}
+.card.green{border-color:#4caf50;background:#0a1a0a}
+.card.orange{border-color:#ff9800;background:#1a1400}
+.card.red{border-color:#ef5350;background:#1a0a0a}
+.card.purple{border-color:#ce93d8;background:#1a0a2a}
+.card h3{color:#ffb74d;margin-bottom:8px;font-size:1em}
+button.nx{padding:10px 24px;background:#4caf50;color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:.9em;margin-top:14px}
+button.nx:hover{background:#66bb6a}
+table{width:100%;border-collapse:collapse;margin:10px 0}
+th,td{padding:8px 12px;border:1px solid #333;text-align:center;font-size:.86em}
+th{background:#1a1a3a;color:#4fc3f7}
+td{text-align:left}
+.math{background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:14px;margin:10px 0;font-family:'Fira Code',Consolas,monospace;font-size:.84em;line-height:1.8;overflow-x:auto}
+.math .line{margin:2px 0;display:block;white-space:pre}
+.math .hl{background:#264f78;padding:2px 6px;border-radius:4px;display:inline-block}
+.math .cmt{color:#6a9955}
+.math .val{color:#b5cea8}
+.math .lbl{color:#9cdcfe}
+.math .kw{color:#c586c0}
+.math .fn{color:#dcdcaa}
+.key{color:#ffb74d;font-weight:600}
+.step-head{font-size:.82em;font-weight:700;color:#4fc3f7;margin:16px 0 8px;padding-top:12px;border-top:1px solid #2a2a4a}
+.step-head:first-child{border-top:none;padding-top:0;margin-top:0}
+/* graph pipeline */
+.pipeline{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:center;margin:14px 0}
+.pipe-box{border-radius:8px;padding:8px 12px;font-size:.8em;text-align:center;border:2px solid;min-width:78px}
+.pipe-box small{display:block;font-size:.78em;color:#999;font-weight:400}
+.pipe-box.leaf{border-color:#ffb74d;color:#ffb74d;background:#3a2a0a}
+.pipe-box.op{border-color:#4fc3f7;color:#4fc3f7;background:#0d2137}
+.pipe-box.out{border-color:#4caf50;color:#4caf50;background:#0a2a0a}
+.pipe-arr{color:#666;font-size:1.2em}
+.pipe-arr.back{color:#ef5350}
+/* mailbox diagram */
+.mbox{display:flex;align-items:center;justify-content:center;gap:14px;flex-wrap:wrap;margin:16px 0}
+.mbox .actor{border:2px solid;border-radius:10px;padding:12px 14px;font-size:.8em;text-align:center;max-width:220px}
+.mbox .writer{border-color:#ef5350;background:#1a0a0a;color:#ef9a9a}
+.mbox .reader{border-color:#4caf50;background:#0a1a0a;color:#a5d6a7}
+.mbox .slot{border:2px dashed #ffb74d;background:#1a1400;border-radius:10px;padding:12px 16px;text-align:center;color:#ffb74d;font-family:monospace;font-size:.82em}
+.mbox .a-arr{font-size:1.4em;color:#666}
+.tag{display:inline-block;font-size:.65em;font-weight:700;padding:2px 7px;border-radius:4px;font-family:monospace;letter-spacing:.03em}
+.tag.w{background:rgba(239,83,80,.15);color:#ef5350;border:1px solid rgba(239,83,80,.4)}
+.tag.r{background:rgba(76,175,80,.15);color:#4caf50;border:1px solid rgba(76,175,80,.4)}
+ul{margin-left:20px;margin-top:6px}
+li{margin:4px 0}
+.inline{font-family:'Fira Code',Consolas,monospace;background:#1a1a2e;border:1px solid #333;border-radius:4px;padding:1px 6px;font-size:.86em;color:#9cdcfe}
+.faded{color:#888;font-size:.86em}
+details{margin-top:12px}
+details summary{cursor:pointer;color:#888;font-size:.85em;padding:8px 12px;background:#12122a;border:1px solid #333;border-radius:8px}
+details summary:hover{color:#ccc;border-color:#555}
+details[open] summary{color:#4fc3f7;border-color:#4fc3f7}
+</style>
+</head>
+<body>
+<a href="../index.html" style="position:fixed;top:10px;left:14px;font-size:.75em;color:#555;text-decoration:none;z-index:999;padding:4px 8px;background:#0a0a1a;border:1px solid #333;border-radius:6px;">&larr; index</a>
+
+<h1>How PyTorch Actually Works</h1>
+<p class="sub">Not the math — the wiring. What <span class="inline">backward()</span>, <span class="inline">.grad</span>, <span class="inline">step()</span>, and <span class="inline">zero_grad()</span> really do to your model.</p>
+
+<div class="nav" id="nav"></div>
+
+<!-- PAGE 0 -->
+<div class="page on" data-t="0. The mystery">
+<h2>You understand the math. Here's what's still mysterious.</h2>
+
+<div class="card">
+<h3>The loop you wrote</h3>
+<div class="math">
+<span class="line"><span class="lbl">optimizer</span> = torch.optim.<span class="fn">Adam</span>(model.<span class="fn">parameters</span>())</span>
+<span class="line"><span class="lbl">criterion</span> = nn.<span class="fn">CrossEntropyLoss</span>()</span>
+<span class="line"><span class="kw">for</span> b <span class="kw">in</span> <span class="fn">range</span>(30):</span>
+<span class="line">    <span class="kw">for</span> i <span class="kw">in</span> <span class="fn">range</span>(1, <span class="fn">len</span>(data)-1):</span>
+<span class="line">        x = data[:i]</span>
+<span class="line">        y = data[i]</span>
+<span class="line">        pred = model(x)[-1,:]   <span class="cmt"># [vocab_size]</span></span>
+<span class="line">        loss = criterion(pred, y)</span>
+<span class="line">        loss.<span class="fn">backward</span>()</span>
+</div>
+</div>
+
+<div class="card blue">
+<h3>The questions nobody answers</h3>
+<ul>
+<li><span class="inline">loss</span> is just a number. How does <span class="inline">loss.backward()</span> reach all the way back into <span class="inline">model</span>'s weights?</li>
+<li><span class="inline">optimizer</span> and <span class="inline">loss</span> were created on different lines and never introduced to each other. How does <span class="inline">optimizer.step()</span> know the gradients that <span class="inline">backward()</span> just computed?</li>
+<li>Why three separate calls — <span class="inline">zero_grad()</span>, <span class="inline">backward()</span>, <span class="inline">step()</span> — instead of one?</li>
+</ul>
+</div>
+
+<div class="card red">
+<h3>One thing first: the loop above never actually trains</h3>
+<p>As pasted, it calls <span class="inline">loss.backward()</span> but never <span class="inline">optimizer.step()</span> and never <span class="inline">optimizer.zero_grad()</span>. So it <em>computes</em> gradients 30×(len-2) times, <strong>piles them all up</strong>, and <strong>never updates a single weight</strong>. The loss print will barely move.</p>
+<p style="margin-top:8px">By the end of this course you'll see exactly why those two missing lines matter — and what each one touches.</p>
+</div>
+
+<div class="card green">
+<h3>The whole answer in one sentence</h3>
+<p>The forward pass secretly <span class="key">builds a graph</span> of every operation; <span class="inline">backward()</span> <span class="key">walks that graph</span> and drops a number into each weight's <span class="inline">.grad</span> box; and <span class="inline">.grad</span> is the <span class="key">shared mailbox</span> that the optimizer reads from. That's it. The next pages make every word of that literal, with numbers you can trace by hand.</p>
+</div>
+<button class="nx" onclick="go(1)">Start: a tensor remembers</button>
+</div>
+
+<!-- PAGE 1 -->
+<div class="page" data-t="1. Tensors remember">
+<h2>A tensor secretly remembers where it came from</h2>
+
+<div class="card blue">
+<h3>The smallest possible model — one weight</h3>
+<p>Forget layers for a moment. One number <span class="inline">w</span>, one input <span class="inline">x</span>, one target. We'll trace every value by hand.</p>
+<div class="math">
+<span class="line"><span class="kw">import</span> torch</span>
+<span class="line">w = torch.<span class="fn">tensor</span>(<span class="val">2.0</span>, requires_grad=<span class="kw">True</span>)  <span class="cmt"># the weight we want to learn</span></span>
+<span class="line">x = torch.<span class="fn">tensor</span>(<span class="val">3.0</span>)                    <span class="cmt"># input (just data, no grad)</span></span>
+</div>
+<p><span class="key">requires_grad=True</span> is the on-switch. It tells PyTorch: "this tensor is a knob I want to tune, so track what happens to it."</p>
+</div>
+
+<div class="card">
+<h3>Do one operation — and look at what comes back</h3>
+<div class="math">
+<span class="line">a = w * x</span>
+<span class="line"><span class="fn">print</span>(a)         <span class="cmt"># tensor(6., grad_fn=&lt;MulBackward0&gt;)</span></span>
+<span class="line"><span class="fn">print</span>(a.requires_grad)  <span class="cmt"># True  ← it caught the "grad" from w</span></span>
+<span class="line"><span class="fn">print</span>(w.is_leaf)  <span class="cmt"># True   (you made it)</span></span>
+<span class="line"><span class="fn">print</span>(a.is_leaf)  <span class="cmt"># False  (an operation made it)</span></span>
+</div>
+<p>The value is <span class="inline">6.0</span> as expected. But <span class="inline">a</span> came back with an extra attribute attached: <span class="key">grad_fn=&lt;MulBackward0&gt;</span>.</p>
+</div>
+
+<div class="card orange">
+<h3>What grad_fn means</h3>
+<p>Every time you do an operation on a tensor that needs grad, PyTorch doesn't just compute the result — it also <strong>staples a little note</strong> to the result. The note (<span class="inline">grad_fn</span>) records two things:</p>
+<ul>
+<li><span class="key">which operation</span> made this tensor (<span class="inline">Mul</span>, <span class="inline">Add</span>, <span class="inline">Pow</span>…)</li>
+<li><span class="key">pointers back to the inputs</span> that went in (here: <span class="inline">w</span> and <span class="inline">x</span>)</li>
+</ul>
+<p style="margin-top:8px">So <span class="inline">a</span> literally holds a reference back to <span class="inline">w</span>. That backward pointer is the thread we'll pull on later.</p>
+</div>
+
+<div class="card green">
+<h3>The two kinds of tensor</h3>
+<table>
+<tr><th>Kind</th><th>How it's made</th><th>grad_fn</th><th>Gets a .grad?</th></tr>
+<tr><td><strong>Leaf</strong></td><td>You create it (<span class="inline">w</span>, model weights)</td><td>None</td><td><span style="color:#4caf50">Yes</span> — the destination</td></tr>
+<tr><td><strong>Non-leaf</strong></td><td>An op produces it (<span class="inline">a</span>, <span class="inline">loss</span>)</td><td>a Backward fn</td><td>No (it's a stepping stone)</td></tr>
+</table>
+<p style="margin-top:8px">This split is the whole game: leaves are the knobs that get gradients; non-leaves are just the path the gradient travels along to reach them.</p>
+</div>
+<button class="nx" onclick="go(2)">Watch the graph get built</button>
+</div>
+
+<!-- PAGE 2 -->
+<div class="page" data-t="2. Forward builds a graph">
+<h2>The forward pass quietly builds a graph</h2>
+
+<div class="card blue">
+<h3>Finish the forward pass</h3>
+<div class="math">
+<span class="line">w = torch.<span class="fn">tensor</span>(<span class="val">2.0</span>, requires_grad=<span class="kw">True</span>)</span>
+<span class="line">x = torch.<span class="fn">tensor</span>(<span class="val">3.0</span>)</span>
+<span class="line">target = torch.<span class="fn">tensor</span>(<span class="val">10.0</span>)</span>
+<span class="line">&nbsp;</span>
+<span class="line">a = w * x          <span class="cmt"># 2 * 3   = 6.0   grad_fn=MulBackward0</span></span>
+<span class="line">d = a - target     <span class="cmt"># 6 - 10  = -4.0  grad_fn=SubBackward0</span></span>
+<span class="line">loss = d ** 2      <span class="cmt"># (-4)^2  = 16.0  grad_fn=PowBackward0</span></span>
+</div>
+<p>Three operations, three results. Each result got a <span class="inline">grad_fn</span> note stapled to it, and each note points back to the tensor(s) it came from.</p>
+</div>
+
+<div class="card">
+<h3>Those backward-pointers form a chain</h3>
+<p>Reading the pointers, <span class="inline">loss</span> knows it came from <span class="inline">d</span>, which knows it came from <span class="inline">a</span>, which knows it came from <span class="inline">w</span>. That's a linked path from the loss all the way back to the weight:</p>
+<div class="pipeline">
+  <div class="pipe-box leaf">w<small>2.0 · leaf</small></div>
+  <span class="pipe-arr">→</span>
+  <div class="pipe-box op">× x<small>a = 6.0</small></div>
+  <span class="pipe-arr">→</span>
+  <div class="pipe-box op">− target<small>d = −4.0</small></div>
+  <span class="pipe-arr">→</span>
+  <div class="pipe-box out">( )²<small>loss = 16.0</small></div>
+</div>
+<p class="faded">This is the <strong>computation graph</strong>. You never declared it — it was recorded as a side effect of doing the math. (PyTorch calls this a "dynamic" graph: it's rebuilt fresh every forward pass, which is why a plain Python <span class="inline">for</span>-loop or <span class="inline">if</span> just works.)</p>
+</div>
+
+<div class="card orange">
+<h3>It's a real object you can print</h3>
+<div class="math">
+<span class="line"><span class="fn">print</span>(loss.grad_fn)</span>
+<span class="line"><span class="cmt"># &lt;PowBackward0&gt;</span></span>
+<span class="line"><span class="fn">print</span>(loss.grad_fn.next_functions)</span>
+<span class="line"><span class="cmt"># ((&lt;SubBackward0&gt;, 0),)            ← loss's parent is the subtraction</span></span>
+<span class="line"><span class="fn">print</span>(loss.grad_fn.next_functions[0][0].next_functions)</span>
+<span class="line"><span class="cmt"># ((&lt;MulBackward0&gt;, 0), (None, 0))  ← and its parent is the multiply</span></span>
+</div>
+<p>Walking <span class="inline">.next_functions</span> by hand traces the exact same chain as the diagram above. The graph isn't a metaphor — it's a data structure sitting in memory, waiting.</p>
+</div>
+
+<div class="card green">
+<h3>Why this matters</h3>
+<p>Building the graph during the forward pass is what makes <span class="inline">backward()</span> possible. By the time you call it, PyTorch already has a recorded route from <span class="inline">loss</span> back to every leaf — and at each node it knows which operation to "undo" with calculus. Next page: it walks that route.</p>
+</div>
+<button class="nx" onclick="go(3)">What backward() actually does</button>
+</div>
+
+<!-- PAGE 3 -->
+<div class="page" data-t="3. backward() walks it">
+<h2>backward() walks the graph, applying the chain rule</h2>
+
+<div class="card blue">
+<h3>The one rule it uses at every node</h3>
+<p>Each operation knows its own <span class="key">local derivative</span> — how its output changes when its input nudges. <span class="inline">backward()</span> starts at <span class="inline">loss</span> with a seed gradient of <span class="inline">1.0</span> and multiplies these local derivatives together as it walks backward. That product <em>is</em> the chain rule.</p>
+<div class="math">
+<span class="line cmt"># local derivative = "if my input goes up by 1, how much does my output move?"</span>
+<span class="line">loss = d²     →  ∂loss/∂d = 2·d = 2·(−4) = <span class="val">−8</span></span>
+<span class="line">d = a − t     →  ∂d/∂a    = 1            = <span class="val">1</span></span>
+<span class="line">a = w · x     →  ∂a/∂w    = x   = 3      = <span class="val">3</span></span>
+</div>
+</div>
+
+<div class="card">
+<h3>The walk, node by node (these are the real numbers)</h3>
+<table>
+<tr><th>Node</th><th>Forward value</th><th>Local derivative</th><th>Grad coming in</th><th>Grad going out</th></tr>
+<tr><td><span class="inline">( )²</span> (Pow)</td><td>loss = 16</td><td>2·d = −8</td><td>1.0 <span class="faded">(seed)</span></td><td>1 × −8 = <strong style="color:#ef5350">−8</strong></td></tr>
+<tr><td><span class="inline">− target</span> (Sub)</td><td>d = −4</td><td>1</td><td>−8</td><td>−8 × 1 = <strong style="color:#ef5350">−8</strong></td></tr>
+<tr><td><span class="inline">× x</span> (Mul)</td><td>a = 6</td><td>x = 3</td><td>−8</td><td>−8 × 3 = <strong style="color:#ef5350">−24</strong></td></tr>
+</table>
+<p>The gradient flows right-to-left, getting multiplied by each node's local derivative. It arrives at the leaf <span class="inline">w</span> as <span class="key">−24</span>.</p>
+<div class="pipeline">
+  <div class="pipe-box leaf">w.grad<small>= −24</small></div>
+  <span class="pipe-arr back">←</span>
+  <div class="pipe-box op">×3<small>−8 → −24</small></div>
+  <span class="pipe-arr back">←</span>
+  <div class="pipe-box op">×1<small>−8 → −8</small></div>
+  <span class="pipe-arr back">←</span>
+  <div class="pipe-box out">seed<small>1.0</small></div>
+</div>
+</div>
+
+<div class="card orange">
+<h3>The result lands in w.grad — and nowhere else</h3>
+<div class="math">
+<span class="line">loss.<span class="fn">backward</span>()</span>
+<span class="line"><span class="fn">print</span>(w.grad)   <span class="cmt"># tensor(-24.)   ← deposited here</span></span>
+<span class="line"><span class="fn">print</span>(a.grad)   <span class="cmt"># None  (+ a warning) — non-leaf, not kept</span></span>
+</div>
+<p>Only <span class="key">leaves</span> get a permanent <span class="inline">.grad</span>. The intermediate gradients (−8, −8) were used to keep the chain going, then thrown away. The weight is the destination; everything else was just the road.</p>
+</div>
+
+<div class="card green">
+<h3>Sanity check against the formula you already know</h3>
+<p>loss = (w·x − t)². By hand: ∂loss/∂w = 2(w·x − t)·x = 2·(6 − 10)·3 = 2·(−4)·3 = <span class="key">−24</span>. Exactly what the graph walk produced. Autograd is just bookkeeping for the chain rule you already understand — done automatically, in the right order, for millions of weights.</p>
+</div>
+<button class="nx" onclick="go(4)">How the optimizer hears about this</button>
+</div>
+
+<!-- PAGE 4 -->
+<div class="page" data-t="4. .grad is the mailbox">
+<h2>.grad is the mailbox between backward() and the optimizer</h2>
+
+<div class="card red">
+<h3>The thing that confuses everyone</h3>
+<p><span class="inline">backward()</span> and <span class="inline">optimizer.step()</span> never call each other. They were created on separate lines. So how does <span class="inline">step()</span> get the −24?</p>
+<p style="margin-top:8px">They communicate through a <strong>shared object</strong>. When you built the optimizer, you handed it the <em>same</em> tensor:</p>
+<div class="math">
+<span class="line">optimizer = torch.optim.<span class="fn">SGD</span>([w], lr=<span class="val">0.01</span>)</span>
+<span class="line cmt"># the optimizer now holds a *reference* to the very same w object</span>
+<span class="line"><span class="fn">print</span>(optimizer.param_groups[0][<span class="val">'params'</span>][0] <span class="kw">is</span> w)  <span class="cmt"># True</span></span>
+</div>
+</div>
+
+<div class="card blue">
+<h3>So there's a writer and a reader, sharing one slot</h3>
+<div class="mbox">
+  <div class="actor writer"><span class="tag w">WRITER</span><br>loss.<span class="fn">backward</span>()<br><span class="faded">computes −24,<br>stores it</span></div>
+  <span class="a-arr">→</span>
+  <div class="slot">w.grad<br><strong>−24</strong></div>
+  <span class="a-arr">←</span>
+  <div class="actor reader"><span class="tag r">READER</span><br>optimizer.<span class="fn">step</span>()<br><span class="faded">reads −24,<br>updates w</span></div>
+</div>
+<p>Neither one knows the other exists. <span class="inline">backward()</span> only knows how to fill <span class="inline">.grad</span>. <span class="inline">step()</span> only knows how to read <span class="inline">.grad</span> and adjust the weight. <span class="key">.grad is the mailbox.</span></p>
+</div>
+
+<div class="card">
+<h3>What step() does with the −24</h3>
+<p>SGD's rule is one line: <em>nudge each weight a little bit against its gradient.</em></p>
+<div class="math">
+<span class="line cmt"># for every parameter the optimizer holds:</span>
+<span class="line">w  ←  w − lr · w.grad</span>
+<span class="line">w  =  2.0 − 0.01 · (−24)</span>
+<span class="line">w  =  2.0 + 0.24  =  <span class="val">2.24</span></span>
+</div>
+<p>Gradient was negative → the weight moved <em>up</em> (toward reducing the loss). Check it worked: new <span class="inline">a</span> = 2.24·3 = 6.72, new loss = (6.72−10)² = <span class="val">10.76</span>, down from 16. The model just learned.</p>
+
+<details>
+<summary>Different optimizers, same .grad — SGD vs Adam vs others</summary>
+<div style="padding:14px 0 4px">
+<p><span class="inline">backward()</span> always does the same thing: fill <span class="inline">.grad</span> with −24. But different optimizers <em>read</em> that −24 and do different things with it:</p>
+<div class="math">
+<span class="line cmt"># SGD — one line: subtract lr × gradient</span>
+<span class="line">w  ←  w − lr · grad</span>
+<span class="line">w  =  2.0 − 0.01 · (−24) = <span class="val">2.24</span></span>
+<span class="line">&nbsp;</span>
+<span class="line cmt"># Adam — keeps a running average of past gradients (momentum)</span>
+<span class="line cmt">#         AND a running average of squared gradients (adapt LR per-weight)</span>
+<span class="line">m  ←  0.9·m + 0.1·grad            <span class="cmt"># momentum: smoothed direction</span></span>
+<span class="line">v  ←  0.999·v + 0.001·grad²       <span class="cmt"># velocity: smoothed magnitude</span></span>
+<span class="line">w  ←  w − lr · m / (√v + ε)       <span class="cmt"># step size adapts per-weight</span></span>
+</div>
+<table>
+<tr><th>Optimizer</th><th>What it does with .grad</th><th>When to pick it</th></tr>
+<tr><td><span class="inline">SGD</span></td><td>w -= lr · grad</td><td>Simple, stable; needs LR tuning</td></tr>
+<tr><td><span class="inline">SGD(momentum=0.9)</span></td><td>Smooths grad over time, accelerates in consistent directions</td><td>Most vision training</td></tr>
+<tr><td><span class="inline">Adam</span></td><td>Per-weight adaptive LR via momentum + squared-grad tracking</td><td>Default for transformers, quick convergence</td></tr>
+<tr><td><span class="inline">AdamW</span></td><td>Adam + decoupled weight decay</td><td>Default in modern LLM training</td></tr>
+</table>
+<p style="margin-top:10px"><span class="key">This is exactly why .grad and optimizer.step() are separate.</span> <span class="inline">backward()</span> computes one thing (the gradient). The optimizer decides <em>how</em> to use it. Swap the optimizer → different update rule → different training behavior — without changing anything about the model or the backward pass. Same mailbox, different reader.</p>
+</div>
+</details>
+</div>
+
+<div class="card green">
+<h3>This is exactly how your real model works — just more leaves</h3>
+<p><span class="inline">model.parameters()</span> is nothing magic: it's the list of every leaf tensor in the model with <span class="inline">requires_grad=True</span> (each <span class="inline">nn.Linear</span> hands over its weight and bias). You pass that list to the optimizer, so it holds references to all of them.</p>
+<div class="math">
+<span class="line">optimizer = torch.optim.<span class="fn">Adam</span>(model.<span class="fn">parameters</span>())  <span class="cmt"># references to ALL leaves</span></span>
+<span class="line">...</span>
+<span class="line">loss.<span class="fn">backward</span>()   <span class="cmt"># fills .grad on EVERY leaf, via one graph walk</span></span>
+<span class="line">optimizer.<span class="fn">step</span>()  <span class="cmt"># reads every .grad, nudges every weight</span></span>
+</div>
+<p>One weight or ten million — same mailbox mechanism. The graph just has more branches, so <span class="inline">backward()</span> deposits a number into many <span class="inline">.grad</span> slots instead of one.</p>
+</div>
+<button class="nx" onclick="go(5)">The full loop, annotated</button>
+</div>
+
+<!-- PAGE 5 -->
+<div class="page" data-t="5. The full loop">
+<h2>The full loop — what each line touches</h2>
+
+<div class="card blue">
+<h3>The three lines, in order</h3>
+<div class="math">
+<span class="line">optimizer.<span class="fn">zero_grad</span>()  <span class="cmt"># 1. empty every .grad mailbox  (set to 0/None)</span></span>
+<span class="line">loss = criterion(model(x), y)    <span class="cmt">#    forward: build the graph</span></span>
+<span class="line">loss.<span class="fn">backward</span>()         <span class="cmt"># 2. walk graph, FILL every .grad</span></span>
+<span class="line">optimizer.<span class="fn">step</span>()       <span class="cmt"># 3. READ every .grad, update weights</span></span>
+</div>
+<table>
+<tr><th>Call</th><th>Reads</th><th>Writes</th><th>Knows about</th></tr>
+<tr><td><span class="inline">zero_grad()</span></td><td>—</td><td>every <span class="inline">.grad</span> → 0</td><td>the params list only</td></tr>
+<tr><td><span class="inline">backward()</span></td><td>the graph</td><td>every leaf <span class="inline">.grad</span></td><td>the loss / graph only</td></tr>
+<tr><td><span class="inline">step()</span></td><td>every <span class="inline">.grad</span></td><td>every weight</td><td>the params list only</td></tr>
+</table>
+</div>
+
+<div class="card red">
+<h3>Why zero_grad() is not optional: backward() ADDS, it doesn't replace</h3>
+<p>Here's the detail that trips people up. <span class="inline">backward()</span> does <span class="inline">w.grad += new_gradient</span>, not <span class="inline">w.grad = new_gradient</span>. It accumulates into the mailbox. Run it twice without emptying:</p>
+<div class="math">
+<span class="line">loss.<span class="fn">backward</span>()   <span class="cmt"># w.grad = -24</span></span>
+<span class="line">loss.<span class="fn">backward</span>()   <span class="cmt"># w.grad = -24 + -24 = -48   ← stale grad still there!</span></span>
+</div>
+<p>Now <span class="inline">step()</span> reads <span class="inline">−48</span> and takes <em>double</em> the step it should. Over a training loop, gradients from every past batch pile up and the update is garbage. <span class="inline">zero_grad()</span> empties the mailbox so each <span class="inline">step()</span> uses only this batch's gradient.</p>
+</div>
+
+<div class="card orange">
+<h3>Now revisit your original loop</h3>
+<div class="math">
+<span class="line"><span class="kw">for</span> b <span class="kw">in</span> <span class="fn">range</span>(30):</span>
+<span class="line">    <span class="kw">for</span> i <span class="kw">in</span> <span class="fn">range</span>(1, <span class="fn">len</span>(data)-1):</span>
+<span class="line">        loss = criterion(model(x)[-1,:], y)</span>
+<span class="line">        loss.<span class="fn">backward</span>()      <span class="cmt"># ✅ fills .grad (and KEEPS adding to it)</span></span>
+<span class="line">        <span class="cmt"># ❌ no optimizer.step()      → weights never change</span></span>
+<span class="line">        <span class="cmt"># ❌ no optimizer.zero_grad() → grads pile up forever</span></span>
+</div>
+<p>That's why it never learned: it kept filling the mailbox and never read from it, and never emptied it. The fix is the canonical three lines:</p>
+<div class="math">
+<span class="line">        optimizer.<span class="fn">zero_grad</span>()</span>
+<span class="line">        loss = criterion(model(x)[-1,:], y)</span>
+<span class="line">        loss.<span class="fn">backward</span>()</span>
+<span class="line">        optimizer.<span class="fn">step</span>()</span>
+</div>
+</div>
+<button class="nx" onclick="go(6)">But why THREE separate calls?</button>
+</div>
+
+<!-- PAGE 6 -->
+<div class="page" data-t="6. Why 3 separate calls">
+<h2>Why three calls instead of one? Because separation buys you control.</h2>
+
+<div class="card blue">
+<h3>The naive question</h3>
+<p>If you always do zero → backward → step, why not one method <span class="inline">loss.train_step(optimizer)</span>? Because keeping them separate lets you slip useful things <em>between</em> the steps. Here are the real reasons — each only possible because the mailbox is filled in one step and read in another.</p>
+</div>
+
+<div class="card green">
+<h3>1. Gradient accumulation — fake a bigger batch with less memory</h3>
+<p>Because <span class="inline">backward()</span> <em>adds</em>, you can run several small batches, let their gradients sum in the mailbox, and step once. Result: the math of a big batch, the memory of a small one.</p>
+<div class="math">
+<span class="line">accum = 4</span>
+<span class="line">optimizer.<span class="fn">zero_grad</span>()</span>
+<span class="line"><span class="kw">for</span> i, batch <span class="kw">in</span> <span class="fn">enumerate</span>(loader):</span>
+<span class="line">    loss = criterion(model(batch.x), batch.y) / accum   <span class="cmt"># scale so the sum averages</span></span>
+<span class="line">    loss.<span class="fn">backward</span>()                               <span class="cmt"># ADD into .grad</span></span>
+<span class="line">    <span class="kw">if</span> (i+1) % accum == 0:</span>
+<span class="line">        optimizer.<span class="fn">step</span>()       <span class="cmt"># step once per 4 batches</span></span>
+<span class="line">        optimizer.<span class="fn">zero_grad</span>()  <span class="cmt"># then empty for the next group</span></span>
+</div>
+<p class="faded">The "accumulate, don't replace" behavior that bites you on page 5 is the exact feature that makes this possible. Same mechanism, used on purpose.</p>
+</div>
+
+<div class="card orange">
+<h3>2. Gradient clipping — touch the grads after backward, before step</h3>
+<p>Exploding gradients? Shrink them in the gap between filling and reading the mailbox. Impossible if backward and step were fused.</p>
+<div class="math">
+<span class="line">loss.<span class="fn">backward</span>()                                          <span class="cmt"># mailbox now full</span></span>
+<span class="line">torch.nn.utils.<span class="fn">clip_grad_norm_</span>(model.<span class="fn">parameters</span>(), <span class="val">1.0</span>)  <span class="cmt"># rescale .grad</span></span>
+<span class="line">optimizer.<span class="fn">step</span>()                                         <span class="cmt"># step with safe grads</span></span>
+</div>
+</div>
+
+<div class="card purple">
+<h3>3. Inspect / debug — read the mailbox before acting on it</h3>
+<div class="math">
+<span class="line">loss.<span class="fn">backward</span>()</span>
+<span class="line"><span class="kw">for</span> name, p <span class="kw">in</span> model.<span class="fn">named_parameters</span>():</span>
+<span class="line">    <span class="fn">print</span>(name, p.grad.<span class="fn">norm</span>().<span class="fn">item</span>())   <span class="cmt"># is anything NaN? zero? huge?</span></span>
+<span class="line">optimizer.<span class="fn">step</span>()</span>
+</div>
+<p>"Why isn't my model learning?" is almost always answered here: a <span class="inline">.grad</span> that's <span class="inline">None</span> (graph broken / no <span class="inline">requires_grad</span>), all zeros (dead ReLU), or NaN (blew up).</p>
+</div>
+
+<div class="card">
+<h3>4. Many losses or many optimizers — one mailbox, mixed and matched</h3>
+<div class="math">
+<span class="line">(loss_a + loss_b).<span class="fn">backward</span>()  <span class="cmt"># two losses sum into the SAME .grad</span></span>
+<span class="line">opt_encoder.<span class="fn">step</span>()           <span class="cmt"># update one part of the model...</span></span>
+<span class="line">opt_decoder.<span class="fn">step</span>()           <span class="cmt"># ...with a different optimizer/LR</span></span>
+</div>
+</div>
+
+<div class="card blue">
+<h3>The point</h3>
+<p>Fusing the three calls would make the easy case one character shorter and make every one of the above <strong>impossible</strong>. PyTorch chose flexibility. The "three lines" aren't ceremony — they're three independent stages (<span class="key">empty → fill → read</span>) you're allowed to interrupt.</p>
+</div>
+<button class="nx" onclick="go(7)">Do people get this, or just memorize it?</button>
+</div>
+
+<!-- PAGE 7 -->
+<div class="page" data-t="7. Understand vs memorize">
+<h2>Do people actually understand this — or just memorize the syntax?</h2>
+
+<div class="card blue">
+<h3>The honest answer: both, in that order</h3>
+<p>Almost everyone <strong>memorizes the incantation first</strong> — zero_grad, backward, step, in that order — because it's in every tutorial and it works. You can be productive for a long time on muscle memory alone. That's not a character flaw; it's how you get moving.</p>
+<p style="margin-top:8px">The <strong>understanding usually arrives later, through breakage.</strong> You forget <span class="inline">zero_grad()</span> and your loss explodes. You forget <span class="inline">step()</span> and nothing learns (your loop on page 0). You <span class="inline">.detach()</span> something and suddenly <span class="inline">.grad</span> is <span class="inline">None</span>. Each bug forces you to learn one more piece of the mailbox model — and <em>that's</em> when it stops being syntax.</p>
+</div>
+
+<div class="card green">
+<h3>The line that separates the two</h3>
+<p>It's not whether you can write the loop from memory — everyone can. It's whether you can <strong>debug it when it breaks</strong>:</p>
+<table>
+<tr><th>Symptom</th><th>Memorizer</th><th>Understander</th></tr>
+<tr><td>Loss won't go down</td><td>tries random LRs</td><td>checks <span class="inline">.grad</span> — is it None? zero?</td></tr>
+<tr><td><span class="inline">.grad</span> is None</td><td>stuck</td><td>graph broke — missing <span class="inline">requires_grad</span> or a <span class="inline">.detach()</span> / <span class="inline">.item()</span></td></tr>
+<tr><td>Loss is NaN</td><td>stuck</td><td>inspects grads before step, adds clipping</td></tr>
+<tr><td>OOM on big batch</td><td>shrinks batch, accepts worse model</td><td>gradient accumulation</td></tr>
+</table>
+<p style="margin-top:8px">You now have the model that produces the right-hand column. That's the whole difference.</p>
+</div>
+
+<div class="card orange">
+<h3>The five facts that, once internalized, replace all the memorizing</h3>
+<ul>
+<li><span class="key">requires_grad=True</span> turns a tensor into a tracked knob (a leaf).</li>
+<li>The <span class="key">forward pass builds a graph</span> via <span class="inline">grad_fn</span> back-pointers — for free, every time.</li>
+<li><span class="key">backward()</span> walks that graph and <strong>adds</strong> a gradient into each leaf's <span class="inline">.grad</span>.</li>
+<li><span class="key">.grad is the mailbox</span>: backward writes it, the optimizer reads it; they share the tensor, nothing else.</li>
+<li><span class="key">step()</span> applies the update rule; <span class="key">zero_grad()</span> empties the mailbox so it doesn't pile up.</li>
+</ul>
+<p style="margin-top:8px">Everything else — accumulation, clipping, multiple optimizers — falls out of those five. You don't memorize the variations; you derive them.</p>
+</div>
+
+<div class="card purple">
+<h3>So: understand it</h3>
+<p>It's a half-day's worth of model that pays off every time something breaks for the rest of your ML career — and it's the kind of thing interviewers probe to tell the two groups apart. You're already on the right side of the table now.</p>
+</div>
+</div>
+
+<script>
+const pages=document.querySelectorAll('.page'),nav=document.getElementById('nav');
+pages.forEach((p,i)=>{
+  const b=document.createElement('button');
+  b.textContent=p.dataset.t;
+  b.onclick=()=>go(i);
+  if(i===0)b.classList.add('on');
+  nav.appendChild(b);
+});
+function go(n){
+  pages.forEach((p,i)=>p.classList.toggle('on',i===n));
+  nav.querySelectorAll('button').forEach((b,i)=>{
+    b.classList.remove('on');
+    if(i<n)b.classList.add('done');
+    else b.classList.remove('done');
+    if(i===n)b.classList.add('on');
+  });
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+</script>
+</body>
+</html>

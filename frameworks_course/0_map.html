@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Map — one problem, four frameworks</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0a0a1a;color:#e0e0e0;padding:20px 20px 80px;line-height:1.7}
+h1{text-align:center;color:#fff;margin-bottom:4px;font-size:1.5em}
+.sub{text-align:center;color:#888;margin-bottom:24px;font-size:.88em}
+.nav{display:flex;justify-content:center;gap:6px;margin-bottom:20px;flex-wrap:wrap}
+.nav button{padding:7px 13px;border:2px solid #333;background:#111;color:#888;border-radius:8px;cursor:pointer;font-size:.78em;transition:.2s}
+.nav button:hover{border-color:#555;color:#ccc}
+.nav button.on{border-color:#4fc3f7;color:#4fc3f7;background:#0d2137}
+.nav button.done{border-color:#4caf50;color:#4caf50}
+.page{display:none;max-width:880px;margin:0 auto}
+.page.on{display:block}
+.page h2{color:#4fc3f7;margin-bottom:12px;font-size:1.2em}
+.card{background:#12122a;border:1px solid #2a2a4a;border-radius:12px;padding:18px;margin-bottom:14px}
+.card.blue{border-color:#4fc3f7;background:#0d1b2a}
+.card.green{border-color:#4caf50;background:#0a1a0a}
+.card.orange{border-color:#ff9800;background:#1a1400}
+.card.red{border-color:#ef5350;background:#1a0a0a}
+.card.purple{border-color:#ce93d8;background:#1a0a2a}
+.card h3{color:#ffb74d;margin-bottom:8px;font-size:1em}
+button.nx{padding:10px 24px;background:#4caf50;color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:.9em;margin-top:14px}
+button.nx:hover{background:#66bb6a}
+a.nx{display:inline-block;padding:10px 24px;background:#4caf50;color:#000;border-radius:8px;font-weight:700;font-size:.9em;margin-top:14px;text-decoration:none}
+table{width:100%;border-collapse:collapse;margin:10px 0}
+th,td{padding:8px 12px;border:1px solid #333;text-align:left;font-size:.86em}
+th{background:#1a1a3a;color:#4fc3f7}
+.math{background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:14px;margin:10px 0;font-family:'Fira Code',Consolas,monospace;font-size:.84em;line-height:1.8;overflow-x:auto}
+.math .line{margin:2px 0;display:block;white-space:pre}
+.math .cmt{color:#6a9955}
+.math .val{color:#b5cea8}
+.math .lbl{color:#9cdcfe}
+.math .kw{color:#c586c0}
+.math .fn{color:#dcdcaa}
+.math.out{border-left:3px solid #4caf50;background:#0d1a12}
+.outlabel{display:block;font-size:.72em;color:#4caf50;letter-spacing:.08em;text-transform:uppercase;margin-bottom:6px}
+.key{color:#ffb74d;font-weight:600}
+.inline{font-family:'Fira Code',Consolas,monospace;background:#1a1a2e;border:1px solid #333;border-radius:4px;padding:1px 6px;font-size:.86em;color:#9cdcfe}
+.faded{color:#888;font-size:.86em}
+ul{margin-left:20px;margin-top:6px}
+li{margin:4px 0}
+details{margin-top:12px}
+details summary{cursor:pointer;color:#888;font-size:.85em;padding:8px 12px;background:#12122a;border:1px solid #333;border-radius:8px}
+details summary:hover{color:#ccc;border-color:#555}
+details[open] summary{color:#4fc3f7;border-color:#4fc3f7}
+/* framework chips */
+.fw{display:inline-block;font-weight:700;padding:1px 8px;border-radius:4px;font-size:.82em;border:1px solid}
+.fw.np{color:#4fc3f7;border-color:rgba(79,195,247,.4);background:rgba(79,195,247,.08)}
+.fw.tf{color:#ff9800;border-color:rgba(255,152,0,.4);background:rgba(255,152,0,.08)}
+.fw.pt{color:#ef5350;border-color:rgba(239,83,80,.4);background:rgba(239,83,80,.08)}
+.fw.jx{color:#ce93d8;border-color:rgba(206,147,216,.4);background:rgba(206,147,216,.08)}
+/* answer boxes */
+.answers{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:14px 0}
+.ans{border:2px solid;border-radius:10px;padding:12px 14px;font-size:.86em}
+.ans b{display:block;margin-bottom:4px;font-size:1.05em}
+.ans.np{border-color:#4fc3f7;background:#0d1b2a}.ans.np b{color:#4fc3f7}
+.ans.tf{border-color:#ff9800;background:#1a1400}.ans.tf b{color:#ff9800}
+.ans.pt{border-color:#ef5350;background:#1a0a0a}.ans.pt b{color:#ef5350}
+.ans.jx{border-color:#ce93d8;background:#1a0a2a}.ans.jx b{color:#ce93d8}
+@media(max-width:700px){.answers{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<a href="../index.html" style="position:fixed;top:10px;left:14px;font-size:.75em;color:#555;text-decoration:none;z-index:999;padding:4px 8px;background:#0a0a1a;border:1px solid #333;border-radius:6px;">&larr; index</a>
+
+<h1>The Map</h1>
+<p class="sub">NumPy · PyTorch · TensorFlow · JAX — four answers to one question. Read this first; it's the spine of the whole course.</p>
+
+<div class="nav" id="nav"></div>
+
+<!-- PAGE 0 -->
+<div class="page on" data-t="0. One question">
+<h2>Everything starts from one problem: Python is too slow for math</h2>
+
+<div class="card">
+<h3>Measure it — a dot product of 1,000,000 numbers</h3>
+<div class="math">
+<span class="line">s = <span class="val">0.0</span></span>
+<span class="line"><span class="kw">for</span> i <span class="kw">in</span> <span class="fn">range</span>(<span class="val">1_000_000</span>):   <span class="cmt"># plain Python</span></span>
+<span class="line">    s += a[i] * b[i]</span>
+<span class="line"></span>
+<span class="line">s = a @ b                    <span class="cmt"># numpy</span></span>
+</div>
+<div class="math out"><span class="outlabel">output — real run, Apple M3, single run</span>
+<span class="line">pure Python loop:     97.0 ms   result 250031.5146</span>
+<span class="line">numpy a @ b     :    0.844 ms   result 250031.5146</span>
+<span class="line">ratio: 115x</span>
+</div>
+<p>Same numbers, same answer, <span class="key">115× apart</span>. The Python loop is slow because every single <span class="inline">a[i] * b[i]</span> goes through the interpreter: unbox the object, look up <span class="inline">__mul__</span>, allocate a result object, repeat — a million times. NumPy runs <em>one</em> loop written in C that multiplies raw doubles sitting next to each other in memory.</p>
+</div>
+
+<div class="card blue">
+<h3>So the real question every framework answers</h3>
+<p style="font-size:1.05em;text-align:center;margin:10px 0"><span class="key">Where does the fast loop live — and what is Python's job?</span></p>
+<div class="answers">
+<div class="ans np"><b>NumPy (2005)</b>Python calls one C loop per operation, immediately. <span class="faded">Python IS the program — it runs every step.</span></div>
+<div class="ans tf"><b>TensorFlow 1 (2015)</b>Python only <em>describes</em> a graph of operations; a C++ runtime executes it later, anywhere. <span class="faded">Python is a metaprogram.</span></div>
+<div class="ans pt"><b>PyTorch (2017)</b>Like NumPy — eager C/CUDA calls — but each call also records itself onto a tape, so gradients come free. <span class="faded">Python is the program again.</span></div>
+<div class="ans jx"><b>JAX (2018)</b>Python runs <em>once</em> while being traced; a compiler (XLA) rewrites and runs the math after that. <span class="faded">Python generates the program.</span></div>
+</div>
+<p>Hold onto this one sentence per framework. Almost every difference you'll meet in this course — debugging pain, deployment stories, weird error messages, why JAX bans <span class="inline">x[0] = 5</span> — falls out of these four choices.</p>
+</div>
+
+<div class="card orange">
+<h3>The second question (deep learning only)</h3>
+<p>Training needs <span class="inline">∂loss/∂w</span> for every weight. NumPy makes you derive it by hand. The other three compute it for you — but they disagree about <em>where the gradient machinery lives</em>: on the tensors (PyTorch), in a context manager (TensorFlow), or as a function transformation (JAX). That's Chapter 6.</p>
+</div>
+<button class="nx" onclick="go(1)">Next: the family tree</button>
+</div>
+
+<!-- PAGE 1 -->
+<div class="page" data-t="1. Family tree">
+<h2>Thirty years, four lineages — who begat whom</h2>
+
+<div class="card">
+<svg viewBox="0 0 760 330" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto">
+  <!-- time axis -->
+  <line x1="86" y1="290" x2="748" y2="290" stroke="#333" stroke-width="1"/>
+  <g font-size="10" fill="#555" text-anchor="middle">
+    <text x="90" y="306">1995</text><text x="216" y="306">2001</text><text x="320" y="306">2006</text>
+    <text x="425" y="306">2011</text><text x="509" y="306">2015</text><text x="572" y="306">2018</text>
+    <text x="677" y="306">2023</text><text x="740" y="306">2026</text>
+  </g>
+  <!-- lane lines -->
+  <line x1="86" y1="60" x2="748" y2="60" stroke="#1a1a3a" stroke-width="1"/>
+  <line x1="86" y1="125" x2="748" y2="125" stroke="#1a1a3a" stroke-width="1"/>
+  <line x1="86" y1="190" x2="748" y2="190" stroke="#1a1a3a" stroke-width="1"/>
+  <line x1="86" y1="255" x2="748" y2="255" stroke="#1a1a3a" stroke-width="1"/>
+  <!-- lane labels -->
+  <g font-size="12" font-weight="700" text-anchor="start">
+    <text x="6" y="64" fill="#4fc3f7">NumPy</text>
+    <text x="6" y="129" fill="#ff9800">TensorFlow</text>
+    <text x="6" y="194" fill="#ef5350">PyTorch</text>
+    <text x="6" y="259" fill="#ce93d8">JAX</text>
+  </g>
+
+  <!-- influence arrows (dashed), drawn under nodes -->
+  <defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#555"/></marker></defs>
+  <path d="M330,66 C420,100 480,110 540,120" stroke="#555" stroke-width="1" stroke-dasharray="4 3" fill="none" marker-end="url(#arr)"/>
+  <path d="M330,66 C430,120 500,165 542,186" stroke="#555" stroke-width="1" stroke-dasharray="4 3" fill="none" marker-end="url(#arr)"/>
+  <path d="M330,66 C420,140 500,225 562,251" stroke="#555" stroke-width="1" stroke-dasharray="4 3" fill="none" marker-end="url(#arr)"/>
+  <path d="M513,193 L544,191" stroke="#555" stroke-width="1" stroke-dasharray="4 3" fill="none" marker-end="url(#arr)"/>
+  <path d="M492,252 L546,192" stroke="#555" stroke-width="1" stroke-dasharray="4 3" fill="none" marker-end="url(#arr)"/>
+  <path d="M513,131 C530,160 545,220 553,248" stroke="#555" stroke-width="1" stroke-dasharray="4 3" fill="none" marker-end="url(#arr)"/>
+
+  <!-- NumPy lane nodes -->
+  <g>
+    <circle cx="90" cy="60" r="5" fill="#4fc3f7"/><text x="90" y="44" font-size="10" fill="#9cdcfe" text-anchor="middle">Numeric '95</text>
+    <circle cx="216" cy="60" r="5" fill="#4fc3f7"/><text x="216" y="82" font-size="10" fill="#9cdcfe" text-anchor="middle">numarray '01</text>
+    <circle cx="320" cy="60" r="6" fill="#4fc3f7"/><text x="320" y="44" font-size="10" fill="#fff" font-weight="700" text-anchor="middle">NumPy 1.0 '06</text>
+    <circle cx="698" cy="60" r="5" fill="#4fc3f7"/><text x="698" y="44" font-size="10" fill="#9cdcfe" text-anchor="middle">NumPy 2.0 '24</text>
+  </g>
+  <!-- TF lane nodes -->
+  <g>
+    <circle cx="425" cy="125" r="5" fill="#ff9800"/><text x="425" y="109" font-size="10" fill="#ffcc80" text-anchor="middle">DistBelief '11</text>
+    <circle cx="509" cy="125" r="6" fill="#ff9800"/><text x="509" y="147" font-size="10" fill="#fff" font-weight="700" text-anchor="middle">TF 1 '15</text>
+    <circle cx="593" cy="125" r="5" fill="#ff9800"/><text x="593" y="109" font-size="10" fill="#ffcc80" text-anchor="middle">TF 2 '19</text>
+    <circle cx="719" cy="125" r="5" fill="#ff9800"/><text x="710" y="147" font-size="10" fill="#ffcc80" text-anchor="middle">LiteRT era</text>
+  </g>
+  <!-- PyTorch lane nodes -->
+  <g>
+    <circle cx="425" cy="190" r="5" fill="#ef5350"/><text x="425" y="174" font-size="10" fill="#ef9a9a" text-anchor="middle">Torch7 (Lua) '11</text>
+    <circle cx="509" cy="190" r="4" fill="#7a3a3a"/><text x="500" y="212" font-size="10" fill="#b98" text-anchor="middle">Chainer '15</text>
+    <circle cx="551" cy="190" r="6" fill="#ef5350"/><text x="563" y="174" font-size="10" fill="#fff" font-weight="700" text-anchor="middle">PyTorch '17</text>
+    <circle cx="677" cy="190" r="5" fill="#ef5350"/><text x="677" y="212" font-size="10" fill="#ef9a9a" text-anchor="middle">2.0 compile '23</text>
+  </g>
+  <!-- JAX lane nodes -->
+  <g>
+    <circle cx="488" cy="255" r="5" fill="#ce93d8"/><text x="470" y="239" font-size="10" fill="#e1bee7" text-anchor="middle">autograd '14</text>
+    <circle cx="551" cy="255" r="4" fill="#6a4a7a"/><text x="543" y="277" font-size="10" fill="#b9a" text-anchor="middle">XLA '17</text>
+    <circle cx="572" cy="255" r="6" fill="#ce93d8"/><text x="592" y="239" font-size="10" fill="#fff" font-weight="700" text-anchor="middle">JAX '18</text>
+    <circle cx="698" cy="255" r="5" fill="#ce93d8"/><text x="690" y="277" font-size="10" fill="#e1bee7" text-anchor="middle">Gemini era</text>
+  </g>
+</svg>
+<p class="faded" style="margin-top:8px">Solid dots: releases. Dashed arrows: ideas flowing — NumPy's array API into all three frameworks; Chainer's define-by-run and autograd's differentiate-plain-code into PyTorch; TensorFlow's XLA compiler into JAX.</p>
+</div>
+
+<div class="card">
+<h3>One-line character sketches</h3>
+<table>
+<tr><th>Framework</th><th>Built by / for</th><th>Its bet</th></tr>
+<tr><td><span class="fw np">NumPy</span></td><td>Scientists unifying a fractured community (Travis Oliphant, 2005)</td><td>One shared array type is worth more than any single feature</td></tr>
+<tr><td><span class="fw tf">TensorFlow</span></td><td>Google, to train &amp; <em>ship</em> models on anything from datacenters to phones</td><td>Describe the program as a graph; the graph is portable and optimizable</td></tr>
+<tr><td><span class="fw pt">PyTorch</span></td><td>Facebook AI Research, for researchers who live in Python</td><td>If it feels like normal Python, researchers will out-iterate everyone</td></tr>
+<tr><td><span class="fw jx">JAX</span></td><td>Google Research, for TPU-scale experiments</td><td>Make programs pure, and everything — gradients, batching, sharding — becomes a compiler pass</td></tr>
+</table>
+<p class="faded">Each new system is a reaction to the previous one's pain: TF reacted to "research code can't be shipped," PyTorch to "graphs can't be debugged," JAX to "eager code can't be transformed."</p>
+</div>
+<button class="nx" onclick="go(2)">Next: the same 8 lines, four ways</button>
+</div>
+
+<!-- PAGE 2 -->
+<div class="page" data-t="2. Same code, 4 dialects">
+<h2>The same computation in all four — look before we explain</h2>
+
+<div class="card">
+<h3>The running example for the whole course</h3>
+<p>One weight <span class="inline">w = 2.0</span>, one input <span class="inline">x = 3.0</span>, one target <span class="inline">t = 10.0</span>:</p>
+<div class="math">
+<span class="line">pred = w * x           <span class="cmt"># 6.0</span></span>
+<span class="line">loss = (pred - t)**2   <span class="cmt"># (-4)^2 = 16.0</span></span>
+<span class="line"><span class="cmt"># dloss/dw = 2·(pred-t)·x = 2·(-4)·3 = -24.0</span></span>
+</div>
+<p class="faded">Same numbers as the <a href="../pytorch_autograd/autograd.html" style="color:#4fc3f7">PyTorch Mechanics course</a> — if you traced −24 by hand there, every framework below must reproduce it.</p>
+</div>
+
+<div class="card blue">
+<h3><span class="fw np">NumPy</span> — you derive the gradient yourself</h3>
+<div class="math">
+<span class="line">w, x, t = <span class="val">2.0</span>, <span class="val">3.0</span>, <span class="val">10.0</span></span>
+<span class="line">loss = (w*x - t)**<span class="val">2</span></span>
+<span class="line">grad = <span class="val">2</span>*(w*x - t)*x    <span class="cmt"># the chain rule, by hand</span></span>
+</div>
+</div>
+
+<div class="card red">
+<h3><span class="fw pt">PyTorch</span> — the tensors record a tape; grad lands in <span class="inline">.grad</span></h3>
+<div class="math">
+<span class="line">w = torch.<span class="fn">tensor</span>(<span class="val">2.0</span>, requires_grad=<span class="kw">True</span>)</span>
+<span class="line">loss = (w * <span class="val">3.0</span> - <span class="val">10.0</span>)**<span class="val">2</span></span>
+<span class="line">loss.<span class="fn">backward</span>()          <span class="cmt"># walks the recorded graph</span></span>
+<span class="line">w.grad                   <span class="cmt"># the gradient WAITS IN A MAILBOX on w</span></span>
+</div>
+</div>
+
+<div class="card orange">
+<h3><span class="fw tf">TensorFlow 2</span> — you open a tape context; grad is returned</h3>
+<div class="math">
+<span class="line">w = tf.<span class="fn">Variable</span>(<span class="val">2.0</span>)</span>
+<span class="line"><span class="kw">with</span> tf.<span class="fn">GradientTape</span>() <span class="kw">as</span> tape:   <span class="cmt"># recording ON while inside</span></span>
+<span class="line">    loss = (w * <span class="val">3.0</span> - <span class="val">10.0</span>)**<span class="val">2</span></span>
+<span class="line">grad = tape.<span class="fn">gradient</span>(loss, w)      <span class="cmt"># returned to you</span></span>
+</div>
+</div>
+
+<div class="card purple">
+<h3><span class="fw jx">JAX</span> — grad transforms the function itself</h3>
+<div class="math">
+<span class="line">f = <span class="kw">lambda</span> w: (w * <span class="val">3.0</span> - <span class="val">10.0</span>)**<span class="val">2</span></span>
+<span class="line">jax.<span class="fn">grad</span>(f)          <span class="cmt"># a NEW FUNCTION that computes df/dw</span></span>
+<span class="line">jax.<span class="fn">grad</span>(f)(<span class="val">2.0</span>)     <span class="cmt"># call it like any function</span></span>
+</div>
+</div>
+
+<div class="math out"><span class="outlabel">output — real run, all four</span>
+<span class="line">numpy   loss 16.0   grad -24.0   (derived by hand)</span>
+<span class="line">torch   loss 16.0   grad -24.0</span>
+<span class="line">tf      loss 16.0   grad -24.0</span>
+<span class="line">jax     loss 16.0   grad -24.0</span>
+</div>
+
+<div class="card green">
+<h3>Same math — but notice what moved</h3>
+<table>
+<tr><th></th><th>Who computes ∂loss/∂w</th><th>Where the gradient ends up</th></tr>
+<tr><td><span class="fw np">NumPy</span></td><td>you, on paper</td><td>a variable you made</td></tr>
+<tr><td><span class="fw pt">PyTorch</span></td><td>a tape recorded <em>on the tensors</em></td><td>deposited into <span class="inline">w.grad</span></td></tr>
+<tr><td><span class="fw tf">TF</span></td><td>a tape you <em>explicitly opened</em></td><td>returned by <span class="inline">tape.gradient</span></td></tr>
+<tr><td><span class="fw jx">JAX</span></td><td>a <em>transformation of the function</em></td><td>the return value of a new function</td></tr>
+</table>
+<p>And a promise: in Chapter 9 we train the same network in all four with identical initial weights, and the loss curves match <em>to six decimal places</em>. Different dialects — same language.</p>
+</div>
+<button class="nx" onclick="go(3)">Next: how to read this course</button>
+</div>
+
+<!-- PAGE 3 -->
+<div class="page" data-t="3. How to read">
+<h2>The course in one screen</h2>
+
+<div class="card blue">
+<h3>Part 1 — the four, one at a time <span class="faded">(chapters 1–4)</span></h3>
+<p>For each framework: where it came from, what problem its designers were staring at, how its core mechanism actually works (with runs, not diagrams-only), and where it's used in 2026. Read in order — each chapter's pain motivates the next chapter's design.</p>
+</div>
+
+<div class="card orange">
+<h3>Part 2 — the differences <span class="faded">(chapters 5–7)</span></h3>
+<p>The main event. Three cross-cutting questions: <span class="key">when does your Python run</span> (eager vs graph vs trace-and-compile), <span class="key">where do gradients and state live</span>, and <span class="key">which one do you pick</span> for a given job in 2026 — hardware, deployment, scale, ecosystem.</p>
+</div>
+
+<div class="card purple">
+<h3>Part 3 — depth by doing <span class="faded">(chapters 8–10)</span></h3>
+<p>Build a working autograd engine in ~45 lines and map it onto PyTorch's internals; train the same MLP four ways and watch the numbers agree; then a hands-on JAX chapter, since it's the one you haven't used.</p>
+</div>
+
+<div class="card">
+<h3>The honesty rule</h3>
+<p>Every output block in this course marked <span class="outlabel" style="display:inline;margin:0">output — real run</span> was captured from an actual run of the code shown, on this machine:</p>
+<table>
+<tr><th>Environment</th><th>Versions (verified July 2026)</th></tr>
+<tr><td>Apple M3, macOS, CPU builds, Python 3.12</td><td><span class="fw np">NumPy</span> 2.5.0 · <span class="fw pt">torch</span> 2.12.1 · <span class="fw tf">tensorflow</span> 2.21.0 · <span class="fw jx">jax</span> 0.10.2 · flax 0.12.7 · optax 0.2.8 · keras 3.15.0</td></tr>
+</table>
+<p class="faded">Timing numbers are single runs on this laptop — treat them as order-of-magnitude evidence, not benchmarks. Historical claims cite primary sources (papers, release notes, official blogs) and were verified against the live web in July 2026.</p>
+</div>
+
+<a class="nx" href="1_numpy.html">Start Part 1: NumPy →</a>
+</div>
+
+<script>
+const pages=document.querySelectorAll('.page'),nav=document.getElementById('nav');
+pages.forEach((p,i)=>{
+  const b=document.createElement('button');
+  b.textContent=p.dataset.t;
+  b.onclick=()=>go(i);
+  if(i===0)b.classList.add('on');
+  nav.appendChild(b);
+});
+function go(n){
+  pages.forEach((p,i)=>p.classList.toggle('on',i===n));
+  nav.querySelectorAll('button').forEach((b,i)=>{
+    b.classList.remove('on');
+    if(i<n)b.classList.add('done');
+    else b.classList.remove('done');
+    if(i===n)b.classList.add('on');
+  });
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+</script>
+</body>
+</html>

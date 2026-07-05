@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VAE Ch5: Semantic IDs</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0a0a1a;color:#e0e0e0;padding:20px 20px 80px;line-height:1.7}
+h1{text-align:center;color:#fff;margin-bottom:4px;font-size:1.5em}
+.sub{text-align:center;color:#888;margin-bottom:24px;font-size:.88em}
+.nav{display:flex;justify-content:center;gap:6px;margin-bottom:20px;flex-wrap:wrap}
+.nav button{padding:7px 13px;border:2px solid #333;background:#111;color:#888;border-radius:8px;cursor:pointer;font-size:.78em;transition:.2s}
+.nav button:hover{border-color:#555;color:#ccc}
+.nav button.on{border-color:#4fc3f7;color:#4fc3f7;background:#0d2137}
+.nav button.done{border-color:#4caf50;color:#4caf50}
+.page{display:none;max-width:880px;margin:0 auto}
+.page.on{display:block}
+.page h2{color:#4fc3f7;margin-bottom:12px;font-size:1.2em}
+.card{background:#12122a;border:1px solid #2a2a4a;border-radius:12px;padding:18px;margin-bottom:14px}
+.card.blue{border-color:#4fc3f7;background:#0d1b2a}
+.card.green{border-color:#4caf50;background:#0a1a0a}
+.card.orange{border-color:#ff9800;background:#1a1400}
+.card.red{border-color:#ef5350;background:#1a0a0a}
+.card.purple{border-color:#ce93d8;background:#1a0a2a}
+.card h3{color:#ffb74d;margin-bottom:8px;font-size:1em}
+button.nx{padding:10px 24px;background:#4caf50;color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:.9em;margin-top:14px}
+button.nx:hover{background:#66bb6a}
+table{width:100%;border-collapse:collapse;margin:10px 0}
+th,td{padding:8px 12px;border:1px solid #333;text-align:center;font-size:.86em}
+th{background:#1a1a3a;color:#4fc3f7}
+td{text-align:left}
+.math{background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:14px;margin:10px 0;font-family:'Fira Code',Consolas,monospace;font-size:.85em;line-height:1.8;overflow-x:auto}
+.math .line{margin:2px 0;display:block;white-space:pre}
+.math .hl{background:#264f78;padding:2px 6px;border-radius:4px;display:inline-block}
+.math .cmt{color:#6a9955}.math .val{color:#b5cea8}.math .lbl{color:#9cdcfe}.math .win{color:#4caf50;font-weight:700}
+.key{color:#ffb74d;font-weight:600}
+.diagram{display:block;margin:14px auto;max-width:100%}
+.cap{text-align:center;color:#888;font-size:.8em;margin:-6px 0 14px}
+details.more{background:#0d0d20;border:1px solid #333;border-left:3px solid #ce93d8;border-radius:8px;padding:10px 14px;margin:12px 0}
+details.more summary{cursor:pointer;color:#ce93d8;font-size:.86em;font-weight:600;outline:none}
+details.more[open] summary{margin-bottom:10px}
+details.more p,details.more .math{font-size:.85em}
+.tag{display:inline-block;font-size:.7em;font-weight:700;padding:2px 7px;border-radius:4px;margin-left:6px;vertical-align:middle}
+.t-sid{background:rgba(79,195,247,.15);color:#4fc3f7;border:1px solid rgba(79,195,247,.35)}
+</style>
+</head>
+<body>
+<a href="../index.html" style="position:fixed;top:10px;left:14px;font-size:.75em;color:#555;text-decoration:none;z-index:999;padding:4px 8px;background:#0a0a1a;border:1px solid #333;border-radius:6px;">&larr; index</a>
+<h1>VAE Course — Chapter 5: Semantic IDs</h1>
+<p class="sub">Turning a video into a short address built from its content — the bridge from VQ-VAE to generative recommendation (TIGER)</p>
+<div class="nav" id="nav"></div>
+
+<!-- PAGE 0 -->
+<div class="page on" data-t="0. Why atomic IDs hurt">
+<h2>The problem: an ID that means nothing</h2>
+
+<div class="card orange">
+<h3>How recommenders normally identify an item</h3>
+<p>Every video gets a random number, and that number indexes a giant lookup table of learnable vectors. The vector is the only thing the model knows about the video.</p>
+<svg class="diagram" viewBox="0 0 760 230" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI,sans-serif">
+  <!-- ids -->
+  <text x="20" y="30" fill="#888" font-size="13">video_id =</text>
+  <rect x="95" y="14" width="70" height="24" rx="5" fill="#0d1b2a" stroke="#4fc3f7"/>
+  <text x="130" y="31" fill="#4fc3f7" font-size="13" text-anchor="middle">48291</text>
+  <text x="180" y="30" fill="#555" font-size="13">(just a number — picked at upload, no meaning)</text>
+  <!-- arrow -->
+  <line x1="130" y1="42" x2="130" y2="70" stroke="#555" stroke-width="2" marker-end="url(#ar)"/>
+  <text x="150" y="62" fill="#888" font-size="12">look up row 48291</text>
+  <!-- table -->
+  <rect x="60" y="78" width="240" height="120" rx="8" fill="#12122a" stroke="#2a2a4a"/>
+  <text x="180" y="98" fill="#ffb74d" font-size="12" text-anchor="middle">Embedding table (1 billion rows)</text>
+  <text x="75" y="122" fill="#555" font-size="11">row 0     [ . . . ]</text>
+  <text x="75" y="142" fill="#555" font-size="11">row 1     [ . . . ]</text>
+  <rect x="70" y="150" width="220" height="20" rx="4" fill="#0d2137" stroke="#4fc3f7"/>
+  <text x="75" y="165" fill="#4fc3f7" font-size="11">row 48291 [0.7, -0.2, 0.4, 0.9, ...]</text>
+  <text x="75" y="188" fill="#555" font-size="11">row ...   [ . . . ]</text>
+  <!-- arrow to learning -->
+  <line x1="300" y1="160" x2="360" y2="160" stroke="#555" stroke-width="2" marker-end="url(#ar)"/>
+  <rect x="365" y="120" width="370" height="80" rx="8" fill="#1a1400" stroke="#ff9800"/>
+  <text x="550" y="142" fill="#ff9800" font-size="12" text-anchor="middle">How that row gets good</text>
+  <text x="380" y="165" fill="#bbb" font-size="11.5">User watches 48291  →  nudge row 48291</text>
+  <text x="380" y="184" fill="#bbb" font-size="11.5">Repeat millions of times  →  row becomes meaningful</text>
+  <defs><marker id="ar" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#555"/></marker></defs>
+</svg>
+<p class="cap">An <span class="key">atomic ID</span> is opaque: the number 48291 tells the model nothing. The vector only becomes useful after the video collects engagement.</p>
+</div>
+
+<div class="card red">
+<h3>Three things break</h3>
+<div class="math">
+<div class="line"><span class="cmt">// 1. COLD START — the killer</span></div>
+<div class="line">new video uploaded → id 99999 → row 99999 = random init → useless</div>
+<div class="line">no plays yet → never nudged → the recommender is blind to it</div>
+<div class="line"> </div>
+<div class="line"><span class="cmt">// 2. NO SHARING between similar items</span></div>
+<div class="line">two near-identical pasta videos get ids 48291 and 71004</div>
+<div class="line">different rows, learned separately → what one learns can't help the other</div>
+<div class="line"> </div>
+<div class="line"><span class="cmt">// 3. THE TABLE EXPLODES</span></div>
+<div class="line">1 billion videos × 128 floats × 4 bytes ≈ 512 GB of just the ID table</div>
+<div class="line">most rows are long-tail items seen a handful of times → barely trained</div>
+</div>
+<p>All three have the same root cause: <span class="key">the ID carries zero information about the item</span>. Meaning has to be learned from scratch, per item, from engagement we may not have.</p>
+</div>
+
+<div class="card blue">
+<h3>The wish</h3>
+<p>What if the ID itself were <span class="key">derived from what the video is about</span>? Then a brand-new pasta video would get almost the same ID as an existing pasta video — and instantly inherit everything the model knows about pasta videos. No plays required. That ID is a <span class="t-sid t-sid">Semantic ID</span>, and we already have the machine to build it: the <strong>VQ-VAE</strong> from this course.</p>
+</div>
+<button class="nx" onclick="go(1)">Next: the idea — an address from content &#x2192;</button>
+</div>
+
+<!-- PAGE 1 -->
+<div class="page" data-t="1. The idea">
+<h2>The idea: a coarse-to-fine address</h2>
+
+<div class="card green">
+<h3>Analogy first — a postal address</h3>
+<p>Think how a mailing address locates a house: <strong>country → city → street → number</strong>. Each part narrows down the previous. Two neighbors share <em>everything but the last part</em>. You can tell two addresses are "near" just by reading the prefix — no map needed.</p>
+<svg class="diagram" viewBox="0 0 720 150" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI,sans-serif">
+  <g font-size="13" text-anchor="middle">
+    <rect x="30"  y="40" width="120" height="34" rx="6" fill="#0d1b2a" stroke="#4fc3f7"/><text x="90"  y="62" fill="#4fc3f7">USA</text>
+    <rect x="190" y="40" width="120" height="34" rx="6" fill="#0d1b2a" stroke="#4fc3f7"/><text x="250" y="62" fill="#4fc3f7">San Francisco</text>
+    <rect x="350" y="40" width="120" height="34" rx="6" fill="#0d1b2a" stroke="#4fc3f7"/><text x="410" y="62" fill="#4fc3f7">Market St</text>
+    <rect x="510" y="40" width="120" height="34" rx="6" fill="#0d1b2a" stroke="#4fc3f7"/><text x="570" y="62" fill="#4fc3f7">#1455</text>
+  </g>
+  <g stroke="#555" stroke-width="2" marker-end="url(#ar1)">
+    <line x1="150" y1="57" x2="188" y2="57"/><line x1="310" y1="57" x2="348" y2="57"/><line x1="470" y1="57" x2="508" y2="57"/>
+  </g>
+  <text x="90"  y="100" fill="#888" font-size="11" text-anchor="middle">coarse</text>
+  <text x="570" y="100" fill="#888" font-size="11" text-anchor="middle">fine</text>
+  <line x1="90" y1="112" x2="570" y2="112" stroke="#333" stroke-width="1" marker-end="url(#ar1)"/>
+  <text x="330" y="132" fill="#666" font-size="11" text-anchor="middle">each step narrows down the one before it</text>
+  <defs><marker id="ar1" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#555"/></marker></defs>
+</svg>
+</div>
+
+<div class="card blue">
+<h3>A Semantic ID is the same thing for a video</h3>
+<p>Instead of country/city/street, the levels are learned content buckets. A semantic ID is a short tuple of integers:</p>
+<svg class="diagram" viewBox="0 0 720 165" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI,sans-serif">
+  <g font-size="13" text-anchor="middle">
+    <rect x="120" y="35" width="150" height="34" rx="6" fill="#0a1a0a" stroke="#4caf50"/><text x="195" y="57" fill="#4caf50">2</text>
+    <rect x="290" y="35" width="150" height="34" rx="6" fill="#0a1a0a" stroke="#4caf50"/><text x="365" y="57" fill="#4caf50">7</text>
+    <rect x="460" y="35" width="150" height="34" rx="6" fill="#0a1a0a" stroke="#4caf50"/><text x="535" y="57" fill="#4caf50">3</text>
+  </g>
+  <text x="195" y="92" fill="#888" font-size="10.5" text-anchor="middle">"educational"</text>
+  <text x="365" y="92" fill="#888" font-size="10.5" text-anchor="middle">"technical / advanced"</text>
+  <text x="535" y="92" fill="#888" font-size="10.5" text-anchor="middle">"long-form"</text>
+  <g stroke="#555" stroke-width="2" marker-end="url(#ar2)"><line x1="270" y1="52" x2="288" y2="52"/><line x1="440" y1="52" x2="458" y2="52"/></g>
+  <text x="365" y="130" fill="#ffb74d" font-size="13" text-anchor="middle">semantic ID = (2, 7, 3)</text>
+  <text x="365" y="150" fill="#666" font-size="11" text-anchor="middle">a short, content-derived "address" for the video</text>
+  <defs><marker id="ar2" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#555"/></marker></defs>
+</svg>
+<p>Two advanced-math lectures land on the same first token (both "educational"); maybe the same first two. They <span class="key">share a prefix</span> exactly like neighbors share a postcode. That shared prefix is how knowledge transfers — and how a brand-new video gets placed correctly before anyone has watched it.</p>
+</div>
+
+<div class="card">
+<h3>So the whole job is one question</h3>
+<p>Given a video's <strong>content embedding</strong> (one dense vector summarizing its text + thumbnail + audio — produced by some pretrained encoder), how do we turn that vector into a <span class="key">short tuple of integers</span> where the first integer is coarse and each next one refines it?</p>
+<p style="margin-top:8px">That converter is <strong>RQ-VAE</strong> — residual-quantized VAE. The next page builds it with real numbers you can trace by hand.</p>
+</div>
+<button class="nx" onclick="go(2)">Next: residual quantization, step by step &#x2192;</button>
+</div>
+
+<!-- PAGE 2 -->
+<div class="page" data-t="2. Residual quantization">
+<h2>RQ-VAE: build the address one level at a time</h2>
+
+<div class="card">
+<h3>The pieces (kept tiny so every number is traceable)</h3>
+<p>This is exactly the setup in your <code>mini_rq_vae.py</code>: <strong>2 levels</strong>, each a <strong>codebook of 4</strong> vectors. We use 2-dimensional vectors so the arithmetic fits on a line.</p>
+<div class="math">
+<div class="line"><span class="cmt">// the encoder already squeezed our video down to this 2-D content vector:</span></div>
+<div class="line"><span class="lbl">z</span> = [0.9, 0.2]</div>
+<div class="line"> </div>
+<div class="line"><span class="cmt">// Codebook 1 (the "coarse" buckets) — 4 learned prototype vectors:</span></div>
+<div class="line">C1[0]=[1.0, 0.0]   C1[1]=[0.0, 1.0]   C1[2]=[0.5, 0.5]   C1[3]=[-0.5, 0.5]</div>
+<div class="line"> </div>
+<div class="line"><span class="cmt">// Codebook 2 (the "fine corrections") — 4 small learned vectors:</span></div>
+<div class="line">C2[0]=[0.0, 0.0]   C2[1]=[-0.1, 0.2]  C2[2]=[0.1, -0.2]  C2[3]=[0.2, 0.2]</div>
+</div>
+</div>
+
+<div class="card blue">
+<h3>Level 1 — snap z to the nearest coarse prototype</h3>
+<p>Compute squared distance from <span class="lbl">z=[0.9,0.2]</span> to each of the 4 vectors in codebook 1, pick the smallest.</p>
+<div class="math">
+<div class="line">to C1[0]=[1.0,0.0]:  (0.9-1.0)² + (0.2-0.0)² = 0.01 + 0.04 = <span class="win">0.05  ← smallest</span></div>
+<div class="line">to C1[1]=[0.0,1.0]:  (0.9-0.0)² + (0.2-1.0)² = 0.81 + 0.64 = 1.45</div>
+<div class="line">to C1[2]=[0.5,0.5]:  (0.9-0.5)² + (0.2-0.5)² = 0.16 + 0.09 = 0.25</div>
+<div class="line">to C1[3]=[-.5,0.5]:  (0.9+0.5)² + (0.2-0.5)² = 1.96 + 0.09 = 2.05</div>
+<div class="line"> </div>
+<div class="line"><span class="hl">level-1 token = 0</span>   (we picked C1[0])</div>
+</div>
+<p>The pick captures <em>most</em> of z, but not all. What's left over is the <span class="key">residual</span> — the part the coarse bucket missed:</p>
+<div class="math">
+<div class="line"><span class="lbl">residual</span> = z − C1[0] = [0.9, 0.2] − [1.0, 0.0] = <span class="val">[-0.1, 0.2]</span></div>
+</div>
+</div>
+
+<div class="card green">
+<h3>Level 2 — snap the <em>residual</em> to the nearest fine prototype</h3>
+<p>This is the whole trick of the word "residual": level 2 doesn't quantize z again — it quantizes <strong>what level 1 got wrong</strong>.</p>
+<div class="math">
+<div class="line">residual = [-0.1, 0.2]   <span class="cmt">// find nearest in codebook 2</span></div>
+<div class="line">to C2[0]=[0.0,0.0]:   0.01 + 0.04 = 0.05</div>
+<div class="line">to C2[1]=[-.1,0.2]:   0.00 + 0.00 = <span class="win">0.00  ← exact match!</span></div>
+<div class="line">to C2[2]=[0.1,-.2]:   0.04 + 0.16 = 0.20</div>
+<div class="line">to C2[3]=[0.2,0.2]:   0.09 + 0.00 = 0.09</div>
+<div class="line"> </div>
+<div class="line"><span class="hl">level-2 token = 1</span>   (we picked C2[1])</div>
+</div>
+</div>
+
+<div class="card purple">
+<h3>The result — read it off</h3>
+<div class="math">
+<div class="line"><span class="cmt">// stack the tokens we picked at each level:</span></div>
+<div class="line"><span class="key">Semantic ID = (0, 1)</span></div>
+<div class="line"> </div>
+<div class="line"><span class="cmt">// and the reconstruction = sum of the chosen vectors:</span></div>
+<div class="line">ẑ = C1[0] + C2[1] = [1.0, 0.0] + [-0.1, 0.2] = <span class="val">[0.9, 0.2]</span>  =  z  ✓</div>
+</div>
+<p>Two integers <code>(0, 1)</code> rebuilt the original vector exactly. With real codebooks the match isn't perfect — that leftover is the <strong>reconstruction loss</strong>, the same loss that trained every autoencoder in this course. It's what forces the codebooks to become meaningful: to rebuild the video, the codes must capture what the video is.</p>
+</div>
+
+<svg class="diagram" viewBox="0 0 760 250" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI,sans-serif">
+  <text x="380" y="20" fill="#ffb74d" font-size="13" text-anchor="middle">The residual cascade</text>
+  <!-- z -->
+  <rect x="20" y="100" width="90" height="40" rx="6" fill="#0d1b2a" stroke="#4fc3f7"/>
+  <text x="65" y="118" fill="#4fc3f7" font-size="12" text-anchor="middle">z</text>
+  <text x="65" y="134" fill="#9cdcfe" font-size="11" text-anchor="middle">[0.9, 0.2]</text>
+  <!-- level 1 box -->
+  <line x1="110" y1="120" x2="160" y2="120" stroke="#555" stroke-width="2" marker-end="url(#ar3)"/>
+  <rect x="165" y="70" width="180" height="100" rx="8" fill="#12122a" stroke="#4fc3f7"/>
+  <text x="255" y="90" fill="#4fc3f7" font-size="12" text-anchor="middle">Level 1: nearest in C1</text>
+  <text x="255" y="112" fill="#bbb" font-size="11" text-anchor="middle">pick C1[0]=[1.0,0.0]</text>
+  <text x="255" y="132" fill="#4caf50" font-size="13" text-anchor="middle" font-weight="bold">token = 0</text>
+  <text x="255" y="154" fill="#888" font-size="10.5" text-anchor="middle">residual = z−C1[0] = [-0.1,0.2]</text>
+  <!-- residual arrow -->
+  <line x1="345" y1="120" x2="395" y2="120" stroke="#888" stroke-width="2" marker-end="url(#ar3b)"/>
+  <text x="370" y="112" fill="#888" font-size="10" text-anchor="middle">residual</text>
+  <!-- level 2 box -->
+  <rect x="400" y="70" width="180" height="100" rx="8" fill="#12122a" stroke="#4caf50"/>
+  <text x="490" y="90" fill="#4caf50" font-size="12" text-anchor="middle">Level 2: nearest in C2</text>
+  <text x="490" y="112" fill="#bbb" font-size="11" text-anchor="middle">pick C2[1]=[-0.1,0.2]</text>
+  <text x="490" y="132" fill="#4caf50" font-size="13" text-anchor="middle" font-weight="bold">token = 1</text>
+  <text x="490" y="154" fill="#888" font-size="10.5" text-anchor="middle">residual ≈ [0,0] → stop</text>
+  <!-- out -->
+  <line x1="580" y1="120" x2="630" y2="120" stroke="#555" stroke-width="2" marker-end="url(#ar3)"/>
+  <rect x="635" y="95" width="110" height="50" rx="8" fill="#1a0a2a" stroke="#ce93d8"/>
+  <text x="690" y="116" fill="#ce93d8" font-size="11" text-anchor="middle">Semantic ID</text>
+  <text x="690" y="135" fill="#fff" font-size="14" text-anchor="middle" font-weight="bold">(0, 1)</text>
+  <defs>
+    <marker id="ar3" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#555"/></marker>
+    <marker id="ar3b" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#888"/></marker>
+  </defs>
+</svg>
+<p class="cap">Each level eats the previous level's leftover. More levels = finer address = closer reconstruction. TIGER uses 3 levels of 256 codes each; PLUM (next chapter) uses 4+ with shrinking sizes.</p>
+
+<details class="more">
+<summary>Wait — how do gradients pass through "pick the nearest"? (straight-through estimator)</summary>
+<p>"argmin" is not differentiable — you can't backprop through "which one is closest." VQ-VAE uses the <strong>straight-through estimator</strong>: on the forward pass use the quantized vector ẑ, but on the backward pass pretend ẑ = z so the gradient flows straight to the encoder unchanged. In code it's the one-liner you already have:</p>
+<div class="math"><div class="line">quantized_z = z + (quantized_z - z).detach()</div></div>
+<p>Forward, the <code>+z−z</code> cancels and you get the real quantized vector. Backward, <code>.detach()</code> zeroes the gradient of the <code>(quantized_z - z)</code> part, so d(loss)/dz = d(loss)/d(quantized_z) — the discrete step is invisible to the optimizer. The codebooks themselves are pulled toward the encoder outputs by a separate <strong>commitment loss</strong> (the third loss term in your file), which is the VQ cousin of the KL term from Chapter 2.</p>
+</details>
+<button class="nx" onclick="go(3)">Next: what the codebook means &#x2192;</button>
+</div>
+
+<!-- PAGE 3 -->
+<div class="page" data-t="3. Hierarchy & sharing">
+<h2>What the tokens mean — and why sharing solves cold start</h2>
+
+<div class="card blue">
+<h3>The codebook is a dictionary of learned "directions"</h3>
+<p>Nobody labeled the codes. They <em>emerged</em> from the one job: rebuild the content vector. After training on millions of videos, codebook 1 ends up carving content into coarse buckets, codebook 2 into finer ones inside each bucket.</p>
+<div class="math">
+<div class="line"><span class="cmt">// level 1 tokens turn out to mean roughly... (emergent, not hand-set)</span></div>
+<div class="line">C1[0] ≈ "cooking"      C1[1] ≈ "education"</div>
+<div class="line">C1[2] ≈ "music"        C1[3] ≈ "sports"</div>
+<div class="line"> </div>
+<div class="line"><span class="cmt">// level 2 refines WITHIN whatever level 1 picked:</span></div>
+<div class="line">under "cooking":  C2[0]≈quick recipe  C2[1]≈baking  C2[2]≈vlog  ...</div>
+</div>
+</div>
+
+<div class="card green">
+<h3>Run two more videos through and watch prefixes line up</h3>
+<p>Same codebooks as the previous page. Two cooking videos and one lecture:</p>
+<div class="math">
+<div class="line"><span class="lbl">Video A</span> "10-min pasta"   z=[0.9, 0.2]  →  (0, 1)</div>
+<div class="line"><span class="lbl">Video B</span> "5-min stir-fry" z=[0.85,0.15] →  (0, 1)   <span class="cmt">// same coarse bucket AND same refinement</span></div>
+<div class="line"><span class="lbl">Video C</span> "calculus pt 3" z=[0.3, 0.9]  →  (1, 2)   <span class="cmt">// different bucket entirely</span></div>
+</div>
+<svg class="diagram" viewBox="0 0 720 175" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI,sans-serif">
+  <text x="120" y="24" fill="#4fc3f7" font-size="12" text-anchor="middle">level-1 buckets</text>
+  <!-- bucket 0 -->
+  <rect x="40" y="40" width="200" height="110" rx="10" fill="#0d1b2a" stroke="#4fc3f7"/>
+  <text x="140" y="60" fill="#4fc3f7" font-size="12" text-anchor="middle">token 0 — "cooking"</text>
+  <rect x="60" y="75" width="70" height="30" rx="6" fill="#0a1a0a" stroke="#4caf50"/><text x="95" y="95" fill="#4caf50" font-size="11" text-anchor="middle">A (0,1)</text>
+  <rect x="140" y="75" width="80" height="30" rx="6" fill="#0a1a0a" stroke="#4caf50"/><text x="180" y="95" fill="#4caf50" font-size="11" text-anchor="middle">B (0,1)</text>
+  <text x="140" y="135" fill="#888" font-size="10.5" text-anchor="middle">two cooking videos sit together</text>
+  <!-- bucket 1 -->
+  <rect x="300" y="40" width="200" height="110" rx="10" fill="#1a1400" stroke="#ff9800"/>
+  <text x="400" y="60" fill="#ff9800" font-size="12" text-anchor="middle">token 1 — "education"</text>
+  <rect x="360" y="75" width="80" height="30" rx="6" fill="#1a0a2a" stroke="#ce93d8"/><text x="400" y="95" fill="#ce93d8" font-size="11" text-anchor="middle">C (1,2)</text>
+  <text x="400" y="135" fill="#888" font-size="10.5" text-anchor="middle">lecture lives elsewhere</text>
+  <!-- new -->
+  <rect x="540" y="55" width="160" height="80" rx="10" fill="#1a0a0a" stroke="#ef5350" stroke-dasharray="5 4"/>
+  <text x="620" y="78" fill="#ef5350" font-size="11.5" text-anchor="middle">NEW pasta video</text>
+  <text x="620" y="98" fill="#fff" font-size="11.5" text-anchor="middle">0 plays</text>
+  <text x="620" y="120" fill="#4caf50" font-size="12" text-anchor="middle" font-weight="bold">→ (0, 1) too</text>
+</svg>
+</div>
+
+<div class="card purple">
+<h3>This is the cold-start fix, stated precisely</h3>
+<div class="math">
+<div class="line"><span class="cmt">// brand-new pasta video, uploaded 5 minutes ago, zero engagement:</span></div>
+<div class="line">atomic ID:    row 99999 = random  → recommender is blind</div>
+<div class="line">semantic ID:  encoder(content) → (0, 1)  → SAME tokens as videos A & B</div>
+<div class="line"> </div>
+<div class="line"><span class="cmt">// the model already learned good behavior for token (0,1) from A and B.</span></div>
+<div class="line"><span class="cmt">// the new video inherits it for free. content IS the ID.</span></div>
+</div>
+<p><span class="key">Atomic IDs memorize each item separately. Semantic IDs let items share — so a new item is never starting from zero.</span> The cost: items that map to the same tuple are now indistinguishable. We fix that next.</p>
+</div>
+
+<details class="more">
+<summary>Why discrete tokens at all? Why not just feed the content embedding straight in?</summary>
+<p>You could — and many systems do (it's called a "dense ID"). But discretizing buys three things that matter at scale: <strong>(1)</strong> a video becomes a sequence of <em>tokens</em>, so you can hand it to a language model and let it <em>generate</em> the next item token-by-token (the whole point of Chapters 5–6) instead of scoring a billion candidates. <strong>(2)</strong> A handful of small codebooks (e.g. 4×256 = 1024 vectors) replaces a billion-row table — the storage win. <strong>(3)</strong> The hierarchy is explicit and inspectable: the prefix is a human-readable cluster. The price is quantization error (you threw away the residual the codebooks couldn't represent).</p>
+</details>
+<button class="nx" onclick="go(4)">Next: collisions &amp; the tie-breaker token &#x2192;</button>
+</div>
+
+<!-- PAGE 4 -->
+<div class="page" data-t="4. Collisions">
+<h2>Collisions and the tie-breaker token</h2>
+
+<div class="card orange">
+<h3>Sharing is the feature — and also the bug</h3>
+<p>Videos A and B both got <code>(0,1)</code>. Great for transfer — but now the system literally cannot tell them apart. If 50 videos all map to <code>(0,1)</code>, "recommend (0,1)" is ambiguous.</p>
+<div class="math">
+<div class="line">(0, 1) → { Video A, Video B, +48 other quick-recipe videos }</div>
+<div class="line"><span class="cmt">// which one do we actually serve?</span></div>
+</div>
+</div>
+
+<div class="card blue">
+<h3>The fix: append one more token that's just a counter</h3>
+<p>After the semantic tokens, add a final <strong>disambiguation token</strong>: among all items sharing the same prefix, number them 0, 1, 2, … It carries no meaning — it only breaks ties.</p>
+<svg class="diagram" viewBox="0 0 720 160" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI,sans-serif">
+  <g font-size="12" text-anchor="middle">
+    <rect x="120" y="55" width="70" height="32" rx="6" fill="#0a1a0a" stroke="#4caf50"/><text x="155" y="76" fill="#4caf50">0</text>
+    <rect x="200" y="55" width="70" height="32" rx="6" fill="#0a1a0a" stroke="#4caf50"/><text x="235" y="76" fill="#4caf50">1</text>
+    <rect x="280" y="55" width="70" height="32" rx="6" fill="#1a0a0a" stroke="#ef5350"/><text x="315" y="76" fill="#ef5350">0</text>
+  </g>
+  <text x="155" y="105" fill="#888" font-size="10" text-anchor="middle">semantic</text>
+  <text x="235" y="105" fill="#888" font-size="10" text-anchor="middle">semantic</text>
+  <text x="315" y="105" fill="#ef5350" font-size="10" text-anchor="middle">tie-breaker</text>
+  <text x="235" y="135" fill="#ffb74d" font-size="12" text-anchor="middle">Video A = (0, 1, 0)   Video B = (0, 1, 1)</text>
+  <text x="600" y="60" fill="#bbb" font-size="11" text-anchor="middle">same meaning,</text>
+  <text x="600" y="78" fill="#bbb" font-size="11" text-anchor="middle">unique identity</text>
+</svg>
+<div class="math">
+<div class="line">Video A → (0, 1, <span class="val">0</span>)</div>
+<div class="line">Video B → (0, 1, <span class="val">1</span>)</div>
+<div class="line"><span class="cmt">// first two tokens still shared → transfer still works.</span></div>
+<div class="line"><span class="cmt">// last token unique → every item is now individually addressable.</span></div>
+</div>
+</div>
+
+<div class="card green">
+<h3>The best of both</h3>
+<p>This is the sweet spot semantic IDs hit: <span class="key">the prefix generalizes, the suffix identifies.</span> A new video shares the meaningful prefix with its neighbors (transfer), yet still gets its own full address (no ambiguity). TIGER showed this single extra token is enough to make generative retrieval work — which is exactly what the next page builds.</p>
+</div>
+<button class="nx" onclick="go(5)">Next: generative retrieval (TIGER) &#x2192;</button>
+</div>
+
+<!-- PAGE 5 -->
+<div class="page" data-t="5. Generative retrieval">
+<h2>TIGER: recommend by <em>generating</em> the next ID</h2>
+
+<div class="card orange">
+<h3>How retrieval normally works (and why it's heavy)</h3>
+<div class="math">
+<div class="line">build user vector u  →  dot-product against ALL 1B item vectors  →  top-K</div>
+<div class="line"><span class="cmt">// needs a giant approximate-nearest-neighbor index, kept in sync, in RAM.</span></div>
+</div>
+</div>
+
+<div class="card blue">
+<h3>The generative flip</h3>
+<p>Once every item is a short token tuple, a user's history is just a <strong>sentence of tokens</strong>. Recommending the next item = <strong>predicting the next tokens</strong>, exactly like a language model finishing a sentence. No index — the transformer's weights <em>are</em> the index.</p>
+<svg class="diagram" viewBox="0 0 760 250" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI,sans-serif">
+  <text x="380" y="20" fill="#ffb74d" font-size="13" text-anchor="middle">user watched A=(0,1) then C=(1,2)  →  what's next?</text>
+  <!-- input tokens -->
+  <text x="35" y="78" fill="#888" font-size="11">history →</text>
+  <g font-size="12" text-anchor="middle">
+    <rect x="100" y="58" width="40" height="32" rx="5" fill="#0a1a0a" stroke="#4caf50"/><text x="120" y="79" fill="#4caf50">0</text>
+    <rect x="145" y="58" width="40" height="32" rx="5" fill="#0a1a0a" stroke="#4caf50"/><text x="165" y="79" fill="#4caf50">1</text>
+    <rect x="195" y="58" width="40" height="32" rx="5" fill="#1a0a2a" stroke="#ce93d8"/><text x="215" y="79" fill="#ce93d8">1</text>
+    <rect x="240" y="58" width="40" height="32" rx="5" fill="#1a0a2a" stroke="#ce93d8"/><text x="260" y="79" fill="#ce93d8">2</text>
+  </g>
+  <text x="190" y="108" fill="#666" font-size="10" text-anchor="middle">A's tokens · C's tokens, flattened into one sequence</text>
+  <!-- transformer -->
+  <rect x="300" y="50" width="160" height="48" rx="8" fill="#12122a" stroke="#4fc3f7"/>
+  <text x="380" y="70" fill="#4fc3f7" font-size="12" text-anchor="middle">seq2seq</text>
+  <text x="380" y="87" fill="#4fc3f7" font-size="12" text-anchor="middle">Transformer</text>
+  <line x1="285" y1="74" x2="298" y2="74" stroke="#555" stroke-width="2" marker-end="url(#ar5)"/>
+  <line x1="460" y1="74" x2="475" y2="74" stroke="#555" stroke-width="2" marker-end="url(#ar5)"/>
+  <!-- generate -->
+  <text x="490" y="48" fill="#888" font-size="11">generate next item, one token at a time:</text>
+  <g font-size="12" text-anchor="middle">
+    <rect x="490" y="58" width="40" height="32" rx="5" fill="#1a1400" stroke="#ff9800"/><text x="510" y="79" fill="#ff9800">0</text>
+    <rect x="540" y="58" width="40" height="32" rx="5" fill="#333" stroke="#666" stroke-dasharray="3 3"/><text x="560" y="79" fill="#888">?</text>
+  </g>
+  <text x="510" y="108" fill="#888" font-size="10" text-anchor="middle">step 1: pick token 0</text>
+  <!-- step 2 -->
+  <text x="490" y="150" fill="#888" font-size="11">feed it back, predict the next:</text>
+  <g font-size="12" text-anchor="middle">
+    <rect x="490" y="160" width="40" height="32" rx="5" fill="#1a1400" stroke="#ff9800"/><text x="510" y="181" fill="#ff9800">0</text>
+    <rect x="540" y="160" width="40" height="32" rx="5" fill="#1a1400" stroke="#ff9800"/><text x="560" y="181" fill="#ff9800">3</text>
+  </g>
+  <text x="535" y="210" fill="#888" font-size="10" text-anchor="middle">step 2: now token 3</text>
+  <!-- result -->
+  <rect x="320" y="160" width="150" height="60" rx="8" fill="#0a1a0a" stroke="#4caf50"/>
+  <text x="395" y="184" fill="#4caf50" font-size="12" text-anchor="middle">generated ID</text>
+  <text x="395" y="206" fill="#fff" font-size="15" text-anchor="middle" font-weight="bold">(0, 3)</text>
+  <line x1="540" y1="176" x2="475" y2="180" stroke="#555" stroke-width="2" marker-end="url(#ar5)"/>
+  <defs><marker id="ar5" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#555"/></marker></defs>
+</svg>
+<p class="cap">The model emits a valid semantic ID like <code>(0,3)</code>, then we look up which real video carries that ID and serve it. Generating <code>0</code> first ("cooking") then <code>3</code> means it predicted a cooking video — sensible after the user watched pasta.</p>
+</div>
+
+<div class="card green">
+<h3>Why this is a big deal</h3>
+<div class="math">
+<div class="line"><span class="cmt">// 1. NO index to build or sync. The transformer weights memorize the catalog.</span></div>
+<div class="line"><span class="cmt">// 2. NEW items are reachable the instant they're tokenized — the model can</span></div>
+<div class="line">//    emit (0,3) even if (0,3) is a video uploaded after training, because it</div>
+<div class="line">//    learned the *grammar* of cooking-video IDs, not just memorized rows.</div>
+<div class="line"><span class="cmt">// 3. Beam search gives a ranked LIST of IDs in one decode → top-K for free.</span></div>
+</div>
+<p>This is the payoff of everything in this chapter. A VQ-VAE turned items into a <em>language</em>; a transformer now <em>speaks</em> it. That single move — recommendation as next-token generation — is the foundation the next chapter scales up by swapping the small transformer for a real pretrained LLM.</p>
+</div>
+<button class="nx" onclick="go(6)">Next: recap &amp; the gap PLUM fills &#x2192;</button>
+</div>
+
+<!-- PAGE 6 -->
+<div class="page" data-t="6. Recap">
+<h2>Recap — and the gap PLUM fills</h2>
+<div class="card blue">
+<table>
+<tr><th>Concept</th><th>One-line</th></tr>
+<tr><td>Atomic ID</td><td>Random number → giant table. Opaque, no sharing, cold-start blind.</td></tr>
+<tr><td>Content embedding</td><td>One dense vector summarizing what an item <em>is</em> (text/image/audio).</td></tr>
+<tr><td>RQ-VAE</td><td>VQ-VAE with stacked codebooks; each level quantizes the previous residual.</td></tr>
+<tr><td>Semantic ID</td><td>The tuple of chosen codeword indices, e.g. (0, 1). Coarse → fine.</td></tr>
+<tr><td>Shared prefix</td><td>Similar items share leading tokens → transfer → cold-start solved.</td></tr>
+<tr><td>Tie-breaker token</td><td>Final counter token makes colliding items individually addressable.</td></tr>
+<tr><td>Generative retrieval (TIGER)</td><td>History = token sentence; recommend = generate next item's ID.</td></tr>
+</table>
+</div>
+<div class="card green">
+<h3>The single thread</h3>
+<p><span class="key">Reconstruction forces the codes to mean something; the hierarchy makes them shareable; the discreteness makes them generatable.</span> A VQ-VAE quietly converts a catalog into a vocabulary.</p>
+</div>
+<div class="card orange">
+<h3>What's still missing → Chapter 6: PLUM</h3>
+<p>TIGER trains a <em>small transformer from scratch</em>. It learns the grammar of IDs, but it knows nothing about the world — it never read that "espresso" relates to "coffee." Meanwhile we have pretrained LLMs that already know exactly that. <strong>PLUM</strong> (Google/YouTube, 2025) asks: what if we take a real pretrained LLM and teach it the semantic-ID language? Then the LLM's world knowledge transfers straight into recommendation. That's next.</p>
+</div>
+<div class="card purple">
+<h3>Optional deep-dive first ◆</h3>
+<p>Curious <em>where the content embeddings come from</em> (video/audio/title/channel…), <em>how the codebook is actually trained</em>, whether it's precomputed, and how tokenizer quality helps or hurts recs? That's all in the deep-dive chapter — read it before PLUM for the full picture, or skip straight to PLUM.</p>
+<p style="margin-top:10px"><a href="5b_codebook.html" style="color:#ce93d8;font-weight:600;text-decoration:none">&#x25C6; Chapter 5½: Building the Codebook &#x2192;</a></p>
+</div>
+<p style="text-align:center;margin-top:18px"><a href="6_plum.html" style="color:#4fc3f7;font-weight:600;font-size:1.05em;text-decoration:none">Continue to Chapter 6: PLUM &#x2192;</a></p>
+</div>
+
+<script>
+const pages=document.querySelectorAll('.page'),nav=document.getElementById('nav');
+pages.forEach((p,i)=>{const b=document.createElement('button');b.textContent=p.dataset.t;b.onclick=()=>go(i);if(i===0)b.classList.add('on');nav.appendChild(b);});
+function go(n){pages.forEach((p,i)=>p.classList.toggle('on',i===n));nav.querySelectorAll('button').forEach((b,i)=>{b.classList.remove('on');if(i<n)b.classList.add('done');else b.classList.remove('done');if(i===n)b.classList.add('on');});window.scrollTo({top:0,behavior:'smooth'});}
+</script>
+</body></html>

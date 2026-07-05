@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NumPy — the substrate</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0a0a1a;color:#e0e0e0;padding:20px 20px 80px;line-height:1.7}
+h1{text-align:center;color:#fff;margin-bottom:4px;font-size:1.5em}
+.sub{text-align:center;color:#888;margin-bottom:24px;font-size:.88em}
+.nav{display:flex;justify-content:center;gap:6px;margin-bottom:20px;flex-wrap:wrap}
+.nav button{padding:7px 13px;border:2px solid #333;background:#111;color:#888;border-radius:8px;cursor:pointer;font-size:.78em;transition:.2s}
+.nav button:hover{border-color:#555;color:#ccc}
+.nav button.on{border-color:#4fc3f7;color:#4fc3f7;background:#0d2137}
+.nav button.done{border-color:#4caf50;color:#4caf50}
+.page{display:none;max-width:880px;margin:0 auto}
+.page.on{display:block}
+.page h2{color:#4fc3f7;margin-bottom:12px;font-size:1.2em}
+.card{background:#12122a;border:1px solid #2a2a4a;border-radius:12px;padding:18px;margin-bottom:14px}
+.card.blue{border-color:#4fc3f7;background:#0d1b2a}
+.card.green{border-color:#4caf50;background:#0a1a0a}
+.card.orange{border-color:#ff9800;background:#1a1400}
+.card.red{border-color:#ef5350;background:#1a0a0a}
+.card.purple{border-color:#ce93d8;background:#1a0a2a}
+.card h3{color:#ffb74d;margin-bottom:8px;font-size:1em}
+button.nx{padding:10px 24px;background:#4caf50;color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:.9em;margin-top:14px}
+button.nx:hover{background:#66bb6a}
+a.nx{display:inline-block;padding:10px 24px;background:#4caf50;color:#000;border-radius:8px;font-weight:700;font-size:.9em;margin-top:14px;text-decoration:none}
+table{width:100%;border-collapse:collapse;margin:10px 0}
+th,td{padding:8px 12px;border:1px solid #333;text-align:left;font-size:.86em}
+th{background:#1a1a3a;color:#4fc3f7}
+.math{background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:14px;margin:10px 0;font-family:'Fira Code',Consolas,monospace;font-size:.84em;line-height:1.8;overflow-x:auto}
+.math .line{margin:2px 0;display:block;white-space:pre}
+.math .cmt{color:#6a9955}
+.math .val{color:#b5cea8}
+.math .lbl{color:#9cdcfe}
+.math .kw{color:#c586c0}
+.math .fn{color:#dcdcaa}
+.math.out{border-left:3px solid #4caf50;background:#0d1a12}
+.outlabel{display:block;font-size:.72em;color:#4caf50;letter-spacing:.08em;text-transform:uppercase;margin-bottom:6px}
+.key{color:#ffb74d;font-weight:600}
+.inline{font-family:'Fira Code',Consolas,monospace;background:#1a1a2e;border:1px solid #333;border-radius:4px;padding:1px 6px;font-size:.86em;color:#9cdcfe}
+.faded{color:#888;font-size:.86em}
+ul{margin-left:20px;margin-top:6px}
+li{margin:4px 0}
+details{margin-top:12px}
+details summary{cursor:pointer;color:#888;font-size:.85em;padding:8px 12px;background:#12122a;border:1px solid #333;border-radius:8px}
+details summary:hover{color:#ccc;border-color:#555}
+details[open] summary{color:#4fc3f7;border-color:#4fc3f7}
+.fw{display:inline-block;font-weight:700;padding:1px 8px;border-radius:4px;font-size:.82em;border:1px solid}
+.fw.np{color:#4fc3f7;border-color:rgba(79,195,247,.4);background:rgba(79,195,247,.08)}
+.fw.tf{color:#ff9800;border-color:rgba(255,152,0,.4);background:rgba(255,152,0,.08)}
+.fw.pt{color:#ef5350;border-color:rgba(239,83,80,.4);background:rgba(239,83,80,.08)}
+.fw.jx{color:#ce93d8;border-color:rgba(206,147,216,.4);background:rgba(206,147,216,.08)}
+/* memory buffer diagram */
+.buf{display:flex;gap:2px;justify-content:center;flex-wrap:wrap;margin:10px 0}
+.buf .cell{width:44px;height:34px;border:1px solid #4fc3f7;background:#0d2137;color:#9cdcfe;display:flex;align-items:center;justify-content:center;font-family:monospace;font-size:.8em}
+.buf .addr{width:44px;text-align:center;font-size:.6em;color:#555;font-family:monospace}
+.viewrow{display:flex;gap:10px;align-items:center;margin:8px 0;flex-wrap:wrap}
+.viewrow .tag{min-width:150px;font-family:monospace;font-size:.78em;color:#ffb74d}
+.mini{display:inline-grid;gap:1px}
+.mini .c{width:26px;height:22px;border:1px solid #444;display:flex;align-items:center;justify-content:center;font-family:monospace;font-size:.68em;color:#ccc;background:#1a1a2e}
+</style>
+</head>
+<body>
+<a href="../index.html" style="position:fixed;top:10px;left:14px;font-size:.75em;color:#555;text-decoration:none;z-index:999;padding:4px 8px;background:#0a0a1a;border:1px solid #333;border-radius:6px;">&larr; index</a>
+
+<h1><span class="fw np" style="font-size:.7em;vertical-align:middle">Part 1</span> NumPy — the substrate</h1>
+<p class="sub">Every framework in this course either builds on NumPy, imitates NumPy, or exists because NumPy refused to do something. Start here.</p>
+
+<div class="nav" id="nav"></div>
+
+<!-- PAGE 0 -->
+<div class="page on" data-t="0. History">
+<h2>1995–2006: a community almost tore itself apart over arrays</h2>
+
+<div class="card">
+<h3>Numeric (1995) — the original bet</h3>
+<p>In 1995 Jim Hugunin, then an MIT grad student, expanded early array code by Jim Fulton into <span class="key">Numeric</span>: a C implementation of an array object for Python, plus functions that understood it. The design already contained the ideas you use daily — a typed block of memory, element-wise operations running in C, and rules (from the APL/Yorick tradition at Lawrence Livermore, where early users steered fusion simulations) for combining arrays of different shapes. Those rules got the name <span class="key">broadcasting</span>.</p>
+<p class="faded">When Hugunin left for other projects in 1997, Paul Dubois at Lawrence Livermore National Lab took over maintenance.</p>
+</div>
+
+<div class="card red">
+<h3>numarray (~2000) — the fork</h3>
+<p>The Space Telescope Science Institute — processing giant Hubble images — hit Numeric's limits and wrote a replacement, <span class="key">numarray</span>: better for huge arrays, memory mapping, richer dtypes. But it was <em>slower for small arrays</em> and had a weaker C API. Now the community had two incompatible array types. Every library had to pick a side: some packages required Numeric, others numarray. Code couldn't be shared. This is the disaster scenario NumPy exists to prevent — remember it when you see four frameworks each with their own tensor type later in this course.</p>
+</div>
+
+<div class="card green">
+<h3>NumPy (2005–06) — the reunification</h3>
+<p>In 2005 <span class="key">Travis Oliphant</span> merged the two: Numeric's small-array speed and rich C API plus numarray's features. It was briefly called <span class="inline">scipy.core</span>; people confused it with all of SciPy, so it was renamed NumPy. Version 1.0 shipped in October 2006. The paper of record is "Array programming with NumPy," <em>Nature</em> 585, 357–362 (2020) — by which time NumPy sat under the code that detected gravitational waves and imaged the M87 black hole.</p>
+<p>The design goal was never "be the fastest" — it was <span class="key">one array type the whole ecosystem can share</span>, with a C API stable enough that pandas, SciPy, scikit-learn and Matplotlib could all be built directly on top of it.</p>
+</div>
+
+<div class="card blue">
+<h3>What "design strategy" means here</h3>
+<p>NumPy made three commitments in 2005, and has kept them for twenty years:</p>
+<ul>
+<li><span class="key">Eager</span>: every operation runs immediately and returns a real result. No sessions, no compilation. Predictable, debuggable.</li>
+<li><span class="key">In-memory, on CPU</span>: an array is a block of RAM this process owns. (This is the commitment the deep-learning frameworks had to break — page 4.)</li>
+<li><span class="key">Stability over features</span>: changes go through public design docs (NEPs — NumPy Enhancement Proposals) because millions of lines of downstream code depend on exact behavior.</li>
+</ul>
+</div>
+<button class="nx" onclick="go(1)">Next: what an array actually is</button>
+</div>
+
+<!-- PAGE 1 -->
+<div class="page" data-t="1. The ndarray">
+<h2>An ndarray is a flat buffer plus a way to read it</h2>
+
+<div class="card">
+<h3>Twelve numbers, one buffer</h3>
+<div class="math">
+<span class="line">a = np.<span class="fn">arange</span>(<span class="val">12</span>, dtype=np.float64).<span class="fn">reshape</span>(<span class="val">3</span>, <span class="val">4</span>)</span>
+</div>
+<p>Whatever the shape says, memory is one flat run of bytes:</p>
+<div class="buf">
+<div class="cell">0</div><div class="cell">1</div><div class="cell">2</div><div class="cell">3</div><div class="cell">4</div><div class="cell">5</div><div class="cell">6</div><div class="cell">7</div><div class="cell">8</div><div class="cell">9</div><div class="cell">10</div><div class="cell">11</div>
+</div>
+<div class="buf">
+<div class="addr">+0</div><div class="addr">+8</div><div class="addr">+16</div><div class="addr">+24</div><div class="addr">+32</div><div class="addr">+40</div><div class="addr">+48</div><div class="addr">+56</div><div class="addr">+64</div><div class="addr">+72</div><div class="addr">+80</div><div class="addr">+88</div>
+</div>
+<p class="faded" style="text-align:center">byte offsets: each float64 is 8 bytes</p>
+<p>The array object itself is just four pieces of metadata telling NumPy how to walk this buffer:</p>
+<div class="math out"><span class="outlabel">output — real run</span>
+<span class="line">dtype  : float64</span>
+<span class="line">shape  : (3, 4)</span>
+<span class="line">strides: (32, 8)</span>
+<span class="line">itemsize: 8</span>
+</div>
+<p><span class="key">strides = (32, 8)</span> reads: "to move down one <em>row</em>, jump 32 bytes (4 columns × 8 bytes); to move right one <em>column</em>, jump 8." Element <span class="inline">a[i, j]</span> lives at byte <span class="inline">i·32 + j·8</span>. Check one: <span class="inline">a[2, 1]</span> → 2·32 + 1·8 = byte 72 → the cell holding <span class="key">9</span>. Look at the buffer above: +72 is indeed 9.</p>
+</div>
+
+<div class="card blue">
+<h3>Now the payoff: transpose costs nothing</h3>
+<div class="math out"><span class="outlabel">output — real run</span>
+<span class="line">a.T      shape (4, 3)  strides (8, 32)</span>
+<span class="line">a[::2]   shape (2, 4)  strides (64, 8)</span>
+<span class="line">a[:,1]   shape (3,)  strides (32,)</span>
+<span class="line">share memory? a &amp; a.T   : True</span>
+<span class="line">share memory? a &amp; a[::2]: True</span>
+</div>
+<ul>
+<li><span class="inline">a.T</span> didn't touch the 96 bytes — it <span class="key">swapped the strides</span>: (32, 8) → (8, 32). "Down a row" now means "step 8 bytes."</li>
+<li><span class="inline">a[::2]</span> (every 2nd row) doubled the row stride: 32 → 64. Skip a row by jumping farther.</li>
+<li><span class="inline">a[:, 1]</span> (one column) starts at byte 8 and strides by 32 — the numbers 1, 5, 9 without copying.</li>
+</ul>
+<p>These are <span class="key">views</span>: new metadata, same buffer. This is NumPy's core engineering idea — most slicing and reshaping is free because only the <em>interpretation</em> changes.</p>
+</div>
+
+<div class="card orange">
+<h3>Views are shared — writes go through</h3>
+<div class="math">
+<span class="line">v = a[<span class="val">0</span>]        <span class="cmt"># first row — a view</span></span>
+<span class="line">v[<span class="val">0</span>] = <span class="val">99.0</span></span>
+</div>
+<div class="math out"><span class="outlabel">output — real run</span>
+<span class="line">a[0,0] after writing through the view: 99.0</span>
+</div>
+<p>The single most common NumPy bug in the wild: you thought you had a copy, you had a view, and a write showed up somewhere else. The rule comes next page.</p>
+</div>
+<button class="nx" onclick="go(2)">Next: when does it copy?</button>
+</div>
+
+<!-- PAGE 2 -->
+<div class="page" data-t="2. Views vs copies">
+<h2>The rule: can it be described by strides? Then it's a view.</h2>
+
+<div class="card">
+<h3>Three probes, real answers</h3>
+<div class="math">
+<span class="line">a[a &gt; <span class="val">5</span>]          <span class="cmt"># boolean mask</span></span>
+<span class="line">a.T.<span class="fn">reshape</span>(<span class="val">12</span>)    <span class="cmt"># flatten a transpose</span></span>
+<span class="line">a.<span class="fn">reshape</span>(<span class="val">12</span>)      <span class="cmt"># flatten the original</span></span>
+</div>
+<div class="math out"><span class="outlabel">output — real run</span>
+<span class="line">a[a&gt;5] shares memory with a? False</span>
+<span class="line">a.T.reshape(12) shares memory? False</span>
+<span class="line">a.reshape(12) shares memory?   True</span>
+</div>
+</div>
+
+<div class="card blue">
+<h3>Why each one</h3>
+<table>
+<tr><th>Operation</th><th>View or copy?</th><th>Because…</th></tr>
+<tr><td>slicing with steps — <span class="inline">a[::2, 1:]</span>, <span class="inline">a.T</span>, <span class="inline">a[0]</span></td><td><span style="color:#4caf50">view</span></td><td>"start here, jump this many bytes per axis" describes it — that's exactly what strides express</td></tr>
+<tr><td>boolean mask — <span class="inline">a[a&gt;5]</span></td><td><span style="color:#ef5350">copy</span></td><td>the selected elements (6, 7, 8, …) sit at <em>irregular</em> gaps; no single stride can describe them</td></tr>
+<tr><td>fancy indexing — <span class="inline">a[[2,0,1]]</span></td><td><span style="color:#ef5350">copy</span></td><td>same reason: arbitrary order can't be strides</td></tr>
+<tr><td><span class="inline">reshape</span> on contiguous data</td><td><span style="color:#4caf50">view</span></td><td>same flat order, just re-labeled</td></tr>
+<tr><td><span class="inline">reshape</span> on a transpose</td><td><span style="color:#ef5350">copy</span></td><td>flattening a.T needs order 0,4,8,1,5,9,… — not a constant stride, so NumPy must rebuild the buffer</td></tr>
+</table>
+<p>One mental test covers every case: <span class="key">"could I describe this selection as start + fixed jumps?"</span> Yes → view. No → copy.</p>
+<details><summary>When you need certainty in code</summary>
+<div class="math">
+<span class="line">np.<span class="fn">shares_memory</span>(a, b)   <span class="cmt"># the probe used above</span></span>
+<span class="line">b = a.<span class="fn">copy</span>()             <span class="cmt"># force independence</span></span>
+<span class="line">b.base <span class="kw">is</span> a              <span class="cmt"># views keep a pointer to their owner</span></span>
+</div>
+</details>
+</div>
+
+<div class="card purple">
+<h3>Why the other frameworks care about this page</h3>
+<p>PyTorch copied this exact model — <span class="inline">tensor.stride()</span>, views, <span class="inline">.contiguous()</span> — so everything above transfers. JAX went the other way: its arrays are <span class="key">immutable</span>, so the "was that a view or a copy?" bug class is deleted at the root — you'll see what it costs instead in Chapter 4.</p>
+</div>
+<button class="nx" onclick="go(3)">Next: ufuncs &amp; broadcasting</button>
+</div>
+
+<!-- PAGE 3 -->
+<div class="page" data-t="3. Broadcasting">
+<h2>ufuncs run the C loop; broadcasting feeds it without copying</h2>
+
+<div class="card">
+<h3>The speed is one loop, in C, over adjacent bytes</h3>
+<div class="math">
+<span class="line"><span class="kw">for</span> i <span class="kw">in</span> <span class="fn">range</span>(<span class="fn">len</span>(xs)):      <span class="cmt"># python, one at a time</span></span>
+<span class="line">    out[i] = xs[i] * <span class="val">2.0</span> + <span class="val">1.0</span></span>
+<span class="line"></span>
+<span class="line">out = xs * <span class="val">2.0</span> + <span class="val">1.0</span>             <span class="cmt"># two ufunc calls (mul, add)</span></span>
+</div>
+<div class="math out"><span class="outlabel">output — real run, 1M float64, Apple M3</span>
+<span class="line">python loop over 1M:    243.5 ms</span>
+<span class="line">xs*2+1 (one ufunc) :    3.607 ms</span>
+<span class="line">same result? True   ratio 67x</span>
+</div>
+<p>Every arithmetic op you write is a <span class="key">ufunc</span> (universal function): a compiled inner loop selected per dtype. NumPy's job is to line up the inputs and hand the loop raw pointers. Note it still made a temporary for <span class="inline">xs*2</span> before the <span class="inline">+1</span> — each ufunc is a separate pass over memory. Chapter 5 shows what compilers (JAX, torch.compile) do about exactly that.</p>
+</div>
+
+<div class="card blue">
+<h3>Broadcasting: the rules, then the trick underneath</h3>
+<div class="math">
+<span class="line">col = [[<span class="val">1</span>], [<span class="val">2</span>], [<span class="val">3</span>]]        <span class="cmt"># shape (3,1)</span></span>
+<span class="line">row = [<span class="val">10</span>, <span class="val">20</span>, <span class="val">30</span>, <span class="val">40</span>]       <span class="cmt"># shape (4,)</span></span>
+<span class="line">col + row                     <span class="cmt"># shape ?</span></span>
+</div>
+<p>Align shapes at the <em>right edge</em>; a missing dim or a 1 stretches to match:</p>
+<div class="math">
+<span class="line">col:  (3, 1)</span>
+<span class="line">row:  (   4)  →  (1, 4)   <span class="cmt"># pad on the left</span></span>
+<span class="line">out:  (3, 4)              <span class="cmt"># each 1 stretches</span></span>
+</div>
+<div class="math out"><span class="outlabel">output — real run</span>
+<span class="line">[[11. 21. 31. 41.]</span>
+<span class="line"> [12. 22. 32. 42.]</span>
+<span class="line"> [13. 23. 33. 43.]]</span>
+</div>
+<p>"Stretches" sounds like copying. It isn't — look at the strides of a broadcast row:</p>
+<div class="math out"><span class="outlabel">output — real run</span>
+<span class="line">broadcast_to(row,(3,4)).strides: (0, 8)  &lt;- 0 bytes to move down a row</span>
+<span class="line">its base is row itself? True</span>
+</div>
+<p><span class="key">Stride 0</span>: "to go to the next row, move zero bytes" — the C loop re-reads the same four numbers for every row. Broadcasting is the view trick again: fake shapes with stride arithmetic, copy nothing.</p>
+</div>
+
+<div class="card green">
+<h3>Worked example: all pairwise distances, no loop</h3>
+<p>Three points, chosen so you can check by eye — (0,0), (3,0), (0,4) form a 3-4-5 triangle:</p>
+<div class="math">
+<span class="line">p = np.<span class="fn">array</span>([[<span class="val">0.</span>, <span class="val">0.</span>], [<span class="val">3.</span>, <span class="val">0.</span>], [<span class="val">0.</span>, <span class="val">4.</span>]])       <span class="cmt"># (3, 2)</span></span>
+<span class="line">diff = p[:, <span class="kw">None</span>, :] - p[<span class="kw">None</span>, :, :]   <span class="cmt"># (3,1,2) - (1,3,2) → (3,3,2)</span></span>
+<span class="line">d = np.<span class="fn">sqrt</span>((diff**<span class="val">2</span>).<span class="fn">sum</span>(axis=<span class="val">2</span>))    <span class="cmt"># (3,3)</span></span>
+</div>
+<div class="math out"><span class="outlabel">output — real run</span>
+<span class="line">shapes: p[:,None,:] (3, 1, 2)  p[None,:,:] (1, 3, 2)  diff (3, 3, 2)</span>
+<span class="line">[[0. 3. 4.]</span>
+<span class="line"> [3. 0. 5.]</span>
+<span class="line"> [4. 5. 0.]]</span>
+</div>
+<p>Read one number: row 1, column 2 is the distance from (3,0) to (0,4) = √(9+16) = <span class="key">5</span>. ✓ The inserted <span class="inline">None</span> axes make the two (3,2) arrays broadcast into a (3,3,2) grid of differences — "every point minus every point." This move — <span class="key">add an axis, let broadcasting build the grid</span> — is 80% of practical vectorization.</p>
+</div>
+<button class="nx" onclick="go(4)">Next: what NumPy refuses to do</button>
+</div>
+
+<!-- PAGE 4 -->
+<div class="page" data-t="4. The refusals">
+<h2>Three deliberate refusals — and each one spawned a framework</h2>
+
+<div class="card red">
+<h3>No GPU. No gradients. No laziness.</h3>
+<p>None of these are oversights. Each follows from the 2005 commitments:</p>
+<table>
+<tr><th>NumPy refuses…</th><th>Because…</th><th>So this framework exists</th></tr>
+<tr><td>GPU / TPU arrays</td><td>an ndarray is <em>a block of this process's RAM</em>, handed freely to C extensions expecting exactly that (the C API promise)</td><td><span class="fw pt">PyTorch</span> (CUDA-first tensors), CuPy</td></tr>
+<tr><td>automatic gradients</td><td>ops execute and return plain data immediately; nothing records what happened (eager promise, zero bookkeeping overhead)</td><td><span class="fw pt">PyTorch</span> tape, <span class="fw tf">TF</span> tape, <span class="fw jx">JAX</span> transforms</td></tr>
+<tr><td>lazy / compiled execution</td><td>every call must finish before the next line (predictability promise) — so it can never fuse <span class="inline">xs*2+1</span> into one pass</td><td><span class="fw tf">TF</span> graphs, <span class="fw jx">JAX</span>+XLA, torch.compile</td></tr>
+</table>
+<p>This is the cleanest way to understand the whole landscape: <span class="key">the deep-learning frameworks are NumPy's API with the refusals reversed</span>, one at a time.</p>
+</div>
+
+<div class="card blue">
+<h3>Instead, NumPy became the standard others implement</h3>
+<p>Since it couldn't chase hardware, NumPy standardized the <em>interface</em>:</p>
+<ul>
+<li><span class="inline">jax.numpy</span> is a deliberate clone of the NumPy API on the XLA engine; PyTorch's API is NumPy-shaped with renames; CuPy is NumPy-on-CUDA.</li>
+<li>Protocols let other engines plug into NumPy's own functions: <span class="inline">__array_ufunc__</span> (NEP 13) and <span class="inline">__array_function__</span> (NEP 18) mean <span class="inline">np.mean(dask_array)</span> dispatches to Dask.</li>
+<li>The <span class="key">Python Array API standard</span> (2020s) formalized the common core; NumPy 2.x, PyTorch, JAX, CuPy and Dask all implement it, and SciPy/scikit-learn now consume it — so sklearn code can run on a GPU via PyTorch arrays without sklearn containing CUDA code.</li>
+<li><span class="key">DLPack</span> gives zero-copy tensor exchange between all of them (you'll run it in Chapter 7).</li>
+</ul>
+<p class="faded">"NumPy is transitioning into a central coordinating mechanism that specifies a well-defined array programming API and dispatches it to specialized array implementations." — the Nature paper (2020), and exactly what happened.</p>
+</div>
+<button class="nx" onclick="go(5)">Next: NumPy in 2026</button>
+</div>
+
+<!-- PAGE 5 -->
+<div class="page" data-t="5. Role in 2026">
+<h2>Where NumPy stands in 2026</h2>
+
+<div class="card green">
+<h3>The substrate, by the numbers</h3>
+<ul>
+<li>~<span class="key">1.05 billion</span> PyPI downloads <em>per month</em> (July 2026) — roughly 12× PyTorch, 50× TensorFlow.</li>
+<li>Direct foundation of pandas, SciPy, scikit-learn, Matplotlib, Astropy, scikit-image, statsmodels — and the default interchange format between all of them.</li>
+<li>Governance: a 9-person community steering council, NumFOCUS fiscal sponsorship, institutional support from Berkeley, Quansight and NVIDIA. No single company owns it — unique among the four.</li>
+</ul>
+</div>
+
+<div class="card">
+<h3>Recent history that matters</h3>
+<table>
+<tr><th>When</th><th>What</th><th>Why you care</th></tr>
+<tr><td>June 2024</td><td><span class="key">NumPy 2.0</span> — first major release since 2006: ABI break, ~100 aliases removed, variable-length <span class="inline">StringDType</span>, NEP 50 promotion rules</td><td>old binaries needed rebuilds; scalar promotion stopped depending on <em>values</em> (<span class="inline">uint8(200)+100</span> no longer silently upcasts differently than <span class="inline">+50</span>)</td></tr>
+<tr><td>2024–26</td><td>free-threaded Python support (no-GIL wheels since 2.1)</td><td>NumPy was a launch-blocker for PEP 703; it shipped first-wave</td></tr>
+<tr><td>June 2026</td><td>NumPy <span class="key">2.5.0</span> (the version used throughout this course); steady 6-month cadence</td><td>twenty years old and still actively developed</td></tr>
+</table>
+</div>
+
+<div class="card blue">
+<h3>When NumPy is the right tool (2026 edition)</h3>
+<ul>
+<li><span class="key">Yes</span>: data preparation, feature engineering, offline metrics, classical ML gluework, anything CPU-sized where debuggability beats speed. It is the least surprising tool in this course.</li>
+<li><span class="key">No</span>: training neural networks (no gradients, no GPU), and increasingly any hot loop big enough that fusion matters.</li>
+<li><span class="key">Always</span>: as the neutral meeting point — every framework has cheap <span class="inline">.numpy()</span> / <span class="inline">from_numpy</span> paths, and test suites everywhere compare against NumPy as ground truth. (Chapter 9 uses it exactly that way.)</li>
+</ul>
+</div>
+
+<div class="card purple">
+<h3>Carry these three ideas forward</h3>
+<ul>
+<li>An array = <span class="key">buffer + dtype + shape + strides</span>; views are re-interpretations, not data.</li>
+<li>Speed = <span class="key">one C loop per op</span> — which means op-by-op temporaries, which is what compilers later fuse away.</li>
+<li>NumPy's API is the <span class="key">lingua franca</span>; the other three are engines behind (roughly) this same surface.</li>
+</ul>
+</div>
+<a class="nx" href="2_tensorflow.html">Next chapter: TensorFlow — graphs first →</a>
+</div>
+
+<script>
+const pages=document.querySelectorAll('.page'),nav=document.getElementById('nav');
+pages.forEach((p,i)=>{
+  const b=document.createElement('button');
+  b.textContent=p.dataset.t;
+  b.onclick=()=>go(i);
+  if(i===0)b.classList.add('on');
+  nav.appendChild(b);
+});
+function go(n){
+  pages.forEach((p,i)=>p.classList.toggle('on',i===n));
+  nav.querySelectorAll('button').forEach((b,i)=>{
+    b.classList.remove('on');
+    if(i<n)b.classList.add('done');
+    else b.classList.remove('done');
+    if(i===n)b.classList.add('on');
+  });
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+</script>
+</body>
+</html>

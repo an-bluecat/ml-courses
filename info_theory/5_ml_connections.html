@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chapter 5: ML Connections</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0a0a1a;color:#e0e0e0;padding:20px 20px 80px;line-height:1.7}
+h1{text-align:center;color:#fff;margin-bottom:4px;font-size:1.5em}
+.sub{text-align:center;color:#888;margin-bottom:24px;font-size:.88em}
+.nav{display:flex;justify-content:center;gap:6px;margin-bottom:20px;flex-wrap:wrap}
+.nav button{padding:7px 13px;border:2px solid #333;background:#111;color:#888;border-radius:8px;cursor:pointer;font-size:.78em;transition:.2s}
+.nav button:hover{border-color:#555;color:#ccc}
+.nav button.on{border-color:#4fc3f7;color:#4fc3f7;background:#0d2137}
+.nav button.done{border-color:#4caf50;color:#4caf50}
+.page{display:none;max-width:860px;margin:0 auto}
+.page.on{display:block}
+.page h2{color:#4fc3f7;margin-bottom:12px;font-size:1.2em}
+.card{background:#12122a;border:1px solid #2a2a4a;border-radius:12px;padding:18px;margin-bottom:14px}
+.card.blue{border-color:#4fc3f7;background:#0d1b2a}
+.card.green{border-color:#4caf50;background:#0a1a0a}
+.card.orange{border-color:#ff9800;background:#1a1400}
+.card.purple{border-color:#ce93d8;background:#1a0a2a}
+.card h3{color:#ffb74d;margin-bottom:8px;font-size:1em}
+button.nx{padding:10px 24px;background:#4caf50;color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:.9em;margin-top:14px}
+button.nx:hover{background:#66bb6a}
+table{width:100%;border-collapse:collapse;margin:10px 0}
+th,td{padding:8px 12px;border:1px solid #333;text-align:center;font-size:.88em}
+th{background:#1a1a3a;color:#4fc3f7}
+td{text-align:left}
+.math{background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:14px;margin:10px 0;font-family:'Fira Code',monospace;font-size:.85em;line-height:1.8}
+.math .line{margin:2px 0}
+.math .hl{background:#264f78;padding:2px 6px;border-radius:4px;display:inline-block}
+.math .cmt{color:#6a9955}
+.math .val{color:#b5cea8}
+.math .lbl{color:#9cdcfe}
+.key{color:#ffb74d;font-weight:600}
+</style>
+</head>
+<body>
+<a href="../index.html" style="position:fixed;top:10px;left:14px;font-size:.75em;color:#555;text-decoration:none;z-index:999;padding:4px 8px;background:#0a0a1a;border:1px solid #333;border-radius:6px;">&larr; index</a>
+<h1>Chapter 5: Where It All Shows Up in ML</h1>
+<p class="sub">Classification, VAEs, RLHF, distillation — one info-theory concept behind each</p>
+<div class="nav" id="nav"></div>
+
+<!-- PAGE 0: CLASSIFICATION -->
+<div class="page on" data-t="0. Classification">
+<h2>Image Classification = Minimize Cross-Entropy</h2>
+
+<div class="card blue">
+<h3>The setup</h3>
+<div class="math">
+<div class="line"><span class="cmt">// You show the model a photo of a dog.</span></div>
+<div class="line"><span class="lbl">True label p</span> = [1, 0, 0]  <span class="cmt">// one-hot: definitely dog</span></div>
+<div class="line"><span class="lbl">Model output q</span> = [0.7, 0.2, 0.1]  <span class="cmt">// softmax: 70% dog, 20% cat, 10% fish</span></div>
+</div>
+</div>
+
+<div class="card">
+<h3>The loss is cross-entropy, which equals KL (because p is one-hot)</h3>
+<div class="math">
+<div class="line"><span class="cmt">// Full cross-entropy:</span></div>
+<div class="line">H(p, q) = 1&times;log(1/0.7) + 0&times;log(1/0.2) + 0&times;log(1/0.1)</div>
+<div class="line">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; = 0.515 + 0 + 0 = <span class="val">0.515</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// Since H(one-hot) = 0:</span></div>
+<div class="line">KL(p &#x2016; q) = H(p,q) &minus; H(p) = 0.515 &minus; 0 = <span class="val">0.515</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// Same number. Minimizing cross-entropy = minimizing KL = pushing</span></div>
+<div class="line"><span class="cmt">// the model's distribution toward the truth.</span></div>
+</div>
+</div>
+
+<div class="card green">
+<h3>Training progression</h3>
+<div class="math">
+<div class="line"><span class="cmt">// Epoch 1: model confused</span></div>
+<div class="line">q = [0.3, 0.4, 0.3] → loss = &minus;log(0.3) = <span class="val" style="color:#ef5350">1.74</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// Epoch 10: model improving</span></div>
+<div class="line">q = [0.7, 0.2, 0.1] → loss = &minus;log(0.7) = <span class="val" style="color:#ffb74d">0.51</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// Epoch 50: model confident</span></div>
+<div class="line">q = [0.95, 0.03, 0.02] → loss = &minus;log(0.95) = <span class="val" style="color:#4caf50">0.07</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// Loss drops as model gets more confident on the right class.</span></div>
+</div>
+</div>
+<button class="nx" onclick="go(1)">Next: VAE &#x2192;</button>
+</div>
+
+<!-- PAGE 1: VAE -->
+<div class="page" data-t="1. VAE">
+<h2>VAE = Reconstruction + KL Penalty</h2>
+
+<div class="card blue">
+<h3>The problem</h3>
+<p>A VAE encodes images into a latent vector z, then decodes back. The encoder outputs a distribution q(z|x) — "this image probably lives around z=2.3 with some uncertainty."</p>
+<p>Left alone, the encoder memorizes exact z values per image. The latent space has no structure — random samples produce garbage.</p>
+</div>
+
+<div class="card">
+<h3>The fix: KL toward a standard normal</h3>
+<div class="math">
+<div class="line"><span class="lbl">VAE loss</span> = <span class="lbl">reconstruction error</span> + <span class="lbl">KL(q(z|x) &#x2016; N(0,1))</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// Concrete example: encoding a cat photo</span></div>
+<div class="line"><span class="cmt">// Encoder outputs: mean=2.3, std=0.1 (very tight, memorizing)</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// KL between N(2.3, 0.1²) and N(0, 1²):</span></div>
+<div class="line"><span class="cmt">// = 0.5 × (0.1² + 2.3² - 1 - log(0.1²))</span></div>
+<div class="line"><span class="cmt">// = 0.5 × (0.01 + 5.29 - 1 - (-4.61))</span></div>
+<div class="line"><span class="cmt">// = 0.5 × 8.91</span></div>
+<div class="line">KL = <span class="val" style="color:#ef5350">4.46</span> <span class="cmt">// high penalty! mean too far from 0, std too small</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// After training pushes encoder closer: mean=0.5, std=0.8</span></div>
+<div class="line"><span class="cmt">// KL between N(0.5, 0.8²) and N(0, 1²):</span></div>
+<div class="line"><span class="cmt">// = 0.5 × (0.64 + 0.25 - 1 - (-0.45))</span></div>
+<div class="line"><span class="cmt">// = 0.5 × 0.34</span></div>
+<div class="line">KL = <span class="val" style="color:#4caf50">0.17</span> <span class="cmt">// low penalty. encoder stays near prior.</span></div>
+</div>
+</div>
+
+<div class="card orange">
+<h3>Why reverse KL?</h3>
+<p>The VAE uses KL(<strong>q</strong>‖p), not KL(p‖<strong>q</strong>). This means:</p>
+<div class="math">
+<div class="line"><span class="cmt">// q is forbidden from putting mass where p (the prior N(0,1)) is near zero.</span></div>
+<div class="line"><span class="cmt">// If encoder outputs z=15, prior says P(z=15) ≈ 0.000000</span></div>
+<div class="line"><span class="cmt">// KL term: q(z=15) × log(q(z=15) / 0.000000) → HUGE penalty</span></div>
+<div class="line"><span class="cmt">// "You're encoding to z=15 but the prior says nothing lives there. Pull back."</span></div>
+</div>
+<p>This keeps all encodings within the "well-behaved" region of the prior, so random samples from N(0,1) land where the decoder has seen data.</p>
+</div>
+<button class="nx" onclick="go(2)">Next: RLHF &#x2192;</button>
+</div>
+
+<!-- PAGE 2: RLHF -->
+<div class="page" data-t="2. RLHF">
+<h2>RLHF = Reward − KL Penalty</h2>
+
+<div class="card blue">
+<h3>The problem</h3>
+<p>You fine-tune an LLM with a reward model. But if you just maximize reward, the model finds degenerate outputs that score high:</p>
+<div class="math">
+<div class="line"><span class="cmt">// Reward model has a bug: it learned "enthusiastic = good"</span></div>
+<div class="line"><span class="lbl">reward_model</span>("Sure! Absolutely! Great question!!!") → <span class="val">0.95</span></div>
+<div class="line"><span class="lbl">reward_model</span>("The answer is 42.") → <span class="val">0.60</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// Without constraint, the LLM learns to output gibberish enthusiasm</span></div>
+</div>
+</div>
+
+<div class="card">
+<h3>The fix: KL leash to the reference model</h3>
+<div class="math">
+<div class="line"><span class="hl"><span class="lbl">objective</span> = Reward(response) &minus; β &middot; KL(π &#x2016; π_ref)</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// π = current fine-tuned model</span></div>
+<div class="line"><span class="cmt">// π_ref = frozen copy from before fine-tuning</span></div>
+<div class="line"><span class="cmt">// β = leash tightness (typically 0.01-0.1)</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// Concrete example for generating "What is 2+2?":</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// Response: "The answer is 4."</span></div>
+<div class="line"><span class="lbl">reward</span> = <span class="val">0.75</span></div>
+<div class="line"><span class="lbl">KL(π &#x2016; π_ref)</span> = <span class="val">0.30</span> <span class="cmt">// model hasn't changed much → small KL</span></div>
+<div class="line"><span class="lbl">objective</span> = 0.75 &minus; 0.1 &times; 0.30 = <span class="val" style="color:#4caf50">0.72</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// Response: "SURE! ABSOLUTELY! YES! The answer is definitely maybe 4!!!"</span></div>
+<div class="line"><span class="lbl">reward</span> = <span class="val">0.90</span> <span class="cmt">// reward model fooled</span></div>
+<div class="line"><span class="lbl">KL(π &#x2016; π_ref)</span> = <span class="val">8.50</span> <span class="cmt">// model drifted far from reference!</span></div>
+<div class="line"><span class="lbl">objective</span> = 0.90 &minus; 0.1 &times; 8.50 = <span class="val" style="color:#ef5350">0.05</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// The calm answer (0.72) wins over the hacked answer (0.05)</span></div>
+<div class="line"><span class="cmt">// because the KL penalty killed the drift.</span></div>
+</div>
+</div>
+
+<div class="card green">
+<h3>Why forward KL?</h3>
+<p>RLHF uses KL(π‖π_ref) — the fine-tuned model π can't develop zero probability on outputs that the reference model considers reasonable.</p>
+<div class="math">
+<div class="line"><span class="cmt">// If the reference model assigns P_ref("I don't know") = 0.05</span></div>
+<div class="line"><span class="cmt">// but fine-tuned model drives P_π("I don't know") → 0.0001:</span></div>
+<div class="line"><span class="cmt">//   π(x) · log(π(x)/π_ref(x)) for that token is near zero (π is tiny)</span></div>
+<div class="line"><span class="cmt">// BUT other tokens get log-ratio amplified to compensate.</span></div>
+<div class="line"><span class="cmt">// Net effect: π can't collapse its output diversity too much.</span></div>
+</div>
+</div>
+<button class="nx" onclick="go(3)">Next: Distillation &#x2192;</button>
+</div>
+
+<!-- PAGE 3: DISTILLATION -->
+<div class="page" data-t="3. Distillation">
+<h2>Distillation = Student Matches Teacher's Full Distribution</h2>
+
+<div class="card blue">
+<h3>Why not just use the teacher's argmax?</h3>
+<div class="math">
+<div class="line"><span class="cmt">// Teacher sees "The cat sat on the ___"</span></div>
+<div class="line"><span class="lbl">Teacher output</span>: [mat=0.45, floor=0.40, roof=0.08, dog=0.02, ...]</div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// Hard label (argmax): [mat=1, floor=0, roof=0, dog=0]</span></div>
+<div class="line"><span class="cmt">// This throws away: "floor is almost as good as mat"</span></div>
+<div class="line"><span class="cmt">//                    "roof is grammatical but unlikely"</span></div>
+<div class="line"><span class="cmt">//                    "dog makes no sense here"</span></div>
+<div class="line"><span class="cmt">// All that structure is lost with a hard label.</span></div>
+</div>
+</div>
+
+<div class="card">
+<h3>Soft labels carry more information per example</h3>
+<div class="math">
+<div class="line"><span class="cmt">// With hard labels, the student learns:</span></div>
+<div class="line"><span class="cmt">//   "mat is right, everything else is equally wrong"</span></div>
+<div class="line"><span class="cmt">//   999 out of 1000 output neurons get zero gradient</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// With soft labels, the student learns:</span></div>
+<div class="line"><span class="cmt">//   "mat ≈ floor >> roof >> dog"</span></div>
+<div class="line"><span class="cmt">//   EVERY output neuron gets a gradient signal</span></div>
+<div class="line"><span class="cmt">//   student learns the geometry of the space, not just one point</span></div>
+</div>
+</div>
+
+<div class="card green">
+<h3>The loss: KL(teacher ‖ student)</h3>
+<div class="math">
+<div class="line"><span class="cmt">// Teacher p = [0.45, 0.40, 0.08, 0.02, ...]</span></div>
+<div class="line"><span class="cmt">// Student q = [0.50, 0.20, 0.15, 0.10, ...]  (untrained)</span></div>
+<div class="line">&nbsp;</div>
+<div class="line">KL(p &#x2016; q) = 0.45&times;log(0.45/0.50) + 0.40&times;log(0.40/0.20)</div>
+<div class="line">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; + 0.08&times;log(0.08/0.15) + 0.02&times;log(0.02/0.10)</div>
+<div class="line">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; = &minus;0.047 + 0.277 &minus;0.050 &minus;0.032</div>
+<div class="line">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; = <span class="val">0.148 bits</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// Biggest term: 0.40×log(0.40/0.20) = 0.277</span></div>
+<div class="line"><span class="cmt">// Student gave "floor" only 20% but teacher says 40%.</span></div>
+<div class="line"><span class="cmt">// "You're ignoring 'floor' — the teacher says it's nearly as good as 'mat'!"</span></div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// Forward KL forces student to cover everything teacher cares about.</span></div>
+<div class="line"><span class="cmt">// Can't use cross-entropy here because H(teacher) ≠ 0</span></div>
+<div class="line"><span class="cmt">// (teacher's output is soft, not one-hot — has nonzero entropy)</span></div>
+</div>
+</div>
+<button class="nx" onclick="go(4)">Full summary &#x2192;</button>
+</div>
+
+<!-- PAGE 4: SUMMARY -->
+<div class="page" data-t="4. Summary">
+<h2>The Complete Map</h2>
+<div class="card blue">
+<table>
+<tr><th>Info Theory</th><th>Formula</th><th>Where in ML</th><th>Concrete role</th></tr>
+<tr><td>Entropy H(p)</td><td style="text-align:center">Σ p log(1/p)</td><td>Nowhere directly</td><td>Baseline — minimum possible cost</td></tr>
+<tr><td>Cross-entropy H(p,q)</td><td style="text-align:center">Σ p log(1/q)</td><td>Classification loss</td><td>−log(model's confidence on right class)</td></tr>
+<tr><td>KL(p‖q) forward</td><td style="text-align:center">H(p,q) − H(p)</td><td>Distillation, RLHF penalty</td><td>Student covers all teacher knowledge; LLM can't drift far from reference</td></tr>
+<tr><td>KL(q‖p) reverse</td><td style="text-align:center">H(q,p) − H(q)</td><td>VAE encoder</td><td>Encoder stays within prior's well-behaved region</td></tr>
+<tr><td>Cross-ent = KL<br>(when p is one-hot)</td><td style="text-align:center">H(p)=0 so H(p,q)=KL</td><td>Classification</td><td>Why cross-entropy loss works: it IS KL divergence</td></tr>
+</table>
+</div>
+
+<div class="card green">
+<h3>The thread connecting everything</h3>
+<div class="math">
+<div class="line"><span class="val">bits</span> → how to encode messages efficiently</div>
+<div class="line"><span class="val">entropy</span> → minimum bits with the best code</div>
+<div class="line"><span class="val">cross-entropy</span> → what you actually pay with the wrong code</div>
+<div class="line"><span class="val">KL divergence</span> → the gap: pure waste from mismatch</div>
+<div class="line">&nbsp;</div>
+<div class="line"><span class="cmt">// In ML: "the wrong code" = "the model's current beliefs"</span></div>
+<div class="line"><span class="cmt">// Training = making the model's code match reality</span></div>
+<div class="line"><span class="cmt">// Loss going down = model wasting fewer bits = closer to truth</span></div>
+</div>
+</div>
+</div>
+
+<script>
+const pages=document.querySelectorAll('.page');const nav=document.getElementById('nav');
+pages.forEach((p,i)=>{const b=document.createElement('button');b.textContent=p.dataset.t;b.onclick=()=>go(i);if(i===0)b.classList.add('on');nav.appendChild(b);});
+function go(n){pages.forEach((p,i)=>p.classList.toggle('on',i===n));nav.querySelectorAll('button').forEach((b,i)=>{b.classList.remove('on');if(i<n)b.classList.add('done');else b.classList.remove('done');if(i===n)b.classList.add('on');});window.scrollTo({top:0,behavior:'smooth'});}
+</script>
+</body></html>

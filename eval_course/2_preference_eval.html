@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LLM Eval Ch2: Preference Evaluation</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0a0a1a;color:#e0e0e0;padding:20px 20px 80px;line-height:1.7}
+h1{text-align:center;color:#fff;margin-bottom:4px;font-size:1.5em}
+.sub{text-align:center;color:#888;margin-bottom:24px;font-size:.88em}
+.nav{display:flex;justify-content:center;gap:6px;margin-bottom:20px;flex-wrap:wrap}
+.nav button{padding:7px 13px;border:2px solid #333;background:#111;color:#888;border-radius:8px;cursor:pointer;font-size:.78em;transition:.2s}
+.nav button:hover{border-color:#555;color:#ccc}
+.nav button.on{border-color:#4fc3f7;color:#4fc3f7;background:#0d2137}
+.nav button.done{border-color:#4caf50;color:#4caf50}
+.page{display:none;max-width:880px;margin:0 auto}
+.page.on{display:block}
+.page h2{color:#4fc3f7;margin-bottom:12px;font-size:1.2em}
+.card{background:#12122a;border:1px solid #2a2a4a;border-radius:12px;padding:18px;margin-bottom:14px}
+.card.blue{border-color:#4fc3f7;background:#0d1b2a}
+.card.green{border-color:#4caf50;background:#0a1a0a}
+.card.orange{border-color:#ff9800;background:#1a1400}
+.card.red{border-color:#ef5350;background:#1a0a0a}
+.card.purple{border-color:#ce93d8;background:#1a0a2a}
+.card h3{color:#ffb74d;margin-bottom:8px;font-size:1em}
+button.nx{padding:10px 24px;background:#4caf50;color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:.9em;margin-top:14px}
+button.nx:hover{background:#66bb6a}
+table{width:100%;border-collapse:collapse;margin:10px 0}
+th,td{padding:8px 12px;border:1px solid #333;text-align:center;font-size:.86em}
+th{background:#1a1a3a;color:#4fc3f7}
+td{text-align:left}
+td.n{text-align:right;font-variant-numeric:tabular-nums}
+.math{background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:14px;margin:10px 0;font-family:'Fira Code',Consolas,monospace;font-size:.85em;line-height:1.8;overflow-x:auto}
+.math.out{border-color:#2e7d32;background:#0c1a0e}
+.math .line{margin:2px 0;display:block;white-space:pre}
+.math .hl{background:#264f78;padding:2px 6px;border-radius:4px;display:inline-block}
+.math .cmt{color:#6a9955}.math .val{color:#b5cea8}.math .lbl{color:#9cdcfe}.math .win{color:#4caf50;font-weight:700}
+.key{color:#ffb74d;font-weight:600}
+.src{color:#777;font-size:.78em;margin-top:6px}
+details.more{background:#0d0d20;border:1px solid #333;border-left:3px solid #ce93d8;border-radius:8px;padding:10px 14px;margin:12px 0}
+details.more summary{cursor:pointer;color:#ce93d8;font-size:.86em;font-weight:600;outline:none}
+details.more[open] summary{margin-bottom:10px}
+details.more p,details.more .math{font-size:.85em}
+.vs{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:10px 0}
+@media(max-width:650px){.vs{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<a href="../index.html" style="position:fixed;top:10px;left:14px;font-size:.75em;color:#555;text-decoration:none;z-index:999;padding:4px 8px;background:#0a0a1a;border:1px solid #333;border-radius:6px;">&larr; index</a>
+<h1>LLM Eval Ch2: Preference Evaluation</h1>
+<p class="sub">No ground truth → someone must judge. Votes → Elo → Bradley-Terry, and the measured biases of LLM judges. Real runs + cited papers only.</p>
+<div class="nav" id="nav"></div>
+
+<!-- PAGE 0 -->
+<div class="page on" data-t="0. No answer key">
+<h2>When there is no answer key</h2>
+
+<div class="card blue">
+<h3>The course question, harder</h3>
+<p><em>The model produced an answer — how do you turn that into a number you can trust?</em> "Write a poem about autumn." "Explain entanglement to a 10-year-old." "Draft this email more kindly." There is no gold string to match. Chapter 1's machinery is useless here, and this is most of what chat models actually do.</p>
+</div>
+
+<div class="card red">
+<h3>Why matching against a reference fails — derive it yourself</h3>
+<p>The pre-LLM answer was overlap metrics (BLEU/ROUGE): count shared words with a reference answer. Take reference <em>"the cat sat on the mat"</em> and two candidates; unigram precision = matched words / candidate words:</p>
+<div class="math">
+<span class="line">reference:    the cat sat on the mat</span>
+<span class="line"></span>
+<span class="line">A (paraphrase): "a feline rested on a rug"</span>
+<span class="line">   matches: on                        → 1/6 = <span class="val">0.17</span></span>
+<span class="line"></span>
+<span class="line">B (copy+junk):  "the cat sat on the mat and slept"</span>
+<span class="line">   matches: the cat sat on the mat    → 6/8 = <span class="val">0.75</span></span>
+</div>
+<p>The good paraphrase scores 0.17; the lazy copy scores 0.75. Overlap rewards <em>copying the reference</em>, not answering well. Fine for 2005 machine translation, hopeless for "write me a poem".</p>
+</div>
+
+<div class="card">
+<h3>So we ask for a preference instead</h3>
+<div class="vs">
+<div class="card orange" style="margin-bottom:0"><h3>Absolute scoring</h3><p>"Rate this response 1–10." Raters disagree on what a 7 means, drift over a session, and anchor on the first examples they see. The scale itself is noise.</p></div>
+<div class="card green" style="margin-bottom:0"><h3>Pairwise comparison</h3><p>"Here are two responses. Which is better?" No scale to calibrate. Harder to drift. This one decision — compare, don't rate — underlies Chatbot Arena, RLHF reward data, and most LLM-judge setups.</p></div>
+</div>
+<p style="margin-top:10px">One vote is one noisy bit. The machinery of this chapter is how thousands of noisy bits become a leaderboard — and what gets lost on the way.</p>
+</div>
+
+<button class="nx" onclick="go(1)">Next: votes → ratings (Elo) &#x2192;</button>
+</div>
+
+<!-- PAGE 1 -->
+<div class="page" data-t="1. Elo">
+<h2>From votes to ratings: Elo</h2>
+
+<div class="card blue">
+<h3>The battle protocol (this is exactly how Chatbot Arena works)</h3>
+<p>A user sends a prompt; two anonymous models answer side-by-side; the user votes; <em>"once a vote is submitted, the model names will be revealed"</em> — votes cast after an identity leak are discarded. Anonymity is what makes the vote a preference about the text, not the brand.</p>
+<p class="src">Source: LMSYS launch blog, "Chatbot Arena: Benchmarking LLMs in the Wild with Elo Ratings", May 3, 2023.</p>
+</div>
+
+<div class="card">
+<h3>Elo in two formulas (borrowed from chess)</h3>
+<div class="math">
+<span class="line"><span class="cmt">// 1. expected score of A against B, from current ratings:</span></span>
+<span class="line">E_A = 1 / (1 + 10^((R_B − R_A)/400))</span>
+<span class="line"></span>
+<span class="line"><span class="cmt">// 2. update after the game (S = 1 win, 0 loss):</span></span>
+<span class="line">R_A ← R_A + K·(S − E_A)</span>
+</div>
+<p>K sets the step size. Chess uses K≈32 for new players; Arena's original online-Elo code used K=4 (source: FastChat <code>rating_systems.py</code>). We trace with K=32 so the movement is visible.</p>
+</div>
+
+<div class="card green">
+<h3>Worked trace (verified by running it)</h3>
+<div class="math out">
+<span class="line"><span class="cmt">// captured run — s6_elo_bt.py</span></span>
+<span class="line">R_A = 1200 (favorite),  R_B = 1100,  K = 32</span>
+<span class="line"></span>
+<span class="line">E_A = 1/(1+10^((1100−1200)/400)) = 1/(1+10^(−0.25)) = <span class="val">0.6401</span></span>
+<span class="line">E_B = 1 − E_A = 0.3599</span>
+<span class="line"></span>
+<span class="line"><span class="lbl">A wins (expected):</span>  A: 1200 + 32·(1−0.6401) = <span class="val">1211.5</span>   (+11.5)</span>
+<span class="line">                    B: 1100 + 32·(0−0.3599) = <span class="val">1088.5</span>   (−11.5)</span>
+<span class="line"></span>
+<span class="line"><span class="lbl">B wins (upset):   </span>  A: 1200 + 32·(0−0.6401) = <span class="val">1179.5</span>   (−20.5)</span>
+<span class="line">                    B: 1100 + 32·(1−0.3599) = <span class="val">1120.5</span>   (+20.5)</span>
+</div>
+<p>Two things to internalize: updates are <span class="key">zero-sum</span> (A's gain is exactly B's loss — if your two deltas differ, you've plugged in the wrong E, a real bug in v1 of this page), and <span class="key">upsets move ratings more</span> (±20.5 vs ±11.5) because S − E is larger when the outcome was surprising.</p>
+</div>
+
+<div class="card orange">
+<h3>What a rating gap means</h3>
+<div class="math">
+<span class="line">ΔR =   0  →  P(higher wins) = 0.500</span>
+<span class="line">ΔR = 100  →  0.640      ΔR = 200  →  0.760      ΔR = 400  →  0.909</span>
+</div>
+<p>The 400 in the formula is just the choice of ruler: "400 points = 10:1 odds". For scale: the July 2026 Arena text leaderboard's top ten sit within ~30 points of each other (~1481–1509) — per this table, near coin-flip territory between neighbors, which is why confidence intervals matter more than rank order up there.</p>
+<p class="src">Source: arena.ai/leaderboard/text, fetched 2026-07-05 (top model 1509±9).</p>
+</div>
+
+<button class="nx" onclick="go(2)">Next: what Arena actually fits &#x2192;</button>
+</div>
+
+<!-- PAGE 2 -->
+<div class="page" data-t="2. Bradley-Terry">
+<h2>Bradley-Terry: what the leaderboard actually computes</h2>
+
+<div class="card red">
+<h3>Why Arena dropped online Elo (Dec 2023)</h3>
+<p>Elo processes games in sequence and drifts — right for humans whose skill changes, wrong for a frozen model checkpoint whose "skill" is constant. LMSYS's stated reasons for switching: game order shouldn't matter for static models, and online-Elo confidence intervals were too wide. The replacement, <span class="key">Bradley-Terry</span>, fits all battles at once by maximum likelihood — their blog calls BT "the MLE estimate of the underlying Elo model" for fixed win rates.</p>
+<p class="src">Source: LMSYS blog, "Chatbot Arena: New models &amp; Elo system update", Dec 7, 2023.</p>
+</div>
+
+<div class="card blue">
+<h3>The model: one strength number per player</h3>
+<div class="math">
+<span class="line">P(i beats j) = p&#7522; / (p&#7522; + p&#11388;)          <span class="cmt">// strengths p &gt; 0</span></span>
+<span class="line"><span class="cmt">// equivalent logistic form used in the Arena paper:</span></span>
+<span class="line">P(i beats j) = 1 / (1 + e^(ξ&#11388; − ξ&#7522;))      <span class="cmt">// ξ = log p</span></span>
+</div>
+<p>Fit: choose the p's that maximize the likelihood of the observed battle table — logistic regression where the only feature is "who played whom".</p>
+<p class="src">Source: Chiang et al. 2024, arXiv:2403.04132.</p>
+</div>
+
+<div class="card green">
+<h3>Fit one yourself: 3 models, 30 battles (captured run)</h3>
+<div class="math out">
+<span class="line"><span class="cmt">// battle table: wins[i][j] = times i beat j</span></span>
+<span class="line">A beat B 7/10      A beat C 9/10      B beat C 6/10</span>
+<span class="line"></span>
+<span class="line"><span class="cmt">// iterative MLE (minorization-maximization), strengths normalized:</span></span>
+<span class="line">iter 1:   p = [1.785, 1.004, 0.558]</span>
+<span class="line">iter 2:   p = [2.142, 0.948, 0.493]</span>
+<span class="line">iter 5:   p = [2.488, 0.868, 0.463]</span>
+<span class="line">iter 200: p = [<span class="val">2.569</span>, <span class="val">0.852</span>, <span class="val">0.457</span>]     <span class="cmt">// converged</span></span>
+<span class="line"></span>
+<span class="line"><span class="cmt">// display on the familiar scale: R = 1000 + 400·log10(p)</span></span>
+<span class="line">A: <span class="val">1164</span>      B: <span class="val">972</span>      C: <span class="val">864</span></span>
+</div>
+<p>That last line is the real convention: FastChat fits BT with base-10 scaling and maps strengths through ×400 + offset, so displayed Arena ratings obey the same 1/(1+10^(−ΔR/400)) rule as page 1. An Arena "Elo" is a Bradley-Terry coefficient wearing chess clothing.</p>
+<p class="src">Source: lm-sys/FastChat, fastchat/serve/monitor/rating_systems.py (alpha = ln 10, scale 400).</p>
+</div>
+
+<div class="card orange">
+<h3>What one-number-per-model destroys</h3>
+<div class="math">
+<span class="line">                 observed     BT fitted</span>
+<span class="line">P(A beats B)      0.700        <span class="val">0.751</span></span>
+<span class="line">P(A beats C)      0.900        <span class="val">0.849</span></span>
+<span class="line">P(B beats C)      0.600        <span class="val">0.651</span></span>
+</div>
+<p>The fit can't reproduce the observed table — with strengths normalized, two free parameters must explain three win rates. BT <em>assumes transitivity</em>: if the data contains "A crushes C but only edges out B", or rock-paper-scissors cycles (model X wins coding, loses poetry), that structure is averaged away into the residuals. A leaderboard is a lossy compression of the full pairwise matrix.</p>
+</div>
+
+<details class="more"><summary>Scale of the real thing, and the name changes</summary>
+<p>Verified milestones: 4.7K votes in launch week (May 2023) → 800K+ votes, 90+ models (Mar 2024) → 7.15M votes across 369 models on the live leaderboard as of July 2026. The site moved from lmsys.org to lmarena.ai (Sept 2024), spun out as the LMArena company (2025), renamed to Arena / arena.ai in Jan 2026. First model over a displayed 1500: Gemini 3 Pro at its Nov 2025 debut (1501, per LMArena's announcement as widely relayed — the changelog date is primary, the exact score secondhand).</p>
+<p class="src">Sources: lmsys.org blogs 2023-05-03, 2024-03-01, 2024-09-20; arena.ai/blog/lmarena-is-now-arena; arena.ai/leaderboard/text (fetched 2026-07-05).</p>
+</details>
+
+<button class="nx" onclick="go(3)">Next: LLM-as-judge &#x2192;</button>
+</div>
+
+<!-- PAGE 3 -->
+<div class="page" data-t="3. LLM-as-judge">
+<h2>LLM-as-judge: the instrument and its error bars</h2>
+
+<div class="card blue">
+<h3>The actual prompt (MT-Bench pairwise judge, verbatim)</h3>
+<div class="math">
+<span class="line">Please act as an impartial judge and evaluate the quality of the</span>
+<span class="line">responses provided by two AI assistants to the user question displayed</span>
+<span class="line">below. You should choose the assistant that follows the user's</span>
+<span class="line">instructions and answers the user's question better. […] Begin your</span>
+<span class="line">evaluation by comparing the two responses and provide a short</span>
+<span class="line">explanation. <span class="hl">Avoid any position biases</span> and ensure that the order in</span>
+<span class="line">which the responses were presented does not influence your decision.</span>
+<span class="line"><span class="hl">Do not allow the length of the responses to influence your evaluation.</span></span>
+<span class="line">[…] output your final verdict by strictly following this format:</span>
+<span class="line">"[[A]]" if assistant A is better, "[[B]]" if assistant B is better,</span>
+<span class="line">and "[[C]]" for a tie.</span>
+</div>
+<p>Note the prompt <em>begs</em> the judge not to have position or length bias. The same paper then measured whether begging works. It doesn't, much:</p>
+<p class="src">Source: Zheng et al. 2023, arXiv:2306.05685; prompt text from FastChat judge_prompts.jsonl (pair-v2).</p>
+</div>
+
+<div class="card red">
+<h3>Position bias, measured (same paper, Table 2)</h3>
+<p>Judge each answer pair twice, orders swapped. "Consistent" = same winner both times:</p>
+<table>
+<tr><th>Judge</th><th>Consistent</th><th>Prefers 1st slot</th><th>Prefers 2nd slot</th></tr>
+<tr><td>GPT-4</td><td class="n">65.0%</td><td class="n">30.0%</td><td class="n">5.0%</td></tr>
+<tr><td>GPT-3.5</td><td class="n">46.2%</td><td class="n">50.0%</td><td class="n">1.2%</td></tr>
+<tr><td>Claude-v1</td><td class="n">23.8%</td><td class="n">75.0%</td><td class="n">0.0%</td></tr>
+</table>
+<p>Even GPT-4 flips its verdict on a third of pairs when you swap the order. Claude-v1 was effectively answering "the first one" three times out of four.</p>
+</div>
+
+<div class="card green">
+<h3>The bias in its purest form — our own captured experiment</h3>
+<p>We used a deliberately tiny judge (Qwen2.5-0.5B-Instruct, on this laptop) on 6 factual pairs where one answer is flatly correct ("Canberra" vs "Sydney", "408" vs "398", …), each judged in both orders, greedy decoding:</p>
+<div class="math out">
+<span class="line"><span class="cmt">// captured run — s7_judge_position.py, 12 judge calls total</span></span>
+<span class="line">verdict was <span class="val">"A"</span> in… all 12 calls, regardless of content</span>
+<span class="line"></span>
+<span class="line">correct answer chosen when shown FIRST : <span class="val">6/6</span>   <span class="cmt">// looks like a perfect judge!</span></span>
+<span class="line">correct answer chosen when shown SECOND: <span class="val">0/6</span>   <span class="cmt">// oh.</span></span>
+</div>
+<p>If we had only run one ordering, we'd have "measured" either a flawless judge or a broken one — both wrong. The judge wasn't judging at all. <span class="key">This is why serious setups score both orderings and only count consistent verdicts</span> (inconsistent → tie), which is exactly MT-Bench's procedure.</p>
+</div>
+
+<div class="card orange">
+<h3>The other measured biases (all from Zheng et al.)</h3>
+<ul style="margin:8px 0 0 18px;line-height:2">
+<li><strong>Verbosity:</strong> pad one answer with rephrased repetition of its own list items (longer, zero new content). Claude-v1 and GPT-3.5 fell for the padded answer <strong>91.3%</strong> of the time; GPT-4, 8.7%.</li>
+<li><strong>Self-preference:</strong> GPT-4 favored GPT-4 outputs by ~10% win rate, Claude-v1 its own by ~25% — but the paper itself cautions the data "cannot determine" this bias conclusively. Later work (Panickssery et al. 2024) tightened the story: GPT-4 recognizes its own text 73.5% of the time, and self-recognition ability correlates linearly with self-preference.</li>
+<li><strong>Weak at grading math:</strong> GPT-4-judge failed 70% of a math-grading set with the default prompt; 30% with chain-of-thought judging; <strong>15%</strong> when made to solve the problem itself first and judge against its own reference. Rubric design is not decoration — it's a 4.7× error reduction.</li>
+</ul>
+<p class="src">Sources: arXiv:2306.05685 (Tables 2–4); arXiv:2404.13076.</p>
+</div>
+
+<div class="card purple">
+<h3>So how good is the best judge, ceiling-to-ceiling?</h3>
+<p>On MT-Bench data with expert human votes (non-tie): <strong>GPT-4 agreed with humans 85%</strong> — while humans agreed with <em>each other</em> 81%. On Arena crowd data, 87%. A well-prompted frontier judge is at the human-agreement ceiling; the biases above are what you're accepting in exchange for ~100× cheaper and instant. The trade is usually worth it — <em>if</em> you debias (swap orders) and spot-check against humans (Ch5 shows how).</p>
+<p class="src">Source: arXiv:2306.05685, Tables 5–6 (setup S2, ties excluded; random baseline 50%).</p>
+</div>
+
+<button class="nx" onclick="go(4)">Next: gaming the judges &#x2192;</button>
+</div>
+
+<!-- PAGE 4 -->
+<div class="page" data-t="4. Goodhart arrives">
+<h2>When models learn what judges like</h2>
+
+<div class="card red">
+<h3>The verbosity exploit, quantified end-to-end</h3>
+<p>AlpacaEval ranked models by GPT-4-judged win rate against a fixed baseline. Dubois et al. showed the metric was <em>gameable by prompting alone</em>: instructing the same model to be more or less verbose swung its win rate from <strong>22.9% to 64.3%</strong> — a 41-point swing with zero capability change. Their fix, length-controlled win rates (regress out length, report the counterfactual at equal lengths), shrank the swing to ~10 points and <em>raised</em> correlation with Arena rankings from 0.94 to 0.98. Removing the bias made the metric both harder to game and more accurate.</p>
+<p class="src">Source: Dubois et al. 2024, arXiv:2404.04475.</p>
+</div>
+
+<div class="card blue">
+<h3>Arena's version: style control</h3>
+<p>Human voters have the same weakness. In Aug 2024 LMSYS added style features to the Bradley-Terry regression — answer length, #headers, #bold, #lists — so the model-strength coefficient is estimated <em>with style held constant</em>. Fitted coefficients: <strong>length 0.249</strong>, lists 0.031, headers 0.024, bold 0.019 — length dominates everything else combined. With style controlled, models whose wins leaned on long markdown-heavy answers (e.g. GPT-4o-mini) dropped noticeably; Claude 3.5 Sonnet and Llama-3.1-405B rose.</p>
+<p>Same Bradley-Terry machinery as page 2, one extra column in the regression. <span class="key">You don't fix a biased electorate by exhortation; you fix it in the estimator.</span></p>
+<p class="src">Source: LMSYS blog, "Does style matter?", Aug 28, 2024.</p>
+</div>
+
+<div class="card orange">
+<h3>Even the judge benchmarks get re-benchmarked</h3>
+<p>MT-Bench (80 questions, 2023) served for a year, then LMSYS's own Arena-Hard-Auto measured it: on their agreement-with-confidence-intervals metric against Arena human rankings, MT-Bench scored 26.1% vs Arena-Hard's 89.1%. The 80 questions were too few and too easy to separate 2024 models — the same saturation arc as Ch1's benchmarks, one level up. Instruments wear out; recalibrate against fresh human data periodically.</p>
+<p class="src">Source: LMSYS blog, "From Live Data to High-Quality Benchmarks: Arena-Hard", Apr 19, 2024.</p>
+</div>
+
+<div class="card purple">
+<h3>Where this leaves you</h3>
+<p>Preference eval is a measurement chain: <em>votes → pairing protocol → aggregation model → displayed number</em>, and every link has documented failure modes with documented fixes — anonymize the battle, swap the orders, control for style, report confidence intervals. A judge (human or LLM) is an instrument with error bars, never an oracle. Next: <a href="3_alignment_eval.html" style="color:#ce93d8">Ch3</a>, where the thing being measured is actively trying to game the measurement — and so is the user.</p>
+</div>
+
+<button class="nx" onclick="go(0)">Start over &#x21ba;</button>
+</div>
+
+<script>
+const pages=document.querySelectorAll('.page'),nav=document.getElementById('nav');
+pages.forEach((p,i)=>{const b=document.createElement('button');b.textContent=p.dataset.t;b.onclick=()=>go(i);if(i===0)b.classList.add('on');nav.appendChild(b);});
+function go(n){pages.forEach((p,i)=>p.classList.toggle('on',i===n));nav.querySelectorAll('button').forEach((b,i)=>{b.classList.remove('on');if(i<n)b.classList.add('done');else b.classList.remove('done');if(i===n)b.classList.add('on');});window.scrollTo({top:0,behavior:'smooth'});}
+</script>
+</body>
+</html>
