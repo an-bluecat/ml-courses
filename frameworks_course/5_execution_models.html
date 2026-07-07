@@ -215,7 +215,7 @@ details[open] summary{color:#4fc3f7;border-color:#4fc3f7}
 <table>
 <tr><th>Form</th><th>Interceptor</th><th>How it works</th></tr>
 <tr><td><span class="key">Source text / AST</span></td><td><span class="fw tf">AutoGraph</span></td><td>parse your function's source, rewrite control flow into framework calls, then trace the rewritten function</td></tr>
-<tr><td><span class="key">Running values</span></td><td><span class="fw tf">tf.function trace</span> &amp; <span class="fw jx">JAX tracers</span></td><td>call f with special objects; every operator they touch gets recorded (operator overloading — the same trick as PyTorch's tape! just recording an IR instead of a backward graph)</td></tr>
+<tr><td><span class="key">Running values</span></td><td><span class="fw tf">tf.function trace</span> &amp; <span class="fw jx">JAX tracers</span></td><td>call f with special objects; every operator they touch gets recorded (operator overloading — the same trick as PyTorch's tape! just recording a full recipe — a TF graph or a jaxpr — instead of a backward-only graph)</td></tr>
 <tr><td><span class="key">Bytecode</span></td><td><span class="fw pt">TorchDynamo</span></td><td>hook CPython frame evaluation (PEP 523), simulate the bytecode, extract tensor ops into graphs, leave the rest to Python</td></tr>
 </table>
 </div>
@@ -235,7 +235,7 @@ details[open] summary{color:#4fc3f7;border-color:#4fc3f7}
 
 <div class="card blue">
 <h3>Underneath, they converge again</h3>
-<p>All three roads produce a functional graph IR that flows into a handful of compiler backends: TF and JAX lower to <span class="key">XLA</span> (via StableHLO — a standardized op set, "the LLVM IR of ML"); torch.compile lowers FX graphs through Inductor to <span class="key">Triton</span> kernels on GPU. Even the exotic paths cross: PyTorch-on-TPU runs through XLA, and vLLM's 2025 TPU backend runs PyTorch models by lowering them <em>through JAX</em>. Thirty years of framework wars, and everyone ships their tensors to about two compilers.</p>
+<p>All three roads end up producing the same kind of thing: <span class="key">a written-down recipe of pure array math</span> — TF's graph, JAX's jaxpr (Chapter 4), torch.compile's FX graph are cousins of one another. And the recipes flow into a handful of shared compilers: TF and JAX feed <span class="key">XLA</span> (through a standardized recipe format called StableHLO); torch.compile feeds Inductor, which writes <span class="key">Triton</span> GPU kernels. Even the exotic paths cross: PyTorch-on-TPU runs through XLA, and vLLM's 2025 TPU backend runs PyTorch models by lowering them <em>through JAX</em>. Thirty years of framework wars, and everyone ships their tensors to about two compilers.</p>
 </div>
 <button class="nx" onclick="go(4)">Next: what compilation buys, what it costs</button>
 </div>

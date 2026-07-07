@@ -118,6 +118,9 @@ details[open] summary{color:#4fc3f7;border-color:#4fc3f7}
 <span class="line">w.grad: tensor(-24.)</span>
 </div>
 <p>Unlike TF1, <span class="inline">pred</span> is a real 6.0 you can print. But each operation also attached a <span class="inline">grad_fn</span> node pointing at its inputs' nodes: Pow → Sub → Mul → <span class="key">AccumulateGrad</span> (w's mailbox). The chain of <span class="inline">next_functions</span> IS the graph — built as a side effect of running, thrown away and rebuilt every forward pass. <span class="inline">backward()</span> walks it and deposits −24 into <span class="inline">w.grad</span>. <span class="faded">(The full mailbox story — why <span class="inline">.grad</span> accumulates, what <span class="inline">optimizer.step()</span> reads — is your <a href="../pytorch_autograd/autograd.html" style="color:#4fc3f7">PyTorch Mechanics course</a>; here we care about the design position.)</span></p>
+<details><summary>Refresher: why is it called a "tape"? And what's the ".grad mailbox"?</summary>
+<p style="padding:8px 4px"><span class="key">Tape</span> is a cassette-recorder metaphor: during the forward pass, operations get recorded one after another in the order they ran, and <span class="inline">backward()</span> plays the recording <em>in reverse</em> to apply the chain rule. When we say the tape "lives on the tensors," we mean there is no separate recorder object — each result tensor carries a pointer (<span class="inline">grad_fn</span>) to the operation that made it, and the recording IS that chain of pointers, exactly the Pow → Sub → Mul chain printed above.</p>
+<p style="padding:0 4px 8px"><span class="key">Mailbox</span>: <span class="inline">w.grad</span> is a slot attached to the parameter where <span class="inline">backward()</span> <em>deposits</em> the finished gradient, and where <span class="inline">optimizer.step()</span> later <em>collects</em> it. Writer and reader never call each other — they only share the slot; that's the whole trick connecting the loss to the optimizer. And because deliveries <span class="key">add</span> to what's already in the box (+=), you must empty it each step: <span class="inline">zero_grad()</span>.</p></details>
 </div>
 
 <div class="card green">
@@ -157,6 +160,20 @@ details[open] summary{color:#4fc3f7;border-color:#4fc3f7}
 <p>The dispatcher (two-level dynamic dispatch, in C++; Ed Yang's "PyTorch internals" blog is the canonical tour) is why one <span class="inline">mul</span> works across CPU/CUDA/MPS with and without autograd. The cost: per-op overhead that dominates for small tensors, and — like NumPy — <span class="key">no fusion</span>: every op is its own pass over memory.</p>
 <details><summary>Why eager PyTorch is still fast on GPUs anyway</summary>
 <p style="padding:8px 4px">CUDA calls are <span class="key">asynchronous</span>: Python queues kernels and races ahead while the GPU chews through the queue. As long as Python stays ahead of the GPU, interpreter overhead hides completely. This trick is why "Python is slow" didn't kill eager training — and why profiling naïvely with <span class="inline">time.time()</span> around GPU ops lies to you (the op hasn't run yet; you timed the enqueue).</p></details>
+<details><summary>Refresher: what exactly is a "kernel"? (and GEMM)</summary>
+<p style="padding:8px 4px">A kernel is <span class="key">software, not hardware</span>: one small, aggressively optimized function, compiled for one kind of device, that performs one array job — "add two float32 arrays," "multiply these matrices," "run this convolution." It's called a kernel because it is the innermost <em>core</em> of the computation — the tight loop that everything else (Python, dispatcher, autograd) exists to feed. (Same "core" sense as the OS kernel, but a completely unrelated thing — the word just means "the essential center" and computing reuses it a lot.)</p>
+<p style="padding:0 4px 8px">One PyTorch op has <span class="key">many kernels</span> — mul-float32-on-CPU, mul-float16-on-CUDA, mul-on-MPS… — and picking the right one per call is exactly the dispatcher's job described above. The most famous kernel of all: <span class="key">GEMM</span> — <em>GEneral Matrix Multiply</em> (C = A·B + C), the single most optimized routine in all of computing. Linear layers and attention are mostly GEMM calls, which is why GPUs and TPUs are, to a first approximation, GEMM machines. Other celebrity kernels: FlashAttention (attention fused into one kernel), fused softmax/layernorm, embedding lookups.</p></details>
+<details><summary>Refresher: who writes each layer — PyTorch, NVIDIA, Apple, Google? (CPU / CUDA / MPS / TPU)</summary>
+<p style="padding:8px 4px">You choose the device with one line — <span class="inline">x.to('cuda')</span>, <span class="inline">.to('mps')</span>, or leave it on CPU — and the dispatcher routes every later op there. What it routes <em>to</em> is a layer cake with different authors:</p>
+<table style="margin:4px 0 8px">
+<tr><th>Layer</th><th>Written by</th></tr>
+<tr><td>op meanings, autograd, dispatcher, the API</td><td>PyTorch itself — this part is device-neutral</td></tr>
+<tr><td>CPU kernels</td><td>PyTorch's own C++ (ATen), calling optimized math libraries — Intel oneDNN, Apple Accelerate. Yes, CPUs have vendor-tuned backends too.</td></tr>
+<tr><td>NVIDIA kernels</td><td>NVIDIA: the CUDA language/runtime plus the cuBLAS (GEMM) and cuDNN (conv/attention) libraries — ~15 years of tuning; the deepest stack, and why CUDA is the default world</td></tr>
+<tr><td>Apple-GPU kernels</td><td>Apple: Metal Performance Shaders (MPS) — younger, thinner op coverage, closing over time</td></tr>
+<tr><td>TPU</td><td>different mechanism entirely: no per-op kernel library — <span class="inline">torch/xla</span> hands your whole program to <span class="key">XLA, Google's compiler</span>, which <em>generates</em> the machine code. So the "translation" there is done by the XLA stack, not by PyTorch.</td></tr>
+</table>
+<p style="padding:0 4px 8px">So: does PyTorch run on TPU? Yes — via that XLA route — but it's second-class next to JAX, which was born speaking XLA (Chapters 4 and 7).</p></details>
 </div>
 
 <div class="card red">
@@ -234,6 +251,9 @@ details[open] summary{color:#4fc3f7;border-color:#4fc3f7}
 <span class="line">torch: step() mutated weight in place: 0.00654  ->  -0.09346</span>
 </div>
 <p>An <span class="inline">nn.Module</span> is a stateful object holding parameter tensors; <span class="inline">optimizer.step()</span> writes new values <em>into</em> them. Checkpointing = pickling the <span class="inline">state_dict</span>. It's ordinary object-oriented Python — which is exactly the point, and exactly what JAX will refuse (its params go in and out of pure functions; you'll see the same update return <em>new</em> params in Chapter 6).</p>
+<details><summary>Refresher: what does "modules and optimizers mutate state" actually mean?</summary>
+<p style="padding:8px 4px"><span class="key">Mutate</span> = change the contents of an existing object instead of making a new one. Plain-Python version: <span class="inline">lst.append(4)</span> mutates the list; <span class="inline">lst + [4]</span> builds a new list and leaves the old one alone. <span class="key">State</span> = data that survives between calls: the weights, Adam's momentum buffers, BatchNorm's running averages.</p>
+<p style="padding:0 4px 8px">So "the optimizer mutates state" means: <span class="inline">step()</span> reaches into the <em>same tensor objects</em> the model is holding and overwrites the numbers inside them, in place. No new objects are created; the model instantly computes with the new weights because they are literally the same memory. The alternative style — never overwrite, always return a fresh copy — is exactly what JAX does (<span class="inline">params = update(params, grads)</span>), and Chapter 6 shows both side by side with real outputs.</p></details>
 </div>
 
 <div class="card green">
@@ -272,6 +292,16 @@ details[open] summary{color:#4fc3f7;border-color:#4fc3f7}
 <tr><td>Serving artifacts</td><td>torch.export + AOTInductor replaced TorchScript; TorchServe was archived (2025) — LLM serving moved to vLLM/SGLang</td></tr>
 <tr><td>This laptop</td><td>MPS backend covers Apple GPUs (real: <span class="inline">mps available: True</span>), with op gaps still closing</td></tr>
 </table>
+<details><summary>Refresher: if eager Python is slow, how do Meta and OpenAI run PyTorch in production?</summary>
+<p style="padding:8px 4px">Two different answers for two different phases. <span class="key">Training</span>: eager is genuinely fine on GPUs — the async-queue trick (page 2) hides Python's overhead as long as the GPU stays busy, and where it doesn't, you <span class="inline">torch.compile</span> the hot loop. <span class="key">Serving</span>: nobody ships eager Python. The model gets frozen into an optimized artifact first — that's what "optimized runtimes, kernels, quantization, compilers" unpacks to:</p>
+<table style="margin:4px 0 8px">
+<tr><th>Phrase</th><th>Meaning</th></tr>
+<tr><td>export / compile</td><td><span class="inline">torch.export</span> → AOTInductor turns the model into a compiled library; ExecuTorch does the same for phones. The Python that <em>built</em> the model is gone at serving time.</td></tr>
+<tr><td>optimized runtime</td><td>a serving engine (vLLM, SGLang) whose hot path is pre-built compiled kernels + tricks like request batching — Python only orchestrates</td></tr>
+<tr><td>quantization</td><td>store weights in int8/fp8 instead of float32 → less memory traffic → faster, cheaper</td></tr>
+<tr><td>hand-tuned kernels</td><td>the few ops that dominate cost (attention, GEMM) get custom kernels like FlashAttention</td></tr>
+</table>
+<p style="padding:0 4px 8px">So "Meta uses PyTorch in production" really means: <span class="key">researchers iterate in eager PyTorch; what ships is a compiled, quantized artifact derived from it</span>. Eager is the workshop, not the truck.</p></details>
 </div>
 
 <div class="card purple">

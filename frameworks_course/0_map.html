@@ -109,6 +109,8 @@ details[open] summary{color:#4fc3f7;border-color:#4fc3f7}
 <div class="card orange">
 <h3>The second question (deep learning only)</h3>
 <p>Training needs <span class="inline">∂loss/∂w</span> for every weight. NumPy makes you derive it by hand. The other three compute it for you — but they disagree about <em>where the gradient machinery lives</em>: on the tensors (PyTorch), in a context manager (TensorFlow), or as a function transformation (JAX). That's Chapter 6.</p>
+<details><summary>Refresher: what is "autograd", from zero?</summary>
+<p style="padding:8px 4px"><span class="key">Autograd = automatic differentiation</span>: the framework computes ∂loss/∂w for you, so you never derive a formula by hand. The mechanism is simple enough to state in two sentences: <span class="key">(1)</span> every basic operation (multiply, add, tanh…) has a known, hard-coded derivative rule; <span class="key">(2)</span> the framework keeps track of <em>which operations ran in what order</em>, then applies the chain rule backwards through that record. That record is PyTorch's "tape," TF's GradientTape, or JAX's recipe — and the name survives in <span class="inline">torch.autograd</span>, the package behind <span class="inline">.backward()</span>. In Chapter 8 you build a complete autograd in 45 lines, at which point the word stops being magic permanently.</p></details>
 </div>
 <button class="nx" onclick="go(1)">Next: the family tree</button>
 </div>
