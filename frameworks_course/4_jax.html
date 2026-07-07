@@ -144,6 +144,9 @@ details .card{margin-top:10px}
 <span class="line">call 2: 8.0</span>
 </div>
 <p>Read that first line slowly. The print fired, but <span class="inline">x</span> was not 3.0 — it was <span class="inline">JitTracer(float32[])</span>, an object that says only "I am <em>some</em> float32 scalar" (<span class="inline">[]</span> means no dimensions — a single number). Your function ran once with this stand-in. This recording run is called <span class="key">tracing</span> — like tracing a drawing through paper: JAX follows your function's pen strokes without caring about the specific picture.</p>
+<details><summary>Refresher: wait — if x was fake, where did call 1's answer 6.0 come from?</summary>
+<p style="padding:8px 4px">Because the first call does <span class="key">both jobs, back to back</span>. Timeline of <span class="inline">f(3.0)</span>, call 1: <span class="key">(1)</span> your Python runs once with the fake → produces the recipe; <span class="key">(2)</span> XLA compiles the recipe; <span class="key">(3)</span> the compiled code runs <em>with your real 3.0</em> → 6.0 comes out of step 3, not from your Python. Call 2 skips straight to step 3 with 4.0. So the real numbers never meet your Python — they only ever meet the compiled recipe.</p>
+<p style="padding:0 4px 8px">Where does the compiled recipe live? In an in-memory cache keyed by (function, shapes, dtypes) — restart Python and everything recompiles on first use. (For huge models there's an optional on-disk "compilation cache" so restarts don't pay the minutes again.)</p></details>
 </div>
 
 <div class="card blue">
@@ -172,6 +175,15 @@ details .card{margin-top:10px}
 <tr><td><span class="inline">return</span></td><td><span class="inline">in (f,)</span></td><td>the output is f</td></tr>
 </table>
 <p>That's all a jaxpr is: <span class="key">your math, written down as data, with the Python stripped away</span>. Compare Chapter 2 — TensorFlow 1 made you <em>hand-build</em> this kind of recipe with placeholders and sessions. JAX gets the same recipe by just… running your normal-looking code once with a stand-in.</p>
+<details><summary>Refresher: is a jaxpr just PyTorch's tape with another name?</summary>
+<p style="padding:8px 4px">Same family — both are recordings of "which ops ran, in what order," captured by the same mechanism (objects that log every operator that touches them). Three real differences:</p>
+<table style="margin:4px 0 8px">
+<tr><th></th><th><span class="fw pt">torch tape</span></th><th><span class="fw jx">jaxpr</span></th></tr>
+<tr><td>recorded on</td><td>real values, during a real run</td><td>fakes — so it describes <em>every</em> run with these shapes</td></tr>
+<tr><td>lifetime</td><td>rebuilt every call, thrown away after <span class="inline">backward()</span></td><td>recorded once, kept, replayed forever</td></tr>
+<tr><td>purpose</td><td>gradients only — it's a backward-pass plan</td><td>the whole program — used for compiling, differentiating, batching, sharding</td></tr>
+</table>
+<p style="padding:0 4px 8px">That third row is the important one: PyTorch records so it can go <em>backwards</em>; JAX records so it can <em>do anything at all</em> to your program.</p></details>
 </div>
 
 <div class="card green">
@@ -184,6 +196,9 @@ details .card{margin-top:10px}
 <span class="line">jitted     :    0.47 ms/call      (ONE fused pass: 4.2x)</span>
 </div>
 <p>So the whole trick in one sentence: <span class="key">run the Python once with fakes → get the recipe (jaxpr) → compile the recipe (XLA) → replay the fast version forever.</span> That's JAX. Everything else in this chapter is just consequences.</p>
+<details><summary>Refresher: what is XLA actually — who wrote it, and what does it run on?</summary>
+<p style="padding:8px 4px"><span class="key">XLA</span> ("Accelerated Linear Algebra") is a compiler Google built in 2017, originally so TensorFlow graphs could run on TPUs. "Compiler" in the same sense as gcc/clang: read a whole program, optimize it, emit machine code — except its input language is array recipes (jaxprs, TF graphs) instead of C.</p>
+<p style="padding:0 4px 8px">Per device — compare Chapter 3's who-writes-what refresher, because the model is different here: <span class="key">CPU</span>: XLA emits ordinary machine code (via LLVM, the same engine inside clang). <span class="key">NVIDIA GPUs</span>: it <em>generates</em> most kernels itself, calling NVIDIA's cuBLAS-class libraries for the heaviest matmuls. <span class="key">TPU</span>: XLA is the <em>only</em> way to program the chip — TPU and XLA were designed for each other. So where PyTorch's world is "a dispatcher choosing from vendors' pre-written kernel libraries," JAX's world is "one compiler writing custom code per recipe." And <span class="inline">jit</span> = "just-in-time" = compile at first call; the ahead-of-time variant (<span class="inline">jax.export</span>, for serving without Python) shows up in Chapter 7.</p></details>
 </div>
 <button class="nx" onclick="go(2)">Next: the rules the trick imposes</button>
 </div>
@@ -206,6 +221,8 @@ details .card{margin-top:10px}
 <span class="line">  [tracing] for shape (4,)</span>
 </div>
 <p>Two calls with shape (3,) → one recording, reused (different <em>values</em>, same recipe — values aren't in the recipe!). Shape (4,) → recorded again. This is the #1 real-world JAX performance bug: data with ever-changing shapes silently recompiles forever. (TF retraced on new Python <em>values</em>; JAX retraces on new <em>shapes</em>. Same disease, different trigger.)</p>
+<details><summary>Refresher: if every new shape recompiles, how does anyone train on real data — sentences all have different lengths!</summary>
+<p style="padding:8px 4px">By making the shapes lie: <span class="key">pad</span> every sentence in a batch up to a fixed length (fill with a dummy token), and <span class="key">mask</span> so the padded positions can't affect the loss. Now every batch is, say, <span class="inline">(32, 512)</span> — one shape, one compile, forever. Codebases with widely varying lengths use a few <span class="key">buckets</span> (128 / 512 / 2048) and pad each example up to the nearest one: three compiles total instead of thousands. This isn't JAX-exotic — PyTorch code pads and masks too (that's half of what attention masks are for); JAX just punishes you immediately if you don't.</p></details>
 </div>
 
 <div class="card red">
@@ -237,6 +254,8 @@ details .card{margin-top:10px}
 <span class="line">arr.at[0].set(99) -> [99.  1.  2.  3.]   original untouched: [0. 1. 2. 3.]</span>
 </div>
 <p>A recipe is a chain of "new value computed from old values." An in-place edit ("change slot 0 of that existing array") doesn't fit that shape of thinking, so JAX bans it: <span class="inline">arr.at[0].set(99)</span> gives you a <span class="key">new array</span> with slot 0 changed. Feels wasteful — but inside <span class="inline">jit</span>, the compiler sees the old array is never used again and quietly turns it into an in-place edit anyway. <span class="key">You write "make a new one"; the compiler recovers the speed of "edit the old one."</span> Bonus: chapter 1's whole "was that a view or a copy?" bug family can't exist here.</p>
+<details><summary>Refresher: doesn't "always make a new array" double the memory of a big model?</summary>
+<p style="padding:8px 4px">It would, if JAX executed your code literally — a 70B-parameter model would briefly hold old params <em>and</em> new params every step. It doesn't, for the same reason as Rule 4's ending: <span class="key">inside <span class="inline">jit</span>, the compiler sees the whole recipe and knows the old array is never read again</span>, so it writes the result straight into the old array's memory (JAX calls this <span class="key">buffer donation</span>; for function <em>inputs</em> you can even mark it explicitly with <span class="inline">donate_argnums</span> — standard practice in training loops). Outside jit, Python's garbage collector frees the old dict the moment you rebind <span class="inline">params = update(...)</span>. You write "new value each time"; the memory behaves like "updated in place."</p></details>
 </div>
 <button class="nx" onclick="go(3)">Next: grad, vmap — the payoff</button>
 </div>
@@ -266,6 +285,15 @@ details .card{margin-top:10px}
 </div>
 <p>Second derivative: since <span class="inline">grad(f)</span> is an ordinary function, <span class="inline">grad</span> can eat it again. Check by hand: d²/dw² of (3w−10)² = 2·3² = <span class="key">18</span> ✓. In PyTorch this needs a special flag (<span class="inline">create_graph=True</span>) because the tape records <em>runs</em>, and you must ask it to record the backward run too. In JAX there's no tape and no runs to record — just recipes begetting recipes.</p>
 <p class="faded">Where did <span class="inline">.grad</span> go? Nowhere — there is no mailbox. The gradient is a plain <span class="key">return value</span>. Nothing to zero out, nothing to accumulate by accident.</p>
+<details><summary>Refresher: what do the "derivative rules" for each recipe line actually look like?</summary>
+<p style="padding:8px 4px">Each recipe step has a hard-coded, one-line rule saying how its output's slope relates to its inputs' slopes. For our jaxpr's three steps:</p>
+<table style="margin:4px 0 8px">
+<tr><th>Recipe step</th><th>Its rule</th><th>Plugged in (w=2, x=3, t=10)</th></tr>
+<tr><td><span class="inline">d = mul a b</span></td><td>∂d/∂a = b</td><td>∂pred/∂w = x = 3</td></tr>
+<tr><td><span class="inline">e = sub d c</span></td><td>∂e/∂d = 1</td><td>1</td></tr>
+<tr><td><span class="inline">f = pow² e</span></td><td>∂f/∂e = 2e</td><td>2·(−4) = −8</td></tr>
+</table>
+<p style="padding:0 4px 8px">The chain rule multiplies them along the path: 3 · 1 · (−8) = <span class="key">−24</span> ✓. "Differentiate the recipe" = mechanically replace each line with its rule and stitch with multiplication. There is nothing else in the box — and in Chapter 8 you implement exactly these rules yourself in ~45 lines and reproduce this −24.</p></details>
 </div>
 
 <div class="card green">
