@@ -269,7 +269,91 @@ details[open] summary{color:#4fc3f7;border-color:#4fc3f7}
 </div>
 <p>Read one number: row 1, column 2 is the distance from (3,0) to (0,4) = √(9+16) = <span class="key">5</span>. ✓ The inserted <span class="inline">None</span> axes make the two (3,2) arrays broadcast into a (3,3,2) grid of differences — "every point minus every point." This move — <span class="key">add an axis, let broadcasting build the grid</span> — is 80% of practical vectorization.</p>
 </div>
-<button class="nx" onclick="go(4)">Next: what NumPy refuses to do</button>
+<button class="nx" onclick="go(4)">Next: broadcasting, to remember</button>
+</div>
+
+<!-- PAGE 3.5 -->
+<div class="page" data-t="3½. Remember it">
+<h2>Broadcasting, the version you can run in your head forever</h2>
+
+<div class="card blue">
+<h3>The three-step checklist (this is the whole algorithm)</h3>
+<div class="math">
+<span class="line">1. Write both shapes RIGHT-ALIGNED.</span>
+<span class="line">2. Pad the shorter one with 1s on the LEFT.</span>
+<span class="line">3. Read each column:  equal        → keep it</span>
+<span class="line">                      one side is 1 → stretch the 1 to match</span>
+<span class="line">                      neither      → ERROR, no mercy</span>
+</div>
+<p>Applied to the transformer line you know from your GPT work — <span class="inline">x = tok_emb + pos_emb</span>:</p>
+<div class="math">
+<span class="line">tok_emb:  (B, T, C)      (B, T, C)      (B, T, C)</span>
+<span class="line">pos_emb:     (T, C)  →   (1, T, C)  →   (B, T, C)   <span class="cmt"># pad left, stretch the 1</span></span>
+<span class="line">                          C=C ✓ T=T ✓ B vs 1 → stretch → result (B, T, C)</span>
+</div>
+<p>Note this identical checklist runs in <span class="fw np">NumPy</span>, <span class="fw pt">PyTorch</span>, <span class="fw tf">TF</span> and <span class="fw jx">JAX</span> — NumPy wrote the rules (page 0's Numeric lineage), everyone else copied them verbatim. Learn once, use everywhere.</p>
+</div>
+
+<div class="card">
+<h3>The same line with numbers small enough to check by eye</h3>
+<div class="math">
+<span class="line">tok = np.<span class="fn">arange</span>(<span class="val">8.</span>).<span class="fn">reshape</span>(<span class="val">2</span>, <span class="val">2</span>, <span class="val">2</span>)     <span class="cmt"># (B=2, T=2, C=2): values 0..7</span></span>
+<span class="line">pos = [[<span class="val">10.</span>, <span class="val">20.</span>], [<span class="val">30.</span>, <span class="val">40.</span>]]           <span class="cmt"># (T=2, C=2)</span></span>
+<span class="line">tok + pos</span>
+</div>
+<div class="math out"><span class="outlabel">output — real run</span>
+<span class="line">tok + pos:</span>
+<span class="line">[[[10. 21.]     &lt;- batch 0: 0..3  each got +10 +20 +30 +40</span>
+<span class="line">  [32. 43.]]</span>
+<span class="line"> [[14. 25.]     &lt;- batch 1: 4..7  got the SAME +10 +20 +30 +40</span>
+<span class="line">  [36. 47.]]]</span>
+<span class="line">torch result equals numpy result: True</span>
+</div>
+<p>Look at what broadcasting <em>did</em>, not just its shape: <span class="key">both batch entries received the identical position table</span>. And it never copied that table B times — the stretched dimension is the stride-0 trick from the previous page: "to move to the next batch element, move 0 bytes."</p>
+</div>
+
+<div class="card green">
+<h3>How to remember it — read shapes as meaning, not as bookkeeping</h3>
+<ul>
+<li><span class="key">A size-1 (or missing) dimension says: "I am the same for every one of those."</span> <span class="inline">pos_emb</span> has no batch dimension <em>because positions don't care which sequence they're in</em>. Broadcasting isn't a trick to make mismatched shapes legal — it's the shape system expressing "this data is shared across that axis."</li>
+<li><span class="key">Why pad on the LEFT?</span> Read a shape like nested loops, outermost first: (B, T, C) = "for each sequence → for each position → the C numbers." The <em>right</em> end is the actual content; the <em>left</em> end is repetition around it. When smaller data enters a bigger world, the new "for each…" wraps <em>around</em> it — so the 1s go on the outside, the left.</li>
+<li>So the one-line mental model: <span class="key">right-align the content, and every 1 means "same for all."</span></li>
+</ul>
+</div>
+
+<div class="card red">
+<h3>Two failure modes — one loud, one sneaky</h3>
+<div class="math out"><span class="outlabel">output — real run</span>
+<span class="line">np.ones(3) + np.ones(4)</span>
+<span class="line">ValueError: operands could not be broadcast together with shapes (3,) (4,)</span>
+<span class="line"></span>
+<span class="line">(3,1) + (3,)  ->  (3, 3)   &lt;- no error!</span>
+<span class="line">[[11. 21. 31.]</span>
+<span class="line"> [12. 22. 32.]</span>
+<span class="line"> [13. 23. 33.]]</span>
+</div>
+<p>The loud one is fine — neither dimension is 1, so step 3 refuses, exactly as your checklist predicts. The sneaky one is the classic bug: you meant to add two 3-vectors elementwise, but one was a <em>column</em> (3,1) — right-align: (3,1) vs (1,3), both stretch, and you get a 3×3 <span class="key">grid of every pairwise sum</span> instead of 3 numbers. No error, wrong science. (Used on purpose, this exact move built the pairwise-distance grid on the previous page — the line between bug and technique is whether you meant it.)</p>
+</div>
+
+<div class="card orange">
+<h3>Matmul (@) is different: the last two dims do math, the rest broadcast</h3>
+<p>For <span class="inline">A @ B</span>, split each shape in two: <span class="key">[batch dims… | matrix dims]</span>. The last two are matrices and must <em>chain</em>, not match: <span class="inline">(n, k) @ (k, m) → (n, m)</span> — inner k's equal. Everything in front follows the elementwise checklist above.</p>
+<div class="math out"><span class="outlabel">output — real run</span>
+<span class="line">A(2,2,3) @ B(3,2) -> (2, 2, 2)     # batch of two 2x3, times one 3x2</span>
+<span class="line">A[0] = [[0 1 2]     B = [[0 1]     (A @ B)[0] = [[10 13]</span>
+<span class="line">        [3 4 5]]         [2 3]                   [28 40]]</span>
+<span class="line">                         [4 5]]</span>
+<span class="line"></span>
+<span class="line">(5,1,2,3) @ (7,3,4) -> (5, 7, 2, 4)   # batch dims (5,1) vs (7,) broadcast to (5,7)</span>
+<span class="line"></span>
+<span class="line">np.ones((2,3)) @ np.ones((2,3))</span>
+<span class="line">ValueError: matmul: Input operand 1 has a mismatch in its core dimension 0,</span>
+<span class="line">            with gufunc signature (n?,k),(k,m?)</span>
+</div>
+<p>Check one number by hand: row [0,1,2] · column [0,2,4] = 0+2+8 = <span class="key">10</span> ✓. And read that error message — NumPy prints the rule itself: <span class="inline">(n?,k),(k,m?)</span>, "my k must meet your k." A common mis-memory is "the last two dims must be the same" — no: <span class="key">they must chain</span>. (2,3)@(2,3) fails; (2,3)@(3,2) works.</p>
+<p class="faded">One habit to keep: use <span class="inline">@</span> everywhere. <span class="inline">np.dot</span> follows different, messier rules for stacked dimensions, and torch's <span class="inline">.dot</span> only accepts 1-D vectors — <span class="inline">@</span> means the same thing in all four frameworks.</p>
+</div>
+<button class="nx" onclick="go(5)">Next: what NumPy refuses to do</button>
 </div>
 
 <!-- PAGE 4 -->
@@ -299,7 +383,7 @@ details[open] summary{color:#4fc3f7;border-color:#4fc3f7}
 </ul>
 <p class="faded">"NumPy is transitioning into a central coordinating mechanism that specifies a well-defined array programming API and dispatches it to specialized array implementations." — the Nature paper (2020), and exactly what happened.</p>
 </div>
-<button class="nx" onclick="go(5)">Next: NumPy in 2026</button>
+<button class="nx" onclick="go(6)">Next: NumPy in 2026</button>
 </div>
 
 <!-- PAGE 5 -->
