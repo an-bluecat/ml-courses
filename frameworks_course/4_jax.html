@@ -74,6 +74,7 @@ details .card{margin-top:10px}
 <div class="math">
 <span class="line"><span class="kw">import</span> jax.numpy <span class="kw">as</span> jnp     <span class="cmt"># deliberately a clone of numpy's API</span></span>
 <span class="line">a = jnp.<span class="fn">array</span>([<span class="val">1.0</span>, <span class="val">2.0</span>, <span class="val">3.0</span>])</span>
+<span class="line"><span class="fn">print</span>(<span class="val">'jnp array:'</span>, a, <span class="val">'| .shape'</span>, a.shape, <span class="val">'| .mean()'</span>, a.<span class="fn">mean</span>())</span>
 </div>
 <div class="math out"><span class="outlabel">output — real run</span>
 <span class="line">jnp array: [1. 2. 3.] | .shape (3,) | .mean() 2.0</span>
@@ -107,6 +108,13 @@ details .card{margin-top:10px}
 
 <div class="card purple">
 <h3>The strangest one, made concrete: <span class="inline">grad(f)</span> is just a new Python function</h3>
+<div class="math">
+<span class="line">g = jax.<span class="fn">grad</span>(f)</span>
+<span class="line"><span class="fn">print</span>(<span class="val">'f      :'</span>, f)</span>
+<span class="line"><span class="fn">print</span>(<span class="val">'grad(f):'</span>, g)</span>
+<span class="line"><span class="fn">print</span>(<span class="val">'callable?'</span>, <span class="fn">callable</span>(g))</span>
+<span class="line"><span class="fn">print</span>(<span class="val">'g(2.0) ='</span>, g(<span class="val">2.0</span>))</span>
+</div>
 <div class="math out"><span class="outlabel">output — real run</span>
 <span class="line">f      : &lt;function &lt;lambda&gt; at 0x103d382c0&gt;</span>
 <span class="line">grad(f): &lt;function &lt;lambda&gt; at 0x10ce832e0&gt;</span>
@@ -136,7 +144,8 @@ details .card{margin-top:10px}
 <span class="line"><span class="kw">def</span> <span class="fn">f</span>(x):</span>
 <span class="line">    <span class="fn">print</span>(<span class="val">"  [python print] tracing, x ="</span>, x)</span>
 <span class="line">    <span class="kw">return</span> x * <span class="val">2.0</span></span>
-<span class="line">f(jnp.float32(<span class="val">3.0</span>)); f(jnp.float32(<span class="val">4.0</span>))</span>
+<span class="line"><span class="fn">print</span>(<span class="val">"call 1:"</span>, f(jnp.float32(<span class="val">3.0</span>)))</span>
+<span class="line"><span class="fn">print</span>(<span class="val">"call 2:"</span>, f(jnp.float32(<span class="val">4.0</span>)))</span>
 </div>
 <div class="math out"><span class="outlabel">output — real run</span>
 <span class="line">  [python print] tracing, x = JitTracer(float32[])</span>
@@ -144,6 +153,7 @@ details .card{margin-top:10px}
 <span class="line">call 2: 8.0</span>
 </div>
 <p>Read that first line slowly. The print fired, but <span class="inline">x</span> was not 3.0 — it was <span class="inline">JitTracer(float32[])</span>, an object that says only "I am <em>some</em> float32 scalar" (<span class="inline">[]</span> means no dimensions — a single number). Your function ran once with this stand-in. This recording run is called <span class="key">tracing</span> — like tracing a drawing through paper: JAX follows your function's pen strokes without caring about the specific picture.</p>
+<p>Now read the last two output lines with that in mind. <span class="inline">call 1: 6.0</span> — that 6.0 did <em>not</em> come from your function body (it never saw a real number); it came from the <span class="key">compiled recording, run with your real 3.0</span> immediately after tracing finished. <span class="inline">call 2: 8.0</span> — this time nothing of yours ran at all: no print, because Python was skipped entirely. So the standing arrangement is: <span class="key">your Python function body runs exactly once, on the first call; every call after that goes straight to the compiled version.</span></p>
 <details><summary>Refresher: wait — if x was fake, where did call 1's answer 6.0 come from?</summary>
 <p style="padding:8px 4px">Because the first call does <span class="key">both jobs, back to back</span>. Timeline of <span class="inline">f(3.0)</span>, call 1: <span class="key">(1)</span> your Python runs once with the fake → produces the recipe; <span class="key">(2)</span> XLA compiles the recipe; <span class="key">(3)</span> the compiled code runs <em>with your real 3.0</em> → 6.0 comes out of step 3, not from your Python. Call 2 skips straight to step 3 with 4.0. So the real numbers never meet your Python — they only ever meet the compiled recipe.</p>
 <p style="padding:0 4px 8px">Where does the compiled recipe live? In an in-memory cache keyed by (function, shapes, dtypes) — restart Python and everything recompiles on first use. (For huge models there's an optional on-disk "compilation cache" so restarts don't pay the minutes again.)</p></details>
@@ -151,12 +161,13 @@ details .card{margin-top:10px}
 
 <div class="card blue">
 <h3>Step 3: what the stand-in collects — the jaxpr</h3>
-<p>As your function body runs, every operation that touches the tracer gets written down in order. The written-down result is called a <span class="key">jaxpr</span> — short for <span class="key">"JAX expression"</span> — and it is nothing scarier than <em>your function's recipe, as a small text program</em>. JAX will show it to you for any function:</p>
+<p>As your function body runs, every operation that touches the tracer gets written down in order. The written-down result is called a <span class="key">jaxpr</span> — short for <span class="key">"JAX expression"</span> — and it is nothing scarier than <em>your function's recipe, as a small text program</em>.</p>
+<p>Where does it live? <span class="key">Inside jit, invisibly</span>: on the first call, <span class="inline">@jax.jit</span> makes this recording and hands it straight to the compiler — you never see it. But JAX also ships an inspection tool, <span class="inline">jax.make_jaxpr</span>, which runs <span class="key">only the recording step</span> — the same tracing machinery jit uses, but with no compiling and no running afterwards — and gives you the recording back as a printable object. In other words: what you're about to see is exactly what jit was holding in its hands between "trace" and "compile":</p>
 <div class="math">
 <span class="line"><span class="kw">def</span> <span class="fn">loss_fn</span>(w, x, t):</span>
 <span class="line">    pred = w * x</span>
 <span class="line">    <span class="kw">return</span> (pred - t) ** <span class="val">2</span></span>
-<span class="line">jax.<span class="fn">make_jaxpr</span>(loss_fn)(<span class="val">2.0</span>, <span class="val">3.0</span>, <span class="val">10.0</span>)</span>
+<span class="line"><span class="fn">print</span>(jax.<span class="fn">make_jaxpr</span>(loss_fn)(<span class="val">2.0</span>, <span class="val">3.0</span>, <span class="val">10.0</span>))</span>
 </div>
 <div class="math out"><span class="outlabel">output — real run</span>
 <span class="line">{ lambda ; a:f32[] b:f32[] c:f32[]. let</span>
@@ -190,6 +201,14 @@ details .card{margin-top:10px}
 <h3>Step 4: why write it down? To hand the whole recipe to a compiler</h3>
 <p>Remember Chapter 1's weakness: NumPy (and eager PyTorch) run <span class="key">one kernel per operation</span> — for <span class="inline">x*2+1</span>, one full pass over memory for the multiply, a temporary array, another full pass for the add. Nobody sees the whole computation, so nobody can plan.</p>
 <p>A jaxpr is the whole computation. JAX hands it to <span class="key">XLA</span> — a compiler Google originally built to make TensorFlow fast on TPUs. "Compiler" here means: a program that reads the entire recipe and emits <em>one</em> custom-made fast kernel for it, <span class="key">fusing</span> the steps (multiply-subtract-square in a single pass, no temporaries). <span class="inline">jax.jit</span> = "just-in-time" = do this compilation on the first call, then reuse the compiled kernel on every later call. Measured on this laptop, CPU only:</p>
+<div class="math">
+<span class="line"><span class="kw">def</span> <span class="fn">chain</span>(x):</span>
+<span class="line">    y = x * <span class="val">2.0</span>;  y = y + <span class="val">1.0</span>;  y = jnp.<span class="fn">tanh</span>(y);  y = y * x;  y = y - <span class="val">0.5</span></span>
+<span class="line">    <span class="kw">return</span> y.<span class="fn">sum</span>()</span>
+<span class="line">x_big = jnp.<span class="fn">linspace</span>(<span class="val">0</span>, <span class="val">1</span>, <span class="val">1_000_000</span>)</span>
+<span class="line">jchain = jax.<span class="fn">jit</span>(chain)</span>
+<span class="line"><span class="cmt"># timed with time.perf_counter: 20 plain calls / the 1st jit call / 20 jitted calls</span></span>
+</div>
 <div class="math out"><span class="outlabel">output — real run: a 5-step chain on 1M floats</span>
 <span class="line">op-by-op   :    1.97 ms/call      (numpy-style: 5 passes, 4 temporaries)</span>
 <span class="line">first jit  :   14.41 ms           (paid once: tracing + compiling)</span>
@@ -216,7 +235,14 @@ details .card{margin-top:10px}
 <div class="card orange">
 <h3>Rule 2: a new shape means a new recording</h3>
 <p>The tracer said <span class="inline">float32[]</span> — shape is part of the recipe. Feed a different shape and the old recipe doesn't fit, so JAX must trace and compile again:</p>
-<div class="math out"><span class="outlabel">output — real run: g(ones(3)), g(ones(3)*5), then g(ones(4))</span>
+<div class="math">
+<span class="line"><span class="kw">@jax.jit</span></span>
+<span class="line"><span class="kw">def</span> <span class="fn">g</span>(x):</span>
+<span class="line">    <span class="fn">print</span>(<span class="val">"  [tracing] for shape"</span>, x.shape)</span>
+<span class="line">    <span class="kw">return</span> (x ** <span class="val">2</span>).<span class="fn">sum</span>()</span>
+<span class="line">g(jnp.<span class="fn">ones</span>(<span class="val">3</span>));  g(jnp.<span class="fn">ones</span>(<span class="val">3</span>) * <span class="val">5</span>);  g(jnp.<span class="fn">ones</span>(<span class="val">4</span>))</span>
+</div>
+<div class="math out"><span class="outlabel">output — real run</span>
 <span class="line">  [tracing] for shape (3,)</span>
 <span class="line">  [tracing] for shape (4,)</span>
 </div>
@@ -234,7 +260,7 @@ details .card{margin-top:10px}
 <span class="line">        <span class="kw">return</span> x * <span class="val">2.0</span></span>
 <span class="line">    <span class="kw">return</span> -x</span>
 </div>
-<div class="math out"><span class="outlabel">output — real run</span>
+<div class="math out"><span class="outlabel">output — real run: h(jnp.float32(2.0))  (traceback trimmed to the error itself)</span>
 <span class="line">TracerBoolConversionError: Attempted boolean conversion of traced array with shape bool[].</span>
 <span class="line">    This concrete value was not available in Python because it depends on the value</span>
 <span class="line">    of the argument x.</span>
@@ -249,7 +275,15 @@ details .card{margin-top:10px}
 
 <div class="card red">
 <h3>Rule 4: no editing arrays in place</h3>
-<div class="math out"><span class="outlabel">output — real run</span>
+<div class="math">
+<span class="line">arr = jnp.<span class="fn">arange</span>(<span class="val">4.0</span>)</span>
+<span class="line"><span class="kw">try</span>:</span>
+<span class="line">    arr[<span class="val">0</span>] = <span class="val">99.0</span></span>
+<span class="line"><span class="kw">except</span> TypeError <span class="kw">as</span> e:</span>
+<span class="line">    <span class="fn">print</span>(<span class="val">"arr[0]=99 -&gt;"</span>, e)</span>
+<span class="line"><span class="fn">print</span>(<span class="val">"arr.at[0].set(99) -&gt;"</span>, arr.at[<span class="val">0</span>].<span class="fn">set</span>(<span class="val">99.0</span>), <span class="val">"  original untouched:"</span>, arr)</span>
+</div>
+<div class="math out"><span class="outlabel">output — real run (error message trimmed)</span>
 <span class="line">arr[0]=99 -> TypeError: JAX arrays are immutable and do not support in-place item assignment.</span>
 <span class="line">arr.at[0].set(99) -> [99.  1.  2.  3.]   original untouched: [0. 1. 2. 3.]</span>
 </div>
@@ -278,6 +312,13 @@ details .card{margin-top:10px}
 <div class="card purple">
 <h3><span class="inline">grad</span>: differentiation as recipe-rewriting</h3>
 <p>How do you differentiate a recipe? Line by line — each step (<span class="inline">mul</span>, <span class="inline">sub</span>, <span class="inline">integer_pow</span>) has a known derivative rule, and the chain rule stitches them together. (You'll <em>build</em> exactly this in Chapter 8.) The point here: the derivative of a recipe is <span class="key">just another recipe</span>. Which explains something PyTorch makes hard:</p>
+<div class="math">
+<span class="line">f = <span class="kw">lambda</span> w: (w * <span class="val">3.0</span> - <span class="val">10.0</span>) ** <span class="val">2</span></span>
+<span class="line"><span class="fn">print</span>(<span class="val">"f(2)              :"</span>, f(<span class="val">2.0</span>))</span>
+<span class="line"><span class="fn">print</span>(<span class="val">"grad(f)(2)        :"</span>, jax.<span class="fn">grad</span>(f)(<span class="val">2.0</span>))</span>
+<span class="line"><span class="fn">print</span>(<span class="val">"grad(grad(f))(2)  :"</span>, jax.<span class="fn">grad</span>(jax.<span class="fn">grad</span>(f))(<span class="val">2.0</span>))</span>
+<span class="line">v, g_ = jax.<span class="fn">value_and_grad</span>(f)(<span class="val">2.0</span>);  <span class="fn">print</span>(<span class="val">"value_and_grad    :"</span>, v, g_)</span>
+</div>
 <div class="math out"><span class="outlabel">output — real run</span>
 <span class="line">f(2)              : 16.0</span>
 <span class="line">grad(f)(2)        : -24.0</span>
@@ -301,7 +342,8 @@ details .card{margin-top:10px}
 <p>Everyone's real code wants per-example gradients sometimes (one gradient for each sample, not their average). With a tape you'd loop: one backward per sample, slow. <span class="inline">vmap</span> ("vectorized map") rewrites the recipe so every step handles a whole batch at once:</p>
 <div class="math">
 <span class="line">xs = [<span class="val">1.0</span>, <span class="val">2.0</span>, <span class="val">3.0</span>, <span class="val">4.0</span>];  ts = [<span class="val">2.0</span>, <span class="val">5.0</span>, <span class="val">10.0</span>, <span class="val">9.0</span>]</span>
-<span class="line">jax.<span class="fn">vmap</span>(jax.<span class="fn">grad</span>(loss_fn), in_axes=(<span class="kw">None</span>, <span class="val">0</span>, <span class="val">0</span>))(<span class="val">2.0</span>, xs, ts)</span>
+<span class="line">per_ex = jax.<span class="fn">vmap</span>(jax.<span class="fn">grad</span>(loss_fn), in_axes=(<span class="kw">None</span>, <span class="val">0</span>, <span class="val">0</span>))(<span class="val">2.0</span>, xs, ts)</span>
+<span class="line"><span class="fn">print</span>(<span class="val">"grads for w=2 on 4 examples:"</span>, per_ex)</span>
 </div>
 <div class="math out"><span class="outlabel">output — real run</span>
 <span class="line">grads for w=2 on 4 examples: [  0.  -4. -24.  -8.]</span>
@@ -326,7 +368,7 @@ details .card{margin-top:10px}
 <h3>So parameters are… just a dict</h3>
 <div class="math">
 <span class="line">params = {<span class="val">"layer1"</span>: {<span class="val">"w"</span>: …, <span class="val">"b"</span>: …}, <span class="val">"layer2"</span>: {<span class="val">"w"</span>: …}}</span>
-<span class="line">jax.tree.<span class="fn">map</span>(<span class="kw">lambda</span> p: p.shape, params)   <span class="cmt"># apply a function to every array inside</span></span>
+<span class="line"><span class="fn">print</span>(jax.tree.<span class="fn">map</span>(<span class="kw">lambda</span> p: p.shape, params))   <span class="cmt"># apply a function to every array inside</span></span>
 </div>
 <div class="math out"><span class="outlabel">output — real run</span>
 <span class="line">{'layer1': {'b': (2,), 'w': (2, 2)}, 'layer2': {'w': (2, 1)}}</span>
@@ -336,7 +378,7 @@ details .card{margin-top:10px}
 
 <div class="card orange">
 <h3>The optimizer follows: no <span class="inline">step()</span> that edits — a function that returns new params</h3>
-<div class="math out"><span class="outlabel">output — real run (optax, JAX's standard optimizer library)</span>
+<div class="math out"><span class="outlabel">output — real run (optax, JAX's standard optimizer library; the code that printed both lines is in Chapter 6, page 2)</span>
 <span class="line">torch: step() mutated weight in place: 0.00654  ->  -0.09346</span>
 <span class="line">jax  : update() returned NEW params: 0.0 -> -0.1 | old object untouched: 0.0</span>
 </div>
@@ -347,9 +389,12 @@ details .card{margin-top:10px}
 <h3>Randomness gets the same treatment: no hidden seed, keys you pass around</h3>
 <p><span class="inline">torch.manual_seed(0)</span> sets a hidden global counter that silently advances on every random call — hidden mutating state, the exact thing recording can't see. So JAX makes randomness explicit:</p>
 <div class="math">
-<span class="line">key = jax.random.<span class="fn">key</span>(<span class="val">0</span>)          <span class="cmt"># randomness as a VALUE you hold</span></span>
-<span class="line">jax.random.<span class="fn">normal</span>(key, (<span class="val">3</span>,))     <span class="cmt"># same key in → same numbers out, always</span></span>
-<span class="line">k1, k2 = jax.random.<span class="fn">split</span>(key)   <span class="cmt"># want different numbers? split the key</span></span>
+<span class="line">key = jax.random.<span class="fn">key</span>(<span class="val">0</span>)                                  <span class="cmt"># randomness as a VALUE you hold</span></span>
+<span class="line"><span class="fn">print</span>(<span class="val">"normal(key)  :"</span>, jax.random.<span class="fn">normal</span>(key, (<span class="val">3</span>,)))</span>
+<span class="line"><span class="fn">print</span>(<span class="val">"normal(key)  :"</span>, jax.random.<span class="fn">normal</span>(key, (<span class="val">3</span>,)))    <span class="cmt"># same key in → same numbers out</span></span>
+<span class="line">k1, k2 = jax.random.<span class="fn">split</span>(key)                           <span class="cmt"># want different numbers? split the key</span></span>
+<span class="line"><span class="fn">print</span>(<span class="val">"normal(k1)   :"</span>, jax.random.<span class="fn">normal</span>(k1, (<span class="val">3</span>,)))</span>
+<span class="line"><span class="fn">print</span>(<span class="val">"normal(k2)   :"</span>, jax.random.<span class="fn">normal</span>(k2, (<span class="val">3</span>,)))</span>
 </div>
 <div class="math out"><span class="outlabel">output — real run</span>
 <span class="line">normal(key)  : [ 1.6226422   2.0252647  -0.43359444]</span>
@@ -369,14 +414,30 @@ details .card{margin-top:10px}
 <div class="card green">
 <h3>The scale payoff — a taste, on this very laptop</h3>
 <p>Here's the endgame of "everything is a recipe." Tell JAX to pretend this Mac has 8 separate devices (one environment flag), split one array across them, and run ordinary code:</p>
-<div class="math out"><span class="outlabel">output — real run (8 fake CPU devices; visualize_array_sharding)</span>
+<div class="math">
+<span class="line"><span class="cmt"># run with: XLA_FLAGS=--xla_force_host_platform_device_count=8  (pretend 8 devices)</span></span>
+<span class="line">mesh = jax.<span class="fn">make_mesh</span>((<span class="val">8</span>,), (<span class="val">"rows"</span>,))</span>
+<span class="line">x = jnp.<span class="fn">arange</span>(<span class="val">32.0</span>).<span class="fn">reshape</span>(<span class="val">8</span>, <span class="val">4</span>)</span>
+<span class="line">xs = jax.<span class="fn">device_put</span>(x, NamedSharding(mesh, P(<span class="val">"rows"</span>, <span class="kw">None</span>)))</span>
+<span class="line">jax.debug.<span class="fn">visualize_array_sharding</span>(xs)</span>
+</div>
+<div class="math out"><span class="outlabel">output — real run (rows 2–6 trimmed)</span>
 <span class="line">┌──────────┐</span>
-<span class="line">│  CPU 0   │   one logical (8,4) array —</span>
-<span class="line">├──────────┤   each device holds one row</span>
+<span class="line">│  CPU 0   │</span>
+<span class="line">├──────────┤</span>
 <span class="line">│  CPU 1   │</span>
-<span class="line">│   ...    │   normalize(xs)  ← plain single-array code,</span>
-<span class="line">│  CPU 7   │   ran across all 8 devices, result stays split</span>
+<span class="line">├──────────┤</span>
+<span class="line">│   ...    │</span>
+<span class="line">├──────────┤</span>
+<span class="line">│  CPU 7   │</span>
 <span class="line">└──────────┘</span>
+</div>
+<p class="faded">One logical (8,4) array; each fake device holds one row. Now run ordinary single-array code on it:</p>
+<div class="math">
+<span class="line"><span class="kw">@jax.jit</span></span>
+<span class="line"><span class="kw">def</span> <span class="fn">normalize</span>(m):</span>
+<span class="line">    <span class="kw">return</span> (m - m.<span class="fn">mean</span>()) / (m.<span class="fn">std</span>() + <span class="val">1e-8</span>)   <span class="cmt"># mean over ALL devices' data</span></span>
+<span class="line">out = <span class="fn">normalize</span>(xs)     <span class="cmt"># just works — result comes back still sharded</span></span>
 </div>
 <p>The <span class="inline">normalize</span> function computed a mean over <em>all</em> the data — which requires the devices to talk to each other — and <span class="key">the compiler inserted that communication for you</span>. It could, because it had the whole recipe and knew where every piece of data lived. Replace "8 fake CPUs" with "8,192 TPUs" and the code barely changes: that's how Gemini-scale training works, and it's the reason JAX exists. PyTorch reaches the same scale with explicit libraries (FSDP — Chapter 7 compares the two philosophies).</p>
 </div>
