@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AdamW & choosing in practice</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0a0a1a;color:#e0e0e0;padding:20px 20px 80px;line-height:1.7}
+h1{text-align:center;color:#fff;margin-bottom:4px;font-size:1.5em}
+.sub{text-align:center;color:#888;margin-bottom:24px;font-size:.88em}
+.nav{display:flex;justify-content:center;gap:6px;margin-bottom:20px;flex-wrap:wrap}
+.nav button{padding:7px 13px;border:2px solid #333;background:#111;color:#888;border-radius:8px;cursor:pointer;font-size:.78em;transition:.2s}
+.nav button:hover{border-color:#555;color:#ccc}
+.nav button.on{border-color:#4fc3f7;color:#4fc3f7;background:#0d2137}
+.nav button.done{border-color:#4caf50;color:#4caf50}
+.page{display:none;max-width:880px;margin:0 auto}
+.page.on{display:block}
+.page h2{color:#4fc3f7;margin-bottom:12px;font-size:1.2em}
+.card{background:#12122a;border:1px solid #2a2a4a;border-radius:12px;padding:18px;margin-bottom:14px}
+.card.blue{border-color:#4fc3f7;background:#0d1b2a}
+.card.green{border-color:#4caf50;background:#0a1a0a}
+.card.orange{border-color:#ff9800;background:#1a1400}
+.card.red{border-color:#ef5350;background:#1a0a0a}
+.card.purple{border-color:#ce93d8;background:#1a0a2a}
+.card h3{color:#ffb74d;margin-bottom:8px;font-size:1em}
+button.nx{padding:10px 24px;background:#4caf50;color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:.9em;margin-top:14px}
+button.nx:hover{background:#66bb6a}
+a.nx{display:inline-block;padding:10px 24px;background:#4caf50;color:#000;border-radius:8px;font-weight:700;font-size:.9em;margin-top:14px;text-decoration:none}
+table{width:100%;border-collapse:collapse;margin:10px 0}
+th,td{padding:8px 10px;border:1px solid #333;text-align:left;font-size:.84em}
+th{background:#1a1a3a;color:#4fc3f7}
+td.num{font-family:'Fira Code',Consolas,monospace;text-align:right}
+.math{background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:14px;margin:10px 0;font-family:'Fira Code',Consolas,monospace;font-size:.84em;line-height:1.8;overflow-x:auto}
+.math .line{margin:2px 0;display:block;white-space:pre}
+.math .cmt{color:#6a9955}
+.math .val{color:#b5cea8}
+.math .lbl{color:#9cdcfe}
+.math .kw{color:#c586c0}
+.math .fn{color:#dcdcaa}
+.math .hl{background:#264f78;padding:2px 6px;border-radius:4px;display:inline-block}
+.math.out{border-left:3px solid #4caf50;background:#0d1a12}
+.outlabel{display:block;font-size:.72em;color:#4caf50;letter-spacing:.08em;text-transform:uppercase;margin-bottom:6px}
+.key{color:#ffb74d;font-weight:600}
+.inline{font-family:'Fira Code',Consolas,monospace;background:#1a1a2e;border:1px solid #333;border-radius:4px;padding:1px 6px;font-size:.86em;color:#9cdcfe}
+.faded{color:#888;font-size:.86em}
+ul{margin-left:20px;margin-top:6px}
+li{margin:4px 0}
+details{margin-top:12px}
+details summary{cursor:pointer;color:#888;font-size:.85em;padding:8px 12px;background:#12122a;border:1px solid #333;border-radius:8px}
+details summary:hover{color:#ccc;border-color:#555}
+details[open] summary{color:#4fc3f7;border-color:#4fc3f7}
+</style>
+</head>
+<body>
+<a href="../index.html" style="position:fixed;top:10px;left:14px;font-size:.75em;color:#555;text-decoration:none;z-index:999;padding:4px 8px;background:#0a0a1a;border:1px solid #333;border-radius:6px;">&larr; index</a>
+
+<h1>AdamW &amp; choosing in practice</h1>
+<p class="sub">Chapter 5. One subtle bug in how Adam regularizes, one clean fix, and then the map: what to actually reach for in 2026, with the receipts from this course.</p>
+
+<div class="nav" id="nav"></div>
+
+<!-- PAGE 0 -->
+<div class="page on" data-t="0. The decay bug">
+<h2>Adam quietly breaks weight decay — with numbers</h2>
+
+<div class="card">
+<h3>Weight decay, then the traditional way to implement it</h3>
+<p><span class="key">Weight decay</span>: every step, pull each weight slightly toward zero — <span class="inline">w ← w − lr·λ·w</span> (λ ≈ 0.01–0.1). Big weights make sharp, brittle functions; a steady gentle shrink keeps only the weights the data actually keeps re-justifying. The traditional implementation adds the pull into the gradient (this is "L2 regularization" — same thing, in SGD):</p>
+<div class="math">
+<span class="line">grad ← grad + λ·w        <span class="cmt"># smuggle the decay in as extra gradient…</span></span>
+<span class="line"><span class="cmt"># …and then Adam does its thing:  step = lr · m̂ / (√v̂ + ε)</span></span>
+</div>
+<p>See the trap? The smuggled decay is now <em>inside</em> m̂ — so it gets <span class="key">divided by √v̂ like everything else</span>. The decay you asked for gets rescaled, per parameter, by each parameter's gradient history.</p>
+<details><summary>Refresher: weight decay / L2 regularization, from zero</summary>
+<p style="padding:8px 4px">A network can fit its training data with small smooth weights or with huge weights that exploit razor-thin cancellations — the second kind memorizes noise and falls apart on new data (overfitting). Adding a penalty <span class="inline">λ/2·Σw²</span> to the loss makes big weights "cost" something; its gradient is exactly the <span class="inline">λ·w</span> term above, and its effect per step is a proportional shrink, <span class="inline">w ← (1−lr·λ)·w</span> — hence "decay." In SGD, penalty-in-the-loss (L2) and shrink-the-weights (decay) are literally the same update. The whole point of this page: <span class="key">in Adam, they stop being the same</span> — the division by √v̂ wedges them apart.</p></details>
+</div>
+
+<div class="card red">
+<h3>How wrong does it get? Two parameters, same λ — real run</h3>
+<p>Same two parameters as chapters 3–4 (gradients −24 and −0.024), both at w = 2, both with the same intended decay λ = 0.1, lr = 0.1. What decay does each one actually receive?</p>
+<div class="math out"><span class="outlabel">output — real run: the decay portion of the first step</span>
+<span class="line">  g= -24.000:  L2-inside-Adam decay = 0.00084   |  intended (lr·λ·w) = 0.02000</span>
+<span class="line">  g=  -0.024:  L2-inside-Adam decay = 0.11364   |  intended (lr·λ·w) = 0.02000</span>
+</div>
+<p>Read it twice, because it's absurd in both directions at once. You asked for a 0.02 shrink on both. The hot parameter (big √v̂ ≈ 24) got <span class="key">0.00084 — 24× too little</span>; its decay drowned in the denominator. The cold parameter (tiny √v̂) got <span class="key">0.11364 — 5.7× too much</span>, more than five percent of its whole value in one step. Between these two parameters, the <em>same λ</em> differs by a factor of <span class="key">135</span>. And the direction of the injustice is exactly backwards: busy, frequently-updated weights escape regularization; rare, barely-trained weights get hammered toward zero.</p>
+</div>
+<button class="nx" onclick="go(1)">Next: the fix — one word, "decoupled"</button>
+</div>
+
+<!-- PAGE 1 -->
+<div class="page" data-t="1. AdamW">
+<h2>AdamW: take the decay out of the gradient's pipeline</h2>
+
+<div class="card green">
+<h3>The whole fix</h3>
+<div class="math">
+<span class="line"><span class="cmt"># Adam + L2 (broken):                    # AdamW (decoupled):</span></span>
+<span class="line">grad ← grad + λ·w                        w ← w · (1 − lr·λ)     <span class="cmt"># decay FIRST, undiluted</span></span>
+<span class="line">…m, v, m̂, v̂ from that grad…              …m, v, m̂, v̂ from the PURE grad…</span>
+<span class="line">w ← w − lr·m̂/(√v̂+ε)                      w ← w − lr·m̂/(√v̂+ε)</span>
+</div>
+<p><span class="key">"Decoupled"</span> means exactly this: the decay is applied directly to the weight, outside the adaptive machinery, so √v̂ never touches it. The gradient pipeline optimizes the loss; the decay shrinks the weights; they no longer interfere. Every parameter now receives precisely <span class="inline">lr·λ·w</span> of decay — 0.02000 for both of our parameters, hot or cold.</p>
+<div class="math out"><span class="outlabel">output — real run</span>
+<span class="line">torch.optim.AdamW 1-step matches hand trace ✓  (2.0800)</span>
+</div>
+<p>Hand-check that verification number: decay first, w = 2·(1 − 0.1·0.1) = 1.98; then chapter 4's first-step rule — a fresh Adam moves exactly lr in the gradient's direction — +0.1 uphill against the −24 gradient: <span class="key">1.98 + 0.1 = 2.08</span> ✓. You can now compute AdamW, the optimizer behind essentially every modern LLM, in your head.</p>
+</div>
+
+<div class="card blue">
+<h3>Why this one-line change earned its own name</h3>
+<p>Loshchilov &amp; Hutter (2017–19) showed the coupling wasn't a cosmetic bug: with L2-inside-Adam, the <em>effective</em> regularization strength depends on gradient scales, so λ and lr can't be tuned independently, and the best λ found on one architecture silently means something different on another. Decoupling restored a clean contract — <span class="key">λ means the same shrink for every parameter, every model</span> — and the empirical gap on transformers was large enough that "AdamW, λ≈0.1" became the default line in pretraining recipes (GPT-family, Llama-family, and their descendants all train on AdamW variants). When someone writes "Adam" in a 2026 paper, they almost always ran AdamW.</p>
+</div>
+<button class="nx" onclick="go(2)">Next: so what do I actually use?</button>
+</div>
+
+<!-- PAGE 2 -->
+<div class="page" data-t="2. Choosing">
+<h2>The 2026 decision table — with this course's receipts</h2>
+
+<div class="card">
+<h3>Start here</h3>
+<table>
+<tr><th>Situation</th><th>Reach for</th><th>Receipt from this course</th></tr>
+<tr><td>almost anything, by default</td><td><span class="key">AdamW</span>, β=(0.9, 0.999), λ=0.01–0.1</td><td>ch.4: forgiving lr (49–213 steps across 10× lr), scale-proof (0.1 = 0.1 for hot &amp; cold); ch.5: honest decay</td></tr>
+<tr><td>transformers / LLM work</td><td>AdamW; pretraining recipes often β₂=0.95</td><td>ch.4 β-horizons foldable: shorter scale-memory reacts to mid-training shifts</td></tr>
+<tr><td>convnets, or any time you can afford tuning</td><td><span class="key">SGD + momentum</span> (μ≈0.9, or Nesterov)</td><td>ch.2/4: best-tuned SGD+momentum beat Adam on clean terrain (11 vs 49 steps) at half-to-zero state cost</td></tr>
+<tr><td>memory-starved at scale</td><td>8-bit Adam states, or ZeRO/FSDP sharding</td><td>ch.4's bill: m+v = 56 GB fp32 on a 7B model — the thing being quantized/sharded</td></tr>
+<tr><td>a weird small problem (this course's bowl!)</td><td>try SGD first — read the loss curve</td><td>ch.1's three fates: crawl / converge / explode tell you which way to turn lr</td></tr>
+</table>
+<details><summary>Refresher: the "3e-4" lore — is there anything behind the magic number?</summary>
+<p style="padding:8px 4px">Less than the memes suggest. Because Adam steps ≈ lr per parameter (ch.4), lr directly sets the <em>relative</em> weight change per step: weights of typical size ~0.1 moving 3e-4 per step change ~0.3% per step — a historically comfortable pace for mid-sized nets, hence Karpathy's half-joking "3e-4 is the best learning rate for Adam." Modern practice: small nets/fine-tuning 1e-5…1e-4; classic mid-size training 1e-4…1e-3 (3e-4 sits mid-range); large-LLM pretraining lower still, with warmup and decay schedules doing much of the work. The lore is a starting point precisely because Adam is lr-forgiving — sweep a factor of 3 up and down and read the curves; that's the whole professional secret.</p></details>
+</div>
+
+<div class="card orange">
+<h3>The frontier, honestly labeled (2026)</h3>
+<p>AdamW's decade-long reign is being seriously probed. Two research families you'll meet in the wild: <span class="key">second-order-flavored</span> methods (Shampoo, SOAP — precondition using matrix structure of each layer, not just per-scalar scales) and <span class="key">orthogonalized-momentum</span> methods (<span class="key">Muon</span> — post-process the momentum buffer of each weight <em>matrix</em> so all its directions step evenly), with public LLM-scale trainings reporting real speedups over AdamW. None has displaced AdamW as the community default yet, and per-scalar intuition from this course is exactly the right base for reading those papers — they change <em>what plays the role of √v̂</em>, not the plot. Treat this card as a pointer, not a tutorial.</p>
+</div>
+<button class="nx" onclick="go(3)">Next: the whole course on one page</button>
+</div>
+
+<!-- PAGE 3 -->
+<div class="page" data-t="3. One page">
+<h2>Five chapters, four lines of algebra</h2>
+
+<div class="card purple">
+<h3>The evolution, compressed</h3>
+<div class="math">
+<span class="line"><span class="cmt"># ch.1  SGD        — react to the gradient</span></span>
+<span class="line">w ← w − lr·g</span>
+<span class="line"><span class="cmt"># ch.2  +momentum  — react to the TREND (memory in the numerator)</span></span>
+<span class="line">buf ← μ·buf + g;            w ← w − lr·buf</span>
+<span class="line"><span class="cmt"># ch.3  RMSProp    — measure steps in each param's own units (memory in the denominator)</span></span>
+<span class="line">v ← β·v + (1−β)g²;          w ← w − lr·g/(√v+ε)</span>
+<span class="line"><span class="cmt"># ch.4  Adam       — both memories, told the truth when young</span></span>
+<span class="line">m̂, v̂ = corrected EMAs;      w ← w − lr·m̂/(√v̂+ε)</span>
+<span class="line"><span class="cmt"># ch.5  AdamW      — and keep regularization out of the machinery</span></span>
+<span class="line">w ← w·(1−lr·λ);             then the Adam step</span>
+</div>
+</div>
+
+<div class="card">
+<h3>Three optimizers, one bowl — every path a real run</h3>
+<svg viewBox="0 0 760 340" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto">
+  <ellipse cx="327" cy="170" rx="241" ry="209" fill="none" stroke="#2a2a4a" stroke-width="1"/>
+  <ellipse cx="327" cy="170" rx="108" ry="93" fill="none" stroke="#2a2a4a" stroke-width="1"/>
+  <ellipse cx="327" cy="170" rx="38" ry="33" fill="none" stroke="#2a2a4a" stroke-width="1"/>
+  <polyline points="707,66 639,253 583,103 536,223 499,127 468,204 442,143 422,192 405,152 391,184 379,159" fill="none" stroke="#ef5350" stroke-width="2" opacity="0.75"/>
+  <polyline points="707,66 639,253 521,272 380,105 244,71 136,219 73,264 62,136 100,82 175,192 270,251 365,158 444,96 494,173 509,237" fill="none" stroke="#ff9800" stroke-width="2" opacity="0.6"/>
+  <polyline points="707,66 688,118 669,166 650,205 631,227 613,231 594,223 576,208 557,189 539,169 522,151 504,138 487,132 471,132 454,137" fill="none" stroke="#ce93d8" stroke-width="2.5"/>
+  <circle cx="707" cy="66" r="5" fill="#fff"/>
+  <circle cx="327" cy="170" r="5" fill="#4caf50"/>
+  <text x="707" y="50" font-size="12" fill="#ccc" text-anchor="middle">start</text>
+  <text x="327" y="196" font-size="12" fill="#4caf50" text-anchor="middle">minimum</text>
+</svg>
+<table>
+<tr><th>Path</th><th>Optimizer</th><th>Character on display</th></tr>
+<tr><td style="color:#ef5350">red</td><td>SGD (lr .09)</td><td>the zigzag: bold across the valley, timid along it</td></tr>
+<tr><td style="color:#ff9800">orange</td><td>+momentum (μ .9)</td><td>the pendulum: sails past, swings back</td></tr>
+<tr><td style="color:#ce93d8">purple</td><td>Adam (lr .5)</td><td>the cruise: smooth, even-paced, no drama at 5× the lr</td></tr>
+</table>
+<p class="faded">Every coordinate above comes from the runs on the previous pages — nothing is a sketch.</p>
+</div>
+
+<div class="card green">
+<h3>Where to go from here</h3>
+<ul>
+<li>The gradients these optimizers consume: <a href="../pytorch_autograd/autograd.html" style="color:#4fc3f7">PyTorch Mechanics</a> (the mailbox) and <a href="../frameworks_course/8_autodiff_from_scratch.html" style="color:#4fc3f7">Frameworks ch. 8</a> (build autograd yourself).</li>
+<li>The same update in a functional dialect: optax in <a href="../frameworks_course/9_one_model_four_ways.html" style="color:#4fc3f7">Frameworks ch. 9</a> — now you know exactly what its <span class="inline">update()</span> is computing.</li>
+<li>Learning-rate <em>schedules</em> (warmup, cosine decay) — the time-varying lr this course held fixed — live in the Training Dynamics course.</li>
+</ul>
+</div>
+<a class="nx" href="../index.html">Back to the course index →</a>
+</div>
+
+<script>
+const pages=document.querySelectorAll('.page'),nav=document.getElementById('nav');
+pages.forEach((p,i)=>{
+  const b=document.createElement('button');
+  b.textContent=p.dataset.t;
+  b.onclick=()=>go(i);
+  if(i===0)b.classList.add('on');
+  nav.appendChild(b);
+});
+function go(n){
+  pages.forEach((p,i)=>p.classList.toggle('on',i===n));
+  nav.querySelectorAll('button').forEach((b,i)=>{
+    b.classList.remove('on');
+    if(i<n)b.classList.add('done');
+    else b.classList.remove('done');
+    if(i===n)b.classList.add('on');
+  });
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+</script>
+</body>
+</html>

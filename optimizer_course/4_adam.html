@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Adam — assembled, traced, verified</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0a0a1a;color:#e0e0e0;padding:20px 20px 80px;line-height:1.7}
+h1{text-align:center;color:#fff;margin-bottom:4px;font-size:1.5em}
+.sub{text-align:center;color:#888;margin-bottom:24px;font-size:.88em}
+.nav{display:flex;justify-content:center;gap:6px;margin-bottom:20px;flex-wrap:wrap}
+.nav button{padding:7px 13px;border:2px solid #333;background:#111;color:#888;border-radius:8px;cursor:pointer;font-size:.78em;transition:.2s}
+.nav button:hover{border-color:#555;color:#ccc}
+.nav button.on{border-color:#4fc3f7;color:#4fc3f7;background:#0d2137}
+.nav button.done{border-color:#4caf50;color:#4caf50}
+.page{display:none;max-width:880px;margin:0 auto}
+.page.on{display:block}
+.page h2{color:#4fc3f7;margin-bottom:12px;font-size:1.2em}
+.card{background:#12122a;border:1px solid #2a2a4a;border-radius:12px;padding:18px;margin-bottom:14px}
+.card.blue{border-color:#4fc3f7;background:#0d1b2a}
+.card.green{border-color:#4caf50;background:#0a1a0a}
+.card.orange{border-color:#ff9800;background:#1a1400}
+.card.red{border-color:#ef5350;background:#1a0a0a}
+.card.purple{border-color:#ce93d8;background:#1a0a2a}
+.card h3{color:#ffb74d;margin-bottom:8px;font-size:1em}
+button.nx{padding:10px 24px;background:#4caf50;color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:.9em;margin-top:14px}
+button.nx:hover{background:#66bb6a}
+a.nx{display:inline-block;padding:10px 24px;background:#4caf50;color:#000;border-radius:8px;font-weight:700;font-size:.9em;margin-top:14px;text-decoration:none}
+table{width:100%;border-collapse:collapse;margin:10px 0}
+th,td{padding:8px 10px;border:1px solid #333;text-align:left;font-size:.84em}
+th{background:#1a1a3a;color:#4fc3f7}
+td.num{font-family:'Fira Code',Consolas,monospace;text-align:right}
+.math{background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:14px;margin:10px 0;font-family:'Fira Code',Consolas,monospace;font-size:.84em;line-height:1.8;overflow-x:auto}
+.math .line{margin:2px 0;display:block;white-space:pre}
+.math .cmt{color:#6a9955}
+.math .val{color:#b5cea8}
+.math .lbl{color:#9cdcfe}
+.math .kw{color:#c586c0}
+.math .fn{color:#dcdcaa}
+.math .hl{background:#264f78;padding:2px 6px;border-radius:4px;display:inline-block}
+.math.out{border-left:3px solid #4caf50;background:#0d1a12}
+.outlabel{display:block;font-size:.72em;color:#4caf50;letter-spacing:.08em;text-transform:uppercase;margin-bottom:6px}
+.key{color:#ffb74d;font-weight:600}
+.inline{font-family:'Fira Code',Consolas,monospace;background:#1a1a2e;border:1px solid #333;border-radius:4px;padding:1px 6px;font-size:.86em;color:#9cdcfe}
+.faded{color:#888;font-size:.86em}
+ul{margin-left:20px;margin-top:6px}
+li{margin:4px 0}
+details{margin-top:12px}
+details summary{cursor:pointer;color:#888;font-size:.85em;padding:8px 12px;background:#12122a;border:1px solid #333;border-radius:8px}
+details summary:hover{color:#ccc;border-color:#555}
+details[open] summary{color:#4fc3f7;border-color:#4fc3f7}
+.pipeline{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:center;margin:14px 0}
+.pipe-box{border-radius:8px;padding:8px 12px;font-size:.8em;text-align:center;border:2px solid;min-width:80px}
+.pipe-box small{display:block;font-size:.78em;color:#999;font-weight:400}
+.pipe-box.g{border-color:#4fc3f7;color:#4fc3f7;background:#0d2137}
+.pipe-box.m{border-color:#ef5350;color:#ef9a9a;background:#1a0a0a}
+.pipe-box.v{border-color:#ff9800;color:#ffcc80;background:#1a1400}
+.pipe-box.o{border-color:#4caf50;color:#4caf50;background:#0a2a0a}
+.pipe-arr{color:#666;font-size:1.2em}
+</style>
+</head>
+<body>
+<a href="../index.html" style="position:fixed;top:10px;left:14px;font-size:.75em;color:#555;text-decoration:none;z-index:999;padding:4px 8px;background:#0a0a1a;border:1px solid #333;border-radius:6px;">&larr; index</a>
+
+<h1>Adam — assembled, traced, verified</h1>
+<p class="sub">Chapter 4. Nothing new is invented on this page — Adam is chapter 2's numerator, chapter 3's denominator, and one honesty patch. Then we trace all of it by hand and check torch to the digit.</p>
+
+<div class="nav" id="nav"></div>
+
+<!-- PAGE 0 -->
+<div class="page on" data-t="0. Assembly">
+<h2>Adam = momentum ÷ RMSProp, with corrected memories</h2>
+
+<div class="card blue">
+<h3>The full update — you already know every line</h3>
+<div class="math">
+<span class="line">m  ←  β₁·m + (1−β₁)·grad          <span class="cmt"># ch.2's memory, EMA form — the TREND     (β₁ = 0.9)</span></span>
+<span class="line">v  ←  β₂·v + (1−β₂)·grad²         <span class="cmt"># ch.3's memory — the SCALE              (β₂ = 0.999)</span></span>
+<span class="line">m̂  ←  m / (1 − β₁ᵗ)               <span class="cmt"># honesty patch #1: un-shrink the young EMA</span></span>
+<span class="line">v̂  ←  v / (1 − β₂ᵗ)               <span class="cmt"># honesty patch #2: same, for the scale</span></span>
+<span class="line">w  ←  w − lr · m̂ / (√v̂ + ε)       <span class="cmt"># trend ÷ scale — direction from ch.2, yardstick from ch.3</span></span>
+</div>
+<div class="pipeline">
+<div class="pipe-box g">grad<small>this step's push</small></div>
+<div class="pipe-arr">→</div>
+<div class="pipe-box m">m (EMA of g)<small>last ~10 steps' trend</small></div>
+<div class="pipe-arr">→</div>
+<div class="pipe-box o">step = lr · m̂ / √v̂<small>trend, in units of scale</small></div>
+</div>
+<div class="pipeline">
+<div class="pipe-box g">grad²<small>this step's size²</small></div>
+<div class="pipe-arr">→</div>
+<div class="pipe-box v">v (EMA of g²)<small>last ~1000 steps' scale</small></div>
+<div class="pipe-arr">↗</div>
+</div>
+<p>The name is literal: <span class="key">Ada</span>ptive <span class="key">m</span>oment estimation — m and v are the first and second "moments" (statistics-speak for mean and mean-of-squares) of the gradient, estimated by EMAs.</p>
+<details><summary>Refresher: why β₁ = 0.9 but β₂ = 0.999? Why remember scale longer than trend?</summary>
+<p style="padding:8px 4px">Chapter 2's horizon rule: an EMA with decay β averages roughly the last <span class="inline">1/(1−β)</span> samples. So β₁=0.9 → the trend is "the last ~10 gradients," and β₂=0.999 → the scale is "the last ~1000." The asymmetry is deliberate: a gradient's <span class="key">direction</span> can legitimately flip within a few steps (you crossed a valley; the batch changed), so the trend must stay nimble. A parameter's <span class="key">typical gradient magnitude</span> is a slow property of where it sits in the architecture — and since we <em>divide</em> by it, jitter there would inject noise into every step. Fast numerator, slow denominator. These defaults are so serviceable that most practitioners never touch them (LLM pretraining sometimes drops β₂ to 0.95 — a shorter scale memory reacts faster when gradient scales shift mid-training).</p></details>
+</div>
+<button class="nx" onclick="go(1)">Next: the honesty patch — bias correction</button>
+</div>
+
+<!-- PAGE 1 -->
+<div class="page" data-t="1. Bias correction">
+<h2>Closing chapter 3's thread: why 0.3162, and how Adam fixes it</h2>
+
+<div class="card orange">
+<h3>A fresh EMA lies small — watch it</h3>
+<p>Feed an EMA (β=0.9) a constant stream of 1.0's. It should report "the average is 1.0." It doesn't — not at first:</p>
+<div class="math out"><span class="outlabel">output — real run</span>
+<span class="line">  t=1: ema of constant 1.0 = 0.1000   corrected: 1.0000</span>
+<span class="line">  t=2: ema of constant 1.0 = 0.1900   corrected: 1.0000</span>
+<span class="line">  t=3: ema of constant 1.0 = 0.2710   corrected: 1.0000</span>
+</div>
+<p>Why it lies: the EMA started at 0, and that phantom zero still holds 90% of the weight at t=1, 81% at t=2… The fix is almost embarrassing: at step t, the real data has received exactly <span class="inline">1 − βᵗ</span> of the total weight (t=1: 0.1; t=2: 0.19; t=3: 0.271 — the very numbers in the left column!). So <span class="key">divide by (1 − βᵗ)</span> and the lie cancels — right column, exact 1.0 every time. That division is all that <span class="inline">m̂</span> and <span class="inline">v̂</span> are.</p>
+</div>
+
+<div class="card green">
+<h3>Now the canonical first step, without and with the patch</h3>
+<p>Our old friends: w=2, gradient −24, lr=0.1.</p>
+<div class="math out"><span class="outlabel">output — real run</span>
+<span class="line">  raw m=-2.400 v=0.5760   step WITHOUT correction = -0.3162</span>
+<span class="line">  corrected m^=-24.0 v^=576.0   step WITH correction   = -0.1000</span>
+</div>
+<p>Without correction: the small-lying m (−2.4) divided by the <em>root</em> of the small-lying v inflates to <span class="key">−0.3162 — chapter 3's exact overshoot</span>, inherited. With correction: m̂ = −24 (the true gradient), v̂ = 576 = (−24)², so the step is <span class="inline">0.1 · (−24)/√576 = 0.1 · (−24)/24 = <span class="key">−0.1000, exactly lr</span></span>.</p>
+<p>Pause on that last equality — it's the most quietly beautiful fact in this course: on its first step, with a fresh memory, <span class="key">Adam moves every parameter by exactly lr in its gradient's direction</span>. Not 2.4 for the hot one and 0.0024 for the cold one — lr, for everyone, from step one. The wish from chapter 3 page 0, delivered to the digit.</p>
+</div>
+<button class="nx" onclick="go(2)">Next: three full steps, by hand, vs torch</button>
+</div>
+
+<!-- PAGE 2 -->
+<div class="page" data-t="2. The trace">
+<h2>Three steps of Adam, every column by hand — then ask torch</h2>
+
+<div class="card">
+<h3>The complete trace (lr=0.1, β₁=0.9, β₂=0.999)</h3>
+<div class="math out"><span class="outlabel">output — real run: canonical example, three steps</span>
+<span class="line">t=1: g= -24.000 m= -2.400 m^=-24.0000 v=  0.576 v^= 576.000 step=-0.1000 w=2.1000</span>
+<span class="line">t=2: g= -22.200 m= -4.380 m^=-23.0526 v=  1.068 v^= 534.399 step=-0.0997 w=2.1997</span>
+<span class="line">t=3: g= -20.405 m= -5.983 m^=-22.0757 v=  1.484 v^= 495.015 step=-0.0992 w=2.2989</span>
+</div>
+<p>Check any cell you like — t=2, say: g = 2·(2.1·3−10)·3 = −22.2 ✓; m = 0.9·(−2.4) + 0.1·(−22.2) = −4.38 ✓; m̂ = −4.38/(1−0.81) = −23.05 ✓. Now read the <span class="key">step column</span>: −0.1000, −0.0997, −0.0992. The gradient fell from −24 to −20.4 and the step barely noticed — <span class="key">cruise control</span>: m̂ tracks the gradient, √v̂ tracks its size, their ratio hovers near ±1, so the step hovers near ±lr. (Compare SGD's steps on the same numbers: 2.4, then 1.97… — proportional to whatever the gradient happens to be.)</p>
+</div>
+
+<div class="card green">
+<h3>torch, to the digit — including its private notebook</h3>
+<div class="math out"><span class="outlabel">output — real run</span>
+<span class="line">torch.optim.Adam matches hand trace ✓  (torch w after 3 steps: 2.2989)</span>
+<span class="line"></span>
+<span class="line">optimizer.state for w: {'step': 1.0, 'exp_avg': -2.4000, 'exp_avg_sq': 0.5760}</span>
+</div>
+<p>The second line is torch's actual per-parameter state dict after one step: <span class="inline">exp_avg</span> is our m = −2.4, <span class="inline">exp_avg_sq</span> is our v = 0.576, <span class="inline">step</span> is t (kept so it can compute the 1−βᵗ corrections). <span class="key">The table you just hand-computed is literally the contents of Adam's memory.</span> This is also what checkpoint files store when they save "optimizer state" — and why resuming training without it causes a loss bump: fresh m, v = uncorrected first steps all over again.</p>
+</div>
+<button class="nx" onclick="go(3)">Next: what all this buys</button>
+</div>
+
+<!-- PAGE 3 -->
+<div class="page" data-t="3. The payoff">
+<h2>The payoff, measured — and the honest caveat</h2>
+
+<div class="card green">
+<h3>Payoff 1: the 1000× scale spread, dissolved</h3>
+<div class="math out"><span class="outlabel">output — real run: first-step size, lr=0.1</span>
+<span class="line">  g= -24.000:  SGD |step| =  2.4000   Adam |step| =  0.1000</span>
+<span class="line">  g=  -0.024:  SGD |step| =  0.0024   Adam |step| =  0.1000</span>
+</div>
+<p>Chapter 3's wish-table, completed: hot and cold parameters both move exactly lr. This is the property that made Adam the default: <span class="key">lr means the same thing for every parameter</span> — and, mostly, for every architecture, which is why lr folklore ("3e-4") transfers across models in a way SGD lr's never did.</p>
+</div>
+
+<div class="card blue">
+<h3>Payoff 2: robustness to the lr knob — the bowl, swept</h3>
+<div class="math out"><span class="outlabel">output — real run: steps to loss&lt;0.01 on the bowl</span>
+<span class="line">SGD :  lr .005→459   .01→228   .05→44   .09→24   .11→diverges</span>
+<span class="line">Adam:  lr .1 →213   .3 →83    .5 →54   1.0→49</span>
+</div>
+<p>SGD's step count swings from 459 to 24 to <em>infinity</em> across a 20× lr range. Adam's drifts from 213 to 49 across a 10× range — <span class="key">every setting works, none explodes</span>. You can hand Adam a sloppy lr and get a usable run; that forgiveness is worth more in practice than any benchmark number.</p>
+</div>
+
+<div class="card red">
+<h3>The honest caveat — read the two tables again</h3>
+<p>Best SGD on the bowl: <span class="key">24 steps</span>. Best Adam: <span class="key">49</span>. On a clean, fixed landscape, <em>well-tuned</em> SGD(+momentum: 11!) beats Adam — normalizing away the gradient's magnitude also throws away real information about how far to go. Adam's wins are <span class="key">robustness and scale-spread</span>, not raw speed on easy terrain. This is why convnet people with time to tune still swear by SGD+momentum, while everyone training transformers on a deadline uses Adam('s successor, next chapter). One real-network data point, our XOR net from the frameworks course:</p>
+<div class="math out"><span class="outlabel">output — real run: XOR MLP, steps to loss&lt;0.01</span>
+<span class="line">  sgd (lr .5) : 349 steps</span>
+<span class="line">  adam(lr .05): 34 steps</span>
+</div>
+<p class="faded">10× — because a real network, even a tiny one, has exactly the messy per-parameter scale spread Adam was built for (first-layer weights vs biases vs output layer), and nobody hand-tuned per-layer lrs.</p>
+</div>
+<button class="nx" onclick="go(4)">Next: what it costs</button>
+</div>
+
+<!-- PAGE 4 -->
+<div class="page" data-t="4. The bill">
+<h2>Adam's bill: memory — counted on your fingers</h2>
+
+<div class="card orange">
+<h3>Two extra floats per parameter, at LLM scale</h3>
+<p>m and v are each the same shape as the model. Derive the bill for a 7B-parameter model in fp32 (4 bytes per float):</p>
+<div class="math">
+<span class="line">params    7e9 × 4 B  =  28 GB</span>
+<span class="line">grads     7e9 × 4 B  =  28 GB</span>
+<span class="line">m         7e9 × 4 B  =  28 GB   <span class="cmt">┐</span></span>
+<span class="line">v         7e9 × 4 B  =  28 GB   <span class="cmt">┘ the Adam tax: 56 GB — HALF the training-state bill</span></span>
+<span class="line">total ≈ 112 GB before a single activation is stored</span>
+</div>
+<p>The optimizer state <em>outweighs the model</em>. This single arithmetic fact explains a whole branch of systems engineering: mixed-precision recipes that keep m, v in special formats, <span class="key">8-bit Adam</span> (quantize the moments: 56 GB → 14 GB), and <span class="key">ZeRO/FSDP sharding</span> whose first target (stage 1) is precisely the optimizer state — you met FSDP in the frameworks course; now you know what it's sharding first and why. SGD+momentum, for comparison: one buffer, half the tax; plain SGD: zero.</p>
+</div>
+
+<div class="card purple">
+<h3>Carry forward</h3>
+<ul>
+<li>Adam = <span class="key">EMA of gradients ÷ √(EMA of gradients²)</span>, both bias-corrected — chapters 2 and 3 composed, nothing more.</li>
+<li>Bias correction = divide a young EMA by (1−βᵗ); it turns RMSProp's 0.3162 overshoot into a first step of <span class="key">exactly lr</span>.</li>
+<li>Character: every parameter cruises at ≈ lr. Forgiving of lr, immune to scale spread, <em>not</em> the fastest on clean terrain.</li>
+<li>Its memory is real money at scale: 2 floats/param.</li>
+<li>One thing it quietly breaks: <span class="key">weight decay</span> — the fix is a five-letter suffix, next chapter.</li>
+</ul>
+</div>
+<a class="nx" href="5_adamw_and_choosing.html">Chapter 5: AdamW &amp; choosing in practice →</a>
+</div>
+
+<script>
+const pages=document.querySelectorAll('.page'),nav=document.getElementById('nav');
+pages.forEach((p,i)=>{
+  const b=document.createElement('button');
+  b.textContent=p.dataset.t;
+  b.onclick=()=>go(i);
+  if(i===0)b.classList.add('on');
+  nav.appendChild(b);
+});
+function go(n){
+  pages.forEach((p,i)=>p.classList.toggle('on',i===n));
+  nav.querySelectorAll('button').forEach((b,i)=>{
+    b.classList.remove('on');
+    if(i<n)b.classList.add('done');
+    else b.classList.remove('done');
+    if(i===n)b.classList.add('on');
+  });
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+</script>
+</body>
+</html>

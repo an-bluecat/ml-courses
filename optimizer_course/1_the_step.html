@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The step — what optimizer.step() actually computes</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0a0a1a;color:#e0e0e0;padding:20px 20px 80px;line-height:1.7}
+h1{text-align:center;color:#fff;margin-bottom:4px;font-size:1.5em}
+.sub{text-align:center;color:#888;margin-bottom:24px;font-size:.88em}
+.nav{display:flex;justify-content:center;gap:6px;margin-bottom:20px;flex-wrap:wrap}
+.nav button{padding:7px 13px;border:2px solid #333;background:#111;color:#888;border-radius:8px;cursor:pointer;font-size:.78em;transition:.2s}
+.nav button:hover{border-color:#555;color:#ccc}
+.nav button.on{border-color:#4fc3f7;color:#4fc3f7;background:#0d2137}
+.nav button.done{border-color:#4caf50;color:#4caf50}
+.page{display:none;max-width:880px;margin:0 auto}
+.page.on{display:block}
+.page h2{color:#4fc3f7;margin-bottom:12px;font-size:1.2em}
+.card{background:#12122a;border:1px solid #2a2a4a;border-radius:12px;padding:18px;margin-bottom:14px}
+.card.blue{border-color:#4fc3f7;background:#0d1b2a}
+.card.green{border-color:#4caf50;background:#0a1a0a}
+.card.orange{border-color:#ff9800;background:#1a1400}
+.card.red{border-color:#ef5350;background:#1a0a0a}
+.card.purple{border-color:#ce93d8;background:#1a0a2a}
+.card h3{color:#ffb74d;margin-bottom:8px;font-size:1em}
+button.nx{padding:10px 24px;background:#4caf50;color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:.9em;margin-top:14px}
+button.nx:hover{background:#66bb6a}
+a.nx{display:inline-block;padding:10px 24px;background:#4caf50;color:#000;border-radius:8px;font-weight:700;font-size:.9em;margin-top:14px;text-decoration:none}
+table{width:100%;border-collapse:collapse;margin:10px 0}
+th,td{padding:8px 10px;border:1px solid #333;text-align:left;font-size:.84em}
+th{background:#1a1a3a;color:#4fc3f7}
+td.num{font-family:'Fira Code',Consolas,monospace;text-align:right}
+.math{background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:14px;margin:10px 0;font-family:'Fira Code',Consolas,monospace;font-size:.84em;line-height:1.8;overflow-x:auto}
+.math .line{margin:2px 0;display:block;white-space:pre}
+.math .cmt{color:#6a9955}
+.math .val{color:#b5cea8}
+.math .lbl{color:#9cdcfe}
+.math .kw{color:#c586c0}
+.math .fn{color:#dcdcaa}
+.math .hl{background:#264f78;padding:2px 6px;border-radius:4px;display:inline-block}
+.math.out{border-left:3px solid #4caf50;background:#0d1a12}
+.outlabel{display:block;font-size:.72em;color:#4caf50;letter-spacing:.08em;text-transform:uppercase;margin-bottom:6px}
+.key{color:#ffb74d;font-weight:600}
+.inline{font-family:'Fira Code',Consolas,monospace;background:#1a1a2e;border:1px solid #333;border-radius:4px;padding:1px 6px;font-size:.86em;color:#9cdcfe}
+.faded{color:#888;font-size:.86em}
+ul{margin-left:20px;margin-top:6px}
+li{margin:4px 0}
+details{margin-top:12px}
+details summary{cursor:pointer;color:#888;font-size:.85em;padding:8px 12px;background:#12122a;border:1px solid #333;border-radius:8px}
+details summary:hover{color:#ccc;border-color:#555}
+details[open] summary{color:#4fc3f7;border-color:#4fc3f7}
+</style>
+</head>
+<body>
+<a href="../index.html" style="position:fixed;top:10px;left:14px;font-size:.75em;color:#555;text-decoration:none;z-index:999;padding:4px 8px;background:#0a0a1a;border:1px solid #333;border-radius:6px;">&larr; index</a>
+
+<h1>The step — what <span class="inline">optimizer.step()</span> actually computes</h1>
+<p class="sub">Chapter 1 of the optimizer course. The autograd course ended with −24 sitting in the mailbox. This course opens the envelope.</p>
+
+<div class="nav" id="nav"></div>
+
+<!-- PAGE 0 -->
+<div class="page on" data-t="0. Opening the mailbox">
+<h2>Picking up exactly where autograd left off</h2>
+
+<div class="card blue">
+<h3>The situation, as the optimizer sees it</h3>
+<p>From the <a href="../pytorch_autograd/autograd.html" style="color:#4fc3f7">PyTorch Mechanics course</a>: <span class="inline">w = 2.0</span>, input <span class="inline">x = 3.0</span>, target <span class="inline">10.0</span>. The forward pass computed <span class="inline">loss = (w·x − 10)² = 16</span>, and <span class="inline">backward()</span> deposited <span class="key">−24</span> into <span class="inline">w.grad</span>. The optimizer knows nothing else — not the loss, not the model, not the data. Its entire world is:</p>
+<div class="math">
+<span class="line">w      = <span class="val">2.0</span>       <span class="cmt"># the current value (it holds a reference to the tensor)</span></span>
+<span class="line">w.grad = <span class="val">-24.0</span>     <span class="cmt"># "loss rises 24 per unit of w, downhill is +"</span></span>
+<span class="line">lr     = <span class="val">0.01</span>      <span class="cmt"># the one number you gave it</span></span>
+</div>
+<p>Everything in this course — SGD, momentum, RMSProp, Adam, AdamW — is just increasingly clever answers to one question: <span class="key">given these numbers, how far do we move w?</span></p>
+<details><summary>Refresher: where did −24 come from, and what exactly does step() read and write?</summary>
+<p style="padding:8px 4px">The gradient: loss = (3w−10)², so ∂loss/∂w = 2·(3w−10)·3 = 2·(−4)·3 = <span class="key">−24</span> at w=2. It landed in <span class="inline">w.grad</span> because <span class="inline">backward()</span> walked the recorded graph and deposited into each parameter's mailbox — the whole story is the PyTorch Mechanics course. <span class="inline">step()</span> then <span class="key">reads</span> <span class="inline">w.grad</span> (plus any state of its own, later chapters) and <span class="key">writes</span> a new value into <span class="inline">w</span>'s memory, in place. That's the complete interface: mailbox in, weight out. It's also why the optimizer and the loss never need to meet — they only share the mailbox.</p></details>
+</div>
+
+<div class="card green">
+<h3>Answer #1 — SGD, the two-symbol optimizer</h3>
+<div class="math">
+<span class="line">w  ←  w − lr · grad</span>
+</div>
+<p>Move <em>against</em> the gradient (grad says which way loss increases; we go the other way), and move <em>a small fraction</em> (lr) of it. Trace it by hand:</p>
+<div class="math">
+<span class="line">w = 2.0 − 0.01·(−24) = 2.0 + 0.24 = <span class="hl">2.24</span></span>
+<span class="line">new loss = (2.24·3 − 10)² = (−3.28)² = <span class="hl">10.7584</span>   <span class="cmt"># was 16 — it worked</span></span>
+</div>
+<p class="faded">These are the same 2.24 and ~10.76 from the autograd course's last page — the two courses interlock here on purpose.</p>
+</div>
+
+<div class="card">
+<h3>Five steps, real run — and the same from torch</h3>
+<div class="math out"><span class="outlabel">output — real run (hand formula, then torch.optim.SGD)</span>
+<span class="line">lr=0.01: w      2.0000    2.2400    2.4368    2.5982    2.7305    2.8390</span>
+<span class="line">        loss  16.0000   10.7584    7.2339    4.8641    3.2706    2.1992</span>
+<span class="line">torch.optim.SGD matches hand trace: ['2.2400', '2.4368', '2.5982', '2.7305', '2.8390']</span>
+</div>
+<p>Two things to notice. First, <span class="key">torch's numbers are our numbers</span> — for plain SGD, the entire mystery of <span class="inline">step()</span> is that one subtraction, applied to every parameter. Second: the loss falls but the <em>gains shrink</em> (16 → 10.76 → 7.23 → …). Each step, w gets closer to the optimum (w* = 10/3 ≈ 3.333), the gradient gets smaller, so the steps get smaller. SGD coasts in.</p>
+</div>
+<button class="nx" onclick="go(1)">Next: the learning rate is the whole game</button>
+</div>
+
+<!-- PAGE 1 -->
+<div class="page" data-t="1. The lr knob">
+<h2>One knob, three fates: crawl, converge, explode</h2>
+
+<div class="card">
+<h3>Same problem, three learning rates — all real runs</h3>
+<div class="math out"><span class="outlabel">output — real run, 5 steps each</span>
+<span class="line">lr=0.01: w      2.0000    2.2400    2.4368    2.5982    2.7305    2.8390</span>
+<span class="line">        loss  16.0000   10.7584    7.2339    4.8641    3.2706    2.1992</span>
+<span class="line"></span>
+<span class="line">lr=0.05: w      2.0000    3.2000    3.3200    3.3320    3.3332    3.3333</span>
+<span class="line">        loss  16.0000    0.1600    0.0016    0.0000    0.0000    0.0000</span>
+<span class="line"></span>
+<span class="line">lr=0.12: w      2.0000    4.8800    1.5392    5.4145    0.9191    6.1338</span>
+<span class="line">        loss  16.0000   21.5296   28.9702   38.9823   52.4546   70.5830</span>
+</div>
+<ul>
+<li><span class="key">lr=0.01 crawls</span>: after 5 steps, w=2.84 — still far from 3.333. Safe, slow.</li>
+<li><span class="key">lr=0.05 nails it</span>: w=3.3333 in five steps, loss ≈ 0. For this problem, this is the sweet spot.</li>
+<li><span class="key">lr=0.12 explodes</span> — and read <em>how</em> it explodes: w goes 2 → 4.88 → 1.54 → 5.41 → 0.92 → 6.13. Each step <span class="key">leaps over the valley</span> and lands higher on the far wall, so the next gradient is even bigger, so the next leap is even longer. The loss column marches up: 16 → 21.5 → 29 → 39 → 52 → 71.</li>
+</ul>
+</div>
+
+<div class="card red">
+<h3>The divergence line is a real number, not bad luck</h3>
+<p>For this loss the update is <span class="inline">w ← w − lr·2·9·(w − w*)</span> — each step multiplies the distance-to-optimum by <span class="inline">(1 − 18·lr)</span>. That multiplier decides everything:</p>
+<table>
+<tr><th>lr</th><th>multiplier (1 − 18·lr)</th><th>fate</th></tr>
+<tr><td class="num">0.01</td><td class="num">0.82</td><td>distance shrinks 18%/step — the crawl you saw</td></tr>
+<tr><td class="num">0.05</td><td class="num">0.10</td><td>distance shrinks 90%/step — the 5-step convergence</td></tr>
+<tr><td class="num">0.111…</td><td class="num">−1.00</td><td>the cliff edge: bounces side to side forever</td></tr>
+<tr><td class="num">0.12</td><td class="num">−1.16</td><td>each bounce 16% bigger — the explosion, exactly</td></tr>
+</table>
+<div class="math out"><span class="outlabel">output — real run</span>
+<span class="line">stability threshold for this loss: lr &lt; 2/curvature = 2/18 = 0.1111</span>
+</div>
+<p>The <span class="key">18</span> is the loss's <span class="key">curvature</span> (how fast the gradient itself changes: d²loss/dw²). The rule <span class="key">lr &lt; 2/curvature</span> is worth keeping for life: steep, sharply-curved directions demand small learning rates. Flat directions tolerate — and want — big ones. Hold that tension; it becomes the villain of the next page.</p>
+<details><summary>Refresher: what is "curvature" here, in plain words?</summary>
+<p style="padding:8px 4px">The gradient tells you the slope; the curvature tells you <span class="key">how quickly the slope changes as you move</span>. Loss (3w−10)²: at w=2 the slope is −24, at w=3 it's −6, at w=10/3 it's 0 — the slope changes by 18 per unit of w, everywhere (that's the second derivative, constant for a parabola). High curvature = the valley walls turn fast = a step that looked safe at the start lands somewhere with a very different (bigger, opposite) slope = overshoot. That's why the safe-lr limit is 2/curvature: it's the largest step where "the slope where I land" hasn't flipped on you by more than you can recover from.</p></details>
+</div>
+<button class="nx" onclick="go(2)">Next: two parameters break the dream</button>
+</div>
+
+<!-- PAGE 2 -->
+<div class="page" data-t="2. The zigzag">
+<h2>Two parameters, one lr — and now no good choice exists</h2>
+
+<div class="card blue">
+<h3>The whole course's example landscape: an uneven bowl</h3>
+<div class="math">
+<span class="line">L(w1, w2) = w1² + 10·w2²        <span class="cmt"># gentle along w1, steep along w2</span></span>
+<span class="line">gradient  = (2·w1, 20·w2)       <span class="cmt"># curvature 2 in w1, 20 in w2</span></span>
+<span class="line">start at (10, 1); the minimum is (0, 0)</span>
+</div>
+<p>Apply yesterday's rule per direction: w2 needs <span class="inline">lr &lt; 2/20 = 0.1</span>, w1 would love <span class="inline">lr</span> up near <span class="inline">2/2 = 1.0</span>. But SGD has <span class="key">one lr for both</span>. You must obey the steepest direction — so the gentle one starves. Watch it, for real, at lr = 0.09:</p>
+<div class="math out"><span class="outlabel">output — real run: SGD lr=0.09 on the bowl</span>
+<span class="line">  step 0: ( 10.000,   1.000)</span>
+<span class="line">  step 1: (  8.200,  -0.800)</span>
+<span class="line">  step 2: (  6.724,   0.640)</span>
+<span class="line">  step 3: (  5.514,  -0.512)</span>
+<span class="line">  step 4: (  4.521,   0.410)</span>
+<span class="line">  step 5: (  3.707,  -0.328)</span>
+<span class="line">  step 6: (  3.040,   0.262)</span>
+<span class="line">  step 7: (  2.493,  -0.210)</span>
+<span class="line">  step 8: (  2.044,   0.168)</span>
+</div>
+<p>Read the two columns separately: <span class="key">w2 flips sign every single step</span> (×−0.8 each time — bouncing wall to wall across the steep valley), while <span class="key">w1 trudges</span> (×0.82 per step — the crawl multiplier from page 1). All the lr budget is spent not-exploding in w2; w1 gets leftovers.</p>
+</div>
+
+<div class="card">
+<h3>The same nine steps, drawn</h3>
+<svg viewBox="0 0 760 340" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto">
+  <ellipse cx="327" cy="170" rx="241" ry="209" fill="none" stroke="#2a2a4a" stroke-width="1"/>
+  <ellipse cx="327" cy="170" rx="108" ry="93" fill="none" stroke="#2a2a4a" stroke-width="1"/>
+  <ellipse cx="327" cy="170" rx="38" ry="33" fill="none" stroke="#2a2a4a" stroke-width="1"/>
+  <polyline points="707,66 639,253 583,103 536,223 499,127 468,204 442,143 422,192 405,152 391,184 379,159" fill="none" stroke="#ef5350" stroke-width="2"/>
+  <g fill="#ef5350">
+    <circle cx="707" cy="66" r="5"/><circle cx="639" cy="253" r="3.5"/><circle cx="583" cy="103" r="3.5"/><circle cx="536" cy="223" r="3.5"/><circle cx="499" cy="127" r="3.5"/><circle cx="468" cy="204" r="3.5"/><circle cx="442" cy="143" r="3.5"/><circle cx="422" cy="192" r="3.5"/><circle cx="405" cy="152" r="3.5"/>
+  </g>
+  <circle cx="327" cy="170" r="5" fill="#4caf50"/>
+  <text x="707" y="50" font-size="12" fill="#ef9a9a" text-anchor="middle">start (10, 1)</text>
+  <text x="327" y="196" font-size="12" fill="#4caf50" text-anchor="middle">minimum (0, 0)</text>
+</svg>
+<p class="faded" style="margin-top:6px">Real trajectory, drawn from the run above (grey ellipses are equal-loss contours of the bowl; horizontal axis w1, vertical w2). The sawtooth IS the two columns you just read: violent progress across the valley, timid progress along it.</p>
+</div>
+
+<div class="card red">
+<h3>And the temptation fails: raise lr and it detonates</h3>
+<div class="math out"><span class="outlabel">output — real run: SGD lr=0.11, w2 column</span>
+<span class="line">    1.000     -1.200      1.440     -1.728      2.074     -2.488   &lt;- diverges (0.11·20 = 2.2 &gt; 2)</span>
+</div>
+<p>lr=0.11 is over w2's cliff (2/20 = 0.1), so w2 bounces ever higher even while w1 would have been perfectly happy. <span class="key">The steepest direction sets the speed limit; the flattest direction pays the price.</span></p>
+</div>
+<button class="nx" onclick="go(3)">Next: naming the disease</button>
+</div>
+
+<!-- PAGE 3 -->
+<div class="page" data-t="3. The disease">
+<h2>The disease has a name — and two cures</h2>
+
+<div class="card orange">
+<h3>Ill-conditioning: when the bowl is a canyon</h3>
+<p>Our bowl's curvatures are 2 and 20 — a ratio of <span class="key">10</span> (the "condition number"). That tiny ratio already forced the zigzag. Now scale up: a real network mixes embedding rows touched once per epoch, LayerNorm gains, first-layer filters, last-layer biases — directions whose curvatures differ by <span class="key">factors of thousands to millions</span>, and that change during training. There is no single learning rate that serves them all; picking lr more carefully is not a fix, because the problem is that <em>one number is being asked to describe many directions</em>.</p>
+</div>
+
+<div class="card green">
+<h3>The two cures (= the rest of this course)</h3>
+<table>
+<tr><th>Cure</th><th>Idea in one line</th><th>Chapter</th></tr>
+<tr><td><span class="key">Memory of direction</span></td><td>average recent steps — zigzags cancel out, consistent directions add up</td><td>2 · Momentum</td></tr>
+<tr><td><span class="key">Per-parameter scale</span></td><td>give every parameter its own effective lr, set by its own gradient history</td><td>3 · AdaGrad → RMSProp</td></tr>
+<tr><td>both at once, done carefully</td><td>—</td><td>4 · Adam, 5 · AdamW</td></tr>
+</table>
+</div>
+
+<div class="card purple">
+<h3>Carry forward</h3>
+<ul>
+<li><span class="inline">step()</span>'s world: <span class="key">w, w.grad, lr, and its own private state</span> — nothing else.</li>
+<li>SGD = <span class="inline">w −= lr·grad</span>; torch's numbers are your hand numbers, exactly.</li>
+<li>lr's three fates — crawl / converge / explode — with a real cliff at <span class="key">2/curvature</span>.</li>
+<li>Different directions want different lr's; one knob can't serve them → <span class="key">the zigzag</span>. Every optimizer after SGD is a response to this page.</li>
+</ul>
+</div>
+<a class="nx" href="2_momentum.html">Chapter 2: momentum — give the step a memory →</a>
+</div>
+
+<script>
+const pages=document.querySelectorAll('.page'),nav=document.getElementById('nav');
+pages.forEach((p,i)=>{
+  const b=document.createElement('button');
+  b.textContent=p.dataset.t;
+  b.onclick=()=>go(i);
+  if(i===0)b.classList.add('on');
+  nav.appendChild(b);
+});
+function go(n){
+  pages.forEach((p,i)=>p.classList.toggle('on',i===n));
+  nav.querySelectorAll('button').forEach((b,i)=>{
+    b.classList.remove('on');
+    if(i<n)b.classList.add('done');
+    else b.classList.remove('done');
+    if(i===n)b.classList.add('on');
+  });
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+</script>
+</body>
+</html>

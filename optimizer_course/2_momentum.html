@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Momentum — give the step a memory</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0a0a1a;color:#e0e0e0;padding:20px 20px 80px;line-height:1.7}
+h1{text-align:center;color:#fff;margin-bottom:4px;font-size:1.5em}
+.sub{text-align:center;color:#888;margin-bottom:24px;font-size:.88em}
+.nav{display:flex;justify-content:center;gap:6px;margin-bottom:20px;flex-wrap:wrap}
+.nav button{padding:7px 13px;border:2px solid #333;background:#111;color:#888;border-radius:8px;cursor:pointer;font-size:.78em;transition:.2s}
+.nav button:hover{border-color:#555;color:#ccc}
+.nav button.on{border-color:#4fc3f7;color:#4fc3f7;background:#0d2137}
+.nav button.done{border-color:#4caf50;color:#4caf50}
+.page{display:none;max-width:880px;margin:0 auto}
+.page.on{display:block}
+.page h2{color:#4fc3f7;margin-bottom:12px;font-size:1.2em}
+.card{background:#12122a;border:1px solid #2a2a4a;border-radius:12px;padding:18px;margin-bottom:14px}
+.card.blue{border-color:#4fc3f7;background:#0d1b2a}
+.card.green{border-color:#4caf50;background:#0a1a0a}
+.card.orange{border-color:#ff9800;background:#1a1400}
+.card.red{border-color:#ef5350;background:#1a0a0a}
+.card.purple{border-color:#ce93d8;background:#1a0a2a}
+.card h3{color:#ffb74d;margin-bottom:8px;font-size:1em}
+button.nx{padding:10px 24px;background:#4caf50;color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:.9em;margin-top:14px}
+button.nx:hover{background:#66bb6a}
+a.nx{display:inline-block;padding:10px 24px;background:#4caf50;color:#000;border-radius:8px;font-weight:700;font-size:.9em;margin-top:14px;text-decoration:none}
+table{width:100%;border-collapse:collapse;margin:10px 0}
+th,td{padding:8px 10px;border:1px solid #333;text-align:left;font-size:.84em}
+th{background:#1a1a3a;color:#4fc3f7}
+td.num{font-family:'Fira Code',Consolas,monospace;text-align:right}
+.math{background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:14px;margin:10px 0;font-family:'Fira Code',Consolas,monospace;font-size:.84em;line-height:1.8;overflow-x:auto}
+.math .line{margin:2px 0;display:block;white-space:pre}
+.math .cmt{color:#6a9955}
+.math .val{color:#b5cea8}
+.math .lbl{color:#9cdcfe}
+.math .kw{color:#c586c0}
+.math .fn{color:#dcdcaa}
+.math .hl{background:#264f78;padding:2px 6px;border-radius:4px;display:inline-block}
+.math.out{border-left:3px solid #4caf50;background:#0d1a12}
+.outlabel{display:block;font-size:.72em;color:#4caf50;letter-spacing:.08em;text-transform:uppercase;margin-bottom:6px}
+.key{color:#ffb74d;font-weight:600}
+.inline{font-family:'Fira Code',Consolas,monospace;background:#1a1a2e;border:1px solid #333;border-radius:4px;padding:1px 6px;font-size:.86em;color:#9cdcfe}
+.faded{color:#888;font-size:.86em}
+ul{margin-left:20px;margin-top:6px}
+li{margin:4px 0}
+details{margin-top:12px}
+details summary{cursor:pointer;color:#888;font-size:.85em;padding:8px 12px;background:#12122a;border:1px solid #333;border-radius:8px}
+details summary:hover{color:#ccc;border-color:#555}
+details[open] summary{color:#4fc3f7;border-color:#4fc3f7}
+</style>
+</head>
+<body>
+<a href="../index.html" style="position:fixed;top:10px;left:14px;font-size:.75em;color:#555;text-decoration:none;z-index:999;padding:4px 8px;background:#0a0a1a;border:1px solid #333;border-radius:6px;">&larr; index</a>
+
+<h1>Momentum — give the step a memory</h1>
+<p class="sub">Chapter 2. One extra number per parameter turns "react to this gradient" into "trust the trend" — with a physics you can feel and a failure mode you must know.</p>
+
+<div class="nav" id="nav"></div>
+
+<!-- PAGE 0 -->
+<div class="page on" data-t="0. The buffer">
+<h2>One new idea: don't step on the gradient — step on a running total</h2>
+
+<div class="card blue">
+<h3>The update (exactly as torch implements it)</h3>
+<div class="math">
+<span class="line">buf  ←  μ·buf + grad       <span class="cmt"># the memory: decay the old total, add today's gradient</span></span>
+<span class="line">w    ←  w − lr·buf         <span class="cmt"># step on the TOTAL, not on today's gradient</span></span>
+</div>
+<p>Two changes from SGD: the optimizer now carries <span class="key">state</span> — one number <span class="inline">buf</span> per parameter, surviving between steps — and the step uses that state instead of the raw gradient. μ ("momentum", usually 0.9) controls how long the memory lasts: each step the old contents keep 90% of their value.</p>
+<p>The name is physics: think of <span class="inline">buf</span> as <span class="key">velocity</span>. The gradient is a force pushing a ball; μ&lt;1 is friction. SGD is a ball on flypaper — each push moves it once and it stops. Momentum is a ball on ice with slight drag — pushes <em>accumulate</em>.</p>
+</div>
+
+<div class="card">
+<h3>Feel the accumulation: push with force 1, every step</h3>
+<div class="math out"><span class="outlabel">output — real run: buf = 0.9·buf + 1.0</span>
+<span class="line">  t= 1: buffer = 1.000</span>
+<span class="line">  t= 2: buffer = 1.900</span>
+<span class="line">  t= 3: buffer = 2.710</span>
+<span class="line">  t= 5: buffer = 4.095</span>
+<span class="line">  t=10: buffer = 6.513</span>
+<span class="line">  limit: 1/(1-0.9) = 10.0  -> momentum multiplies terminal speed ~10x</span>
+</div>
+<p>A gradient that keeps pointing the same way ends up moving the weight <span class="key">ten times as fast</span> as SGD would (with μ=0.9; the general limit is 1/(1−μ)). Nothing converged yet — this is just arithmetic of the buffer — but you can already guess who benefits: the <em>gentle, consistent</em> direction from Chapter 1's bowl, the one SGD starved.</p>
+<details><summary>Refresher: why does the buffer approach exactly 10?</summary>
+<p style="padding:8px 4px">Unroll it: after many steps of constant gradient 1, the buffer holds 1 + 0.9 + 0.9² + 0.9³ + … — today's push, plus 90% of yesterday's, plus 81% of the day before's. That's a geometric series, and it sums to 1/(1−0.9) = 10. Same idea in reverse gives the memory's <span class="key">horizon</span>: contributions older than ~1/(1−μ) ≈ 10 steps have decayed to near nothing, so "μ = 0.9" reads as <span class="key">"average over roughly the last 10 gradients."</span> Keep that reading — Adam's β₁=0.9 and β₂=0.999 (last ~10, last ~1000) will reuse it.</p></details>
+</div>
+<button class="nx" onclick="go(1)">Next: what memory buys — agreement compounds</button>
+</div>
+
+<!-- PAGE 1 -->
+<div class="page" data-t="1. Agreement compounds">
+<h2>Effect 1: where gradients agree, momentum accelerates — measured</h2>
+
+<div class="card green">
+<h3>Chapter 1's bowl, small learning rate — SGD crawls, momentum flies</h3>
+<div class="math out"><span class="outlabel">output — real run: steps until loss &lt; 0.01 on the bowl, lr = 0.01</span>
+<span class="line">SGD:               228 steps</span>
+<span class="line">momentum (μ=0.9):   37 steps      &lt;- 6x fewer, same lr</span>
+</div>
+<p>Why: along w1 the gradient points the same way for dozens of steps — exactly the "push with force 1 every step" situation from page 0. The buffer winds up toward its 10× terminal speed, and w1 — the direction SGD starved — finally moves. Watch the buffer do it in the first eight steps:</p>
+<div class="math out"><span class="outlabel">output — real run: momentum lr=0.01 μ=0.9, (w1, w2) trajectory</span>
+<span class="line">  step 0: ( 10.000,   1.000)</span>
+<span class="line">  step 1: (  9.800,   0.800)     &lt;- first step identical to SGD (buf = grad)</span>
+<span class="line">  step 2: (  9.424,   0.460)     &lt;- w1 moved 0.38 this time, not 0.2</span>
+<span class="line">  step 3: (  8.897,   0.062)     &lt;- 0.53 now…</span>
+<span class="line">  step 4: (  8.245,  -0.309)     &lt;- 0.65…</span>
+<span class="line">  step 5: (  7.493,  -0.580)</span>
+<span class="line">  step 6: (  6.667,  -0.709)</span>
+<span class="line">  step 7: (  5.789,  -0.683)</span>
+<span class="line">  step 8: (  4.884,  -0.523)</span>
+</div>
+<p>Read the w1 column's <em>differences</em>: 0.20, 0.38, 0.53, 0.65, 0.75, 0.83, 0.88, 0.91 — each step longer than the last, the ball gathering speed downhill. (And keep half an eye on w2: it slid past 0 to −0.7. A ball that gathers speed also <em>coasts past the bottom</em>. That bill arrives on page 3.)</p>
+</div>
+<button class="nx" onclick="go(2)">Next: what memory buys — disagreement cancels</button>
+</div>
+
+<!-- PAGE 2 -->
+<div class="page" data-t="2. Disagreement cancels">
+<h2>Effect 2: where gradients alternate, the buffer averages them away</h2>
+
+<div class="card blue">
+<h3>The buffer arithmetic, side by side — trace every number yourself</h3>
+<p>Chapter 1's zigzag was w2's gradient flipping sign every step. Feed the buffer two diets — steady <span class="inline">+1</span> versus alternating <span class="inline">+1, −1, +1, …</span> — and do the arithmetic (<span class="inline">buf = 0.9·buf + g</span>):</p>
+<table>
+<tr><th>t</th><th>steady g = +1</th><th>alternating g = ±1</th></tr>
+<tr><td class="num">1</td><td class="num">1.000</td><td class="num">0.9·0 + 1 = <b>1.000</b></td></tr>
+<tr><td class="num">2</td><td class="num">1.900</td><td class="num">0.9·1.000 − 1 = <b>−0.100</b></td></tr>
+<tr><td class="num">3</td><td class="num">2.710</td><td class="num">0.9·(−0.100) + 1 = <b>0.910</b></td></tr>
+<tr><td class="num">4</td><td class="num">3.439</td><td class="num">0.9·0.910 − 1 = <b>−0.181</b></td></tr>
+<tr><td class="num">5</td><td class="num">4.095</td><td class="num">0.9·(−0.181) + 1 = <b>0.837</b></td></tr>
+<tr><td class="num">→ ∞</td><td class="num">→ 10.0</td><td class="num">bounded near ±0.5</td></tr>
+</table>
+<p>Same μ, same formula, opposite outcomes: <span class="key">agreement compounds toward 10×; disagreement cancels toward ~0.5×</span>. Momentum is a filter — it passes the trend and mutes the flip-flop. The zigzag direction gets <em>smaller</em> effective steps exactly where SGD was wasting motion, and the valley-floor direction gets bigger ones. One buffer does both jobs, automatically, per parameter.</p>
+</div>
+
+<div class="card orange">
+<h3>Where this matters most in real training: mini-batch noise</h3>
+<p>In real training you don't even need a canyon to get flip-flopping gradients — <span class="key">every mini-batch disagrees with the last one</span>, because each is a different random sample of data. The batch-to-batch noise alternates in sign (it averages to zero over time); the true underlying descent direction repeats. The filter you just traced treats them accordingly: noise cancels in the buffer, signal accumulates. This is why momentum helps even on landscapes with no pathological curvature at all, and why μ=0.9 is on by default in nearly every SGD recipe in the wild.</p>
+</div>
+<button class="nx" onclick="go(3)">Next: the bill — it's a ball, and balls overshoot</button>
+</div>
+
+<!-- PAGE 3 -->
+<div class="page" data-t="3. The overshoot">
+<h2>The honest page: momentum is not free speed</h2>
+
+<div class="card red">
+<h3>Crank both knobs and watch the ball leave the valley — real run</h3>
+<p>Chapter 1 used lr=0.09 for SGD: 24 steps to converge. Surely adding momentum makes it faster? <span class="key">No — it triples the time.</span> Watch the trajectory:</p>
+<div class="math out"><span class="outlabel">output — real run: momentum lr=0.09 μ=0.9 on the bowl</span>
+<span class="line">  step 0: ( 10.000,   1.000)</span>
+<span class="line">  step 2: (  5.104,  -0.980)</span>
+<span class="line">  step 4: ( -2.188,   0.944)     &lt;- w1 has SAILED PAST the minimum…</span>
+<span class="line">  step 6: ( -6.668,  -0.896)     &lt;- …and keeps going to -6.9…</span>
+<span class="line">  step 8: ( -5.953,   0.840)     &lt;- …then swings back. A pendulum.</span>
+<span class="line"></span>
+<span class="line">steps to loss&lt;0.01:   SGD(lr .09): 24   |   momentum(lr .09, μ .9): 69</span>
+</div>
+<svg viewBox="0 0 760 340" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto">
+  <ellipse cx="327" cy="170" rx="241" ry="209" fill="none" stroke="#2a2a4a" stroke-width="1"/>
+  <ellipse cx="327" cy="170" rx="108" ry="93" fill="none" stroke="#2a2a4a" stroke-width="1"/>
+  <ellipse cx="327" cy="170" rx="38" ry="33" fill="none" stroke="#2a2a4a" stroke-width="1"/>
+  <polyline points="707,66 639,253 583,103 536,223 499,127 468,204 442,143 422,192 405,152 391,184 379,159" fill="none" stroke="#ef5350" stroke-width="2" opacity="0.55"/>
+  <polyline points="707,66 639,253 521,272 380,105 244,71 136,219 73,264 62,136 100,82 175,192 270,251 365,158 444,96 494,173 509,237" fill="none" stroke="#ff9800" stroke-width="2"/>
+  <circle cx="707" cy="66" r="5" fill="#ff9800"/>
+  <circle cx="62" cy="136" r="4" fill="#ff9800"/>
+  <circle cx="327" cy="170" r="5" fill="#4caf50"/>
+  <text x="707" y="50" font-size="12" fill="#ffcc80" text-anchor="middle">start</text>
+  <text x="66" y="120" font-size="12" fill="#ffcc80" text-anchor="middle">step 7: w1 ≈ −7</text>
+  <text x="327" y="196" font-size="12" fill="#4caf50" text-anchor="middle">minimum</text>
+</svg>
+<p class="faded" style="margin-top:6px">Both paths real. Faint red: chapter 1's SGD zigzag (lr .09). Orange: the same lr with μ=0.9 — the ball shoots straight through the minimum, climbs the far wall to w1 ≈ −7, and swings back. Physics kept its promise: momentum conserves motion, including motion you wanted to stop.</p>
+</div>
+
+<div class="card">
+<h3>So which is it — 6× faster or 3× slower? The full grid, measured</h3>
+<div class="math out"><span class="outlabel">output — real run: steps to loss &lt; 0.01 on the bowl</span>
+<span class="line">lr=0.005: SGD       459 | mom μ=.9     85 | mom μ=.5    225</span>
+<span class="line">lr= 0.01: SGD       228 | mom μ=.9     37 | mom μ=.5    109</span>
+<span class="line">lr= 0.02: SGD       113 | mom μ=.9     40 | mom μ=.5     51</span>
+<span class="line">lr= 0.05: SGD        44 | mom μ=.9     73 | mom μ=.5     15</span>
+<span class="line">lr= 0.09: SGD        24 | mom μ=.9     69 | mom μ=.5     13</span>
+<span class="line">lr= 0.11: SGD  diverges | mom μ=.9     55 | mom μ=.5     11</span>
+</div>
+<p>Read it like a map, not a verdict:</p>
+<ul>
+<li><span class="key">Small lr → big μ wins huge</span> (459→85, 228→37): steps are timid, so the ball's 10× buildup is pure profit.</li>
+<li><span class="key">Big lr → big μ overshoots</span> (24→69): steps were already bold; 10× bold is a pendulum.</li>
+<li><span class="key">μ=0.5 at big lr is the sweet spot here</span> (13, 11 steps — the best numbers on the board): a 2× boost (1/(1−0.5)) on top of near-maximal lr.</li>
+<li>And the quietly profound row: at lr=0.11, <span class="key">SGD diverges but momentum converges</span> — the friction of averaging lets you survive past SGD's cliff. Momentum doesn't just move faster along the valley; it <em>widens the range of usable learning rates</em>.</li>
+</ul>
+<p><span class="key">lr and μ are one control system, not two knobs</span> — a useful rule of thumb hiding in the table: what matters most is roughly lr/(1−μ), the terminal step size. 0.01 with μ=0.9 "feels like" 0.1; that's why its column resembles SGD at ten times the lr.</p>
+<details><summary>Refresher: Nesterov momentum — the checkbox next to μ</summary>
+<p style="padding:8px 4px"><span class="inline">SGD(momentum=0.9, nesterov=True)</span> changes one thing: the gradient is evaluated as if you had already taken the momentum part of the step — "look where the ball is <em>about to be</em>, not where it is." Peeking ahead means the ball starts braking one step earlier when it approaches a wall, which softens exactly the overshoot this page demonstrated. Same buffer, same cost, usually a small win; common in convnet recipes. If μ is a ball, Nesterov is a ball with eyes.</p></details>
+</div>
+<button class="nx" onclick="go(4)">Next: what torch actually does</button>
+</div>
+
+<!-- PAGE 4 -->
+<div class="page" data-t="4. Torch's version">
+<h2>The fine print in torch — and why it bites paper-reproducers</h2>
+
+<div class="card orange">
+<h3>Two "momentums" circulate in the wild</h3>
+<div class="math">
+<span class="line"><span class="cmt"># torch (what you've traced all chapter):</span></span>
+<span class="line">buf ← μ·buf + grad             <span class="cmt"># raw sum — reaches grad·1/(1−μ) ≈ 10×grad</span></span>
+<span class="line"></span>
+<span class="line"><span class="cmt"># many papers (EMA form):</span></span>
+<span class="line">buf ← μ·buf + (1−μ)·grad       <span class="cmt"># weighted average — reaches ≈ 1×grad</span></span>
+</div>
+<p>Identical behavior — except the second is <span class="key">10× smaller</span> (with μ=0.9), which means the effective step differs by 10× at the same lr. Port a paper's lr into torch without checking which form it used, and your training runs 10× hotter or colder than intended. This single formula difference is one of the most common silent reproduction bugs in the field. When in doubt: torch's SGD uses the raw-sum form above (its <span class="inline">dampening</span> arg can add the (1−μ), default 0).</p>
+</div>
+
+<div class="card green">
+<h3>Verification — the whole chapter against torch.optim</h3>
+<div class="math out"><span class="outlabel">output — real run</span>
+<span class="line">torch.optim.SGD(momentum=0.9) matches hand trace ✓   (8 steps on the bowl, atol 1e-5)</span>
+</div>
+<p>Every bowl trajectory on these pages was recomputed with <span class="inline">torch.optim.SGD([w], lr, momentum=0.9)</span> and asserted equal to the two-line hand formula. When you write <span class="inline">momentum=0.9</span> in real code, the arithmetic of this chapter is <em>exactly</em> what runs — one buffer per parameter, visible in <span class="inline">opt.state[p]['momentum_buffer']</span>.</p>
+</div>
+
+<div class="card purple">
+<h3>Carry forward</h3>
+<ul>
+<li>Momentum = <span class="key">one remembered number per parameter</span>: <span class="inline">buf = μ·buf + g</span>, step on <span class="inline">buf</span>.</li>
+<li><span class="key">Agreement compounds (→ 1/(1−μ)×), disagreement cancels</span> — one filter fixes both the starved direction and the zigzag/noise.</li>
+<li>It's a ball: <span class="key">it overshoots when lr·μ is too bold</span>, and it widens the stable-lr range. Tune lr and μ as one unit (think lr/(1−μ)).</li>
+<li>Still unsolved: w1 and w2 get the same lr. Momentum reshapes steps <em>over time</em>, not <em>per parameter</em>. That second cure is next.</li>
+</ul>
+</div>
+<a class="nx" href="3_adaptive.html">Chapter 3: per-parameter scale — AdaGrad → RMSProp →</a>
+</div>
+
+<script>
+const pages=document.querySelectorAll('.page'),nav=document.getElementById('nav');
+pages.forEach((p,i)=>{
+  const b=document.createElement('button');
+  b.textContent=p.dataset.t;
+  b.onclick=()=>go(i);
+  if(i===0)b.classList.add('on');
+  nav.appendChild(b);
+});
+function go(n){
+  pages.forEach((p,i)=>p.classList.toggle('on',i===n));
+  nav.querySelectorAll('button').forEach((b,i)=>{
+    b.classList.remove('on');
+    if(i<n)b.classList.add('done');
+    else b.classList.remove('done');
+    if(i===n)b.classList.add('on');
+  });
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+</script>
+</body>
+</html>

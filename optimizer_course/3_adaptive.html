@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Per-parameter scale — AdaGrad → RMSProp</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0a0a1a;color:#e0e0e0;padding:20px 20px 80px;line-height:1.7}
+h1{text-align:center;color:#fff;margin-bottom:4px;font-size:1.5em}
+.sub{text-align:center;color:#888;margin-bottom:24px;font-size:.88em}
+.nav{display:flex;justify-content:center;gap:6px;margin-bottom:20px;flex-wrap:wrap}
+.nav button{padding:7px 13px;border:2px solid #333;background:#111;color:#888;border-radius:8px;cursor:pointer;font-size:.78em;transition:.2s}
+.nav button:hover{border-color:#555;color:#ccc}
+.nav button.on{border-color:#4fc3f7;color:#4fc3f7;background:#0d2137}
+.nav button.done{border-color:#4caf50;color:#4caf50}
+.page{display:none;max-width:880px;margin:0 auto}
+.page.on{display:block}
+.page h2{color:#4fc3f7;margin-bottom:12px;font-size:1.2em}
+.card{background:#12122a;border:1px solid #2a2a4a;border-radius:12px;padding:18px;margin-bottom:14px}
+.card.blue{border-color:#4fc3f7;background:#0d1b2a}
+.card.green{border-color:#4caf50;background:#0a1a0a}
+.card.orange{border-color:#ff9800;background:#1a1400}
+.card.red{border-color:#ef5350;background:#1a0a0a}
+.card.purple{border-color:#ce93d8;background:#1a0a2a}
+.card h3{color:#ffb74d;margin-bottom:8px;font-size:1em}
+button.nx{padding:10px 24px;background:#4caf50;color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:.9em;margin-top:14px}
+button.nx:hover{background:#66bb6a}
+a.nx{display:inline-block;padding:10px 24px;background:#4caf50;color:#000;border-radius:8px;font-weight:700;font-size:.9em;margin-top:14px;text-decoration:none}
+table{width:100%;border-collapse:collapse;margin:10px 0}
+th,td{padding:8px 10px;border:1px solid #333;text-align:left;font-size:.84em}
+th{background:#1a1a3a;color:#4fc3f7}
+td.num{font-family:'Fira Code',Consolas,monospace;text-align:right}
+.math{background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:14px;margin:10px 0;font-family:'Fira Code',Consolas,monospace;font-size:.84em;line-height:1.8;overflow-x:auto}
+.math .line{margin:2px 0;display:block;white-space:pre}
+.math .cmt{color:#6a9955}
+.math .val{color:#b5cea8}
+.math .lbl{color:#9cdcfe}
+.math .kw{color:#c586c0}
+.math .fn{color:#dcdcaa}
+.math .hl{background:#264f78;padding:2px 6px;border-radius:4px;display:inline-block}
+.math.out{border-left:3px solid #4caf50;background:#0d1a12}
+.outlabel{display:block;font-size:.72em;color:#4caf50;letter-spacing:.08em;text-transform:uppercase;margin-bottom:6px}
+.key{color:#ffb74d;font-weight:600}
+.inline{font-family:'Fira Code',Consolas,monospace;background:#1a1a2e;border:1px solid #333;border-radius:4px;padding:1px 6px;font-size:.86em;color:#9cdcfe}
+.faded{color:#888;font-size:.86em}
+ul{margin-left:20px;margin-top:6px}
+li{margin:4px 0}
+details{margin-top:12px}
+details summary{cursor:pointer;color:#888;font-size:.85em;padding:8px 12px;background:#12122a;border:1px solid #333;border-radius:8px}
+details summary:hover{color:#ccc;border-color:#555}
+details[open] summary{color:#4fc3f7;border-color:#4fc3f7}
+</style>
+</head>
+<body>
+<a href="../index.html" style="position:fixed;top:10px;left:14px;font-size:.75em;color:#555;text-decoration:none;z-index:999;padding:4px 8px;background:#0a0a1a;border:1px solid #333;border-radius:6px;">&larr; index</a>
+
+<h1>Per-parameter scale — AdaGrad → RMSProp</h1>
+<p class="sub">Chapter 3. Momentum reshaped steps over time. This chapter reshapes them per parameter: every weight gets its own effective learning rate, set by its own history.</p>
+
+<div class="nav" id="nav"></div>
+
+<!-- PAGE 0 -->
+<div class="page on" data-t="0. The scale problem">
+<h2>The second disease, at its real scale</h2>
+
+<div class="card red">
+<h3>Two parameters, gradients 1000× apart</h3>
+<p>Forget curvature for a moment — here's the version of the problem you meet in every real network. One parameter sits in a hot path (say, a LayerNorm gain touched by every token): gradient <span class="key">−24</span>. Another sits in a cold path (an embedding row for a rare word): gradient <span class="key">−0.024</span>. Same model, same loss, same <span class="inline">lr=0.1</span>. What SGD does:</p>
+<div class="math out"><span class="outlabel">output — real run</span>
+<span class="line">  g= -24.000:  SGD lr=0.1 step =   2.4000</span>
+<span class="line">  g=  -0.024:  SGD lr=0.1 step =   0.0024</span>
+</div>
+<p>The hot parameter takes a wild 2.4-unit leap (remember chapter 1: that's deep in overshoot territory). The cold one moves by 0.0024 — it would need a thousand steps to move what the hot one moved in one. <span class="key">One lr cannot serve both.</span> Lower it and the cold parameter freezes entirely; raise it and the hot one explodes. This is chapter 1's bowl again, but now with a spread of scales no hand-tuning can bridge.</p>
+</div>
+
+<div class="card blue">
+<h3>State the wish precisely</h3>
+<p>What we want: <span class="key">every parameter should move about lr per step — regardless of how big its gradient happens to be.</span> The gradient should choose the <em>direction</em>; the learning rate should choose the <em>distance</em>; the gradient's <em>magnitude</em> should stop tyrannizing the step size.</p>
+<p>The move that achieves it: divide each parameter's step by (something like) <span class="key">the typical size of its own gradient</span>. Big-gradient parameters get divided by a big number, small-gradient parameters by a small one — both land near lr. The chapter is about what "typical size" should mean.</p>
+</div>
+<button class="nx" onclick="go(1)">Next: AdaGrad — the first attempt</button>
+</div>
+
+<!-- PAGE 1 -->
+<div class="page" data-t="1. AdaGrad">
+<h2>AdaGrad: remember every gradient ever — and pay for it</h2>
+
+<div class="card">
+<h3>The update (2011)</h3>
+<div class="math">
+<span class="line">G  ←  G + grad²                    <span class="cmt"># per-parameter running SUM of squared gradients</span></span>
+<span class="line">w  ←  w − lr · grad / (√G + ε)     <span class="cmt"># divide by the root of the history</span></span>
+</div>
+<p>√G is the "typical gradient size so far" (root of the accumulated square). A parameter that has seen gradients of ~24 has √G ≈ 24·√t; one that's seen ~0.024 has √G ≈ 0.024·√t — each gets divided by its own scale, and the wish from page 0 comes true. AdaGrad was built for exactly the rare-word-embedding case, and it works.</p>
+</div>
+
+<div class="card red">
+<h3>The fatal flaw: the sum only grows</h3>
+<p>G adds a positive number every step and never forgets. So √G grows like √t forever, and the effective step shrinks like 1/√t — <span class="key">even if you're nowhere near done</span>. Watch it with a constant gradient (nothing is converging; the landscape isn't changing; the optimizer just… ages):</p>
+<div class="math out"><span class="outlabel">output — real run: constant g = −24, lr = 0.1</span>
+<span class="line">  step   1: effective step = 0.1000</span>
+<span class="line">  step   2: effective step = 0.0707</span>
+<span class="line">  step  10: effective step = 0.0316</span>
+<span class="line">  step 100: effective step = 0.0100</span>
+</div>
+<p>By step 100 the optimizer moves at a tenth of its starting speed, purely because time passed. For convex problems that's even provably the right schedule; for deep learning — where you may need full-speed steps at epoch 50 when the loss landscape shifts — it's a slow death. <span class="key">The idea (divide by gradient scale) is right; the memory (infinite) is wrong.</span></p>
+</div>
+<button class="nx" onclick="go(2)">Next: RMSProp — forget the distant past</button>
+</div>
+
+<!-- PAGE 2 -->
+<div class="page" data-t="2. RMSProp">
+<h2>RMSProp: same idea, sliding-window memory</h2>
+
+<div class="card green">
+<h3>One-symbol fix: replace the sum with a decaying average</h3>
+<div class="math">
+<span class="line">v  ←  β·v + (1−β)·grad²            <span class="cmt"># EMA of squared gradients (β = 0.9: last ~10 steps)</span></span>
+<span class="line">w  ←  w − lr · grad / (√v + ε)     <span class="cmt"># divide by the RECENT typical size</span></span>
+</div>
+<p>This is chapter 2's memory trick applied to the <em>denominator</em>: v is an exponential moving average (the (1−β) makes it a true average — it settles at the typical g², not 10× it). Old gradients fade instead of accumulating, so the effective lr tracks the <em>recent</em> gradient scale and never dies of old age. The name says exactly what it divides by: <span class="key">R</span>oot <span class="key">M</span>ean <span class="key">S</span>quare, <span class="key">Prop</span>agated over time.</p>
+</div>
+
+<div class="card">
+<h3>The wish, granted — real numbers</h3>
+<div class="math out"><span class="outlabel">output — real run: first step, lr = 0.1, β = 0.9</span>
+<span class="line">  g= -24.000:  SGD step =   2.4000 | RMSProp step =   0.3162</span>
+<span class="line">  g=  -0.024:  SGD step =   0.0024 | RMSProp step =   0.3162</span>
+</div>
+<p>Look at the right column: <span class="key">identical steps for gradients 1000× apart.</span> Trace the big one by hand: v = 0.9·0 + 0.1·(−24)² = 57.6; √v = 7.589; step = 0.1·24/7.589 = 0.3162. The tiny one: v = 0.1·(0.024)² → √v = 0.00759 → same 0.3162. Each parameter is divided by its own recent scale, so the scale cancels — direction survives, magnitude is normalized. Page 0's wish, delivered.</p>
+</div>
+
+<div class="card orange">
+<h3>But squint at that number: 0.3162 ≠ lr = 0.1</h3>
+<p>The wish said "move about lr." We got 3.16× lr. Why: on the very first step, v = <span class="key">0.1</span>·g² — the EMA has only collected 10% of one sample, so it <span class="key">underestimates</span> the typical g² by 10×, and √v underestimates by √10 ≈ 3.16 — inflating the step by exactly that. A freshly-initialized EMA lies small; dividing by a lie-small number means stepping too big, right at the start of training when weights are random and caution matters most.</p>
+<p><span class="key">Remember 0.3162.</span> Fixing precisely this number — by explicitly correcting the young EMA's underestimate — is one of the two things Adam adds in the next chapter.</p>
+<details><summary>Refresher: why divide by the SQUARE ROOT of v, not v itself?</summary>
+<p style="padding:8px 4px">Units. v averages <span class="inline">g²</span>, so its natural scale is (gradient)² — for g ≈ 24, v ≈ 576. Divide g by v and you'd get 24/576 = 1/24: the step would <em>shrink</em> for big gradients and <em>blow up</em> for tiny ones far too aggressively (1000× spread becomes 1000× the other way). Take the root first and √v ≈ |g|, so <span class="inline">g/√v ≈ ±1</span> — a clean, dimensionless "which way, in units of my own typical size." Then lr alone sets the distance. Rule of thumb: <span class="key">anything that averages squares must be un-squared before it meets the gradient.</span></p></details>
+<details><summary>Refresher: what is ε actually for, and why 1e-8?</summary>
+<p style="padding:8px 4px">Pure crash insurance: a parameter whose gradients have all been ~0 has v ≈ 0, and <span class="inline">g/√v</span> would be 0/0 or a huge number from float dust. Adding ε ≈ 1e-8 to the denominator caps the amplification at about 10⁸ — irrelevant whenever gradients are healthy (√v ≫ ε), decisive when they're not. It's a tunable in torch (<span class="inline">eps=</span>) and occasionally matters for real: mixed-precision training sometimes raises it (e.g. 1e-6) because float16 gradient noise makes tiny-v estimates untrustworthy. If you ever see a loss spike traced to one strange parameter group, checking ε is a legitimate move, not superstition.</p></details>
+</div>
+<button class="nx" onclick="go(3)">Next: two memories, one map</button>
+</div>
+
+<!-- PAGE 3 -->
+<div class="page" data-t="3. The map">
+<h2>Two memories now exist — put them on one map</h2>
+
+<div class="card blue">
+<h3>Numerator memory vs denominator memory</h3>
+<table>
+<tr><th></th><th>Momentum (ch. 2)</th><th>RMSProp (this chapter)</th></tr>
+<tr><td>remembers</td><td>the gradients themselves (with sign)</td><td>the gradients' <em>squares</em> (size only)</td></tr>
+<tr><td>lives in the update as</td><td>the <span class="key">numerator</span> — what direction, how hard</td><td>the <span class="key">denominator</span> — the per-parameter yardstick</td></tr>
+<tr><td>fixes</td><td>zigzag &amp; noise over <em>time</em>; starved slow directions</td><td>scale spread across <em>parameters</em></td></tr>
+<tr><td>character</td><td>a ball: bold, can overshoot</td><td>an equalizer: calm, scale-blind</td></tr>
+</table>
+<p>They are not rivals — they answer different questions ("<em>which way is the trend?</em>" vs "<em>how big is a normal step for this particular weight?</em>") and they compose naturally: keep an EMA of gradients for the numerator, an EMA of squared gradients for the denominator, divide. That composition — plus one honesty patch for young EMAs (your 0.3162) — has a name, and it's the default optimizer of the deep-learning era.</p>
+</div>
+
+<div class="card purple">
+<h3>Carry forward</h3>
+<ul>
+<li>The wish: <span class="key">every parameter moves ~lr; its gradient picks direction, not distance.</span></li>
+<li>AdaGrad grants it by dividing by √(sum of g²) — but the infinite memory makes lr decay to zero on a schedule set by time, not progress.</li>
+<li>RMSProp swaps in an EMA: divide by the <span class="key">recent</span> RMS gradient. Equalizes 1000× scale spreads (real: both steps 0.3162).</li>
+<li>The loose thread: a young EMA underestimates → first steps are ~3.16× too big. Carry the number 0.3162 into the next chapter.</li>
+</ul>
+</div>
+<a class="nx" href="4_adam.html">Chapter 4: Adam — assembled, traced, verified →</a>
+</div>
+
+<script>
+const pages=document.querySelectorAll('.page'),nav=document.getElementById('nav');
+pages.forEach((p,i)=>{
+  const b=document.createElement('button');
+  b.textContent=p.dataset.t;
+  b.onclick=()=>go(i);
+  if(i===0)b.classList.add('on');
+  nav.appendChild(b);
+});
+function go(n){
+  pages.forEach((p,i)=>p.classList.toggle('on',i===n));
+  nav.querySelectorAll('button').forEach((b,i)=>{
+    b.classList.remove('on');
+    if(i<n)b.classList.add('done');
+    else b.classList.remove('done');
+    if(i===n)b.classList.add('on');
+  });
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+</script>
+</body>
+</html>
