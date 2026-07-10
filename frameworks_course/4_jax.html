@@ -142,21 +142,57 @@ details .card{margin-top:10px}
 <div class="math">
 <span class="line"><span class="kw">@jax.jit</span></span>
 <span class="line"><span class="kw">def</span> <span class="fn">f</span>(x):</span>
-<span class="line">    <span class="fn">print</span>(<span class="val">"  [python print] tracing, x ="</span>, x)</span>
+<span class="line">    <span class="fn">print</span>(<span class="val">"  (2) inside f — tracing, x ="</span>, x)   <span class="cmt"># OUR print, planted as a flashlight</span></span>
 <span class="line">    <span class="kw">return</span> x * <span class="val">2.0</span></span>
-<span class="line"><span class="fn">print</span>(<span class="val">"call 1:"</span>, f(jnp.float32(<span class="val">3.0</span>)))</span>
-<span class="line"><span class="fn">print</span>(<span class="val">"call 2:"</span>, f(jnp.float32(<span class="val">4.0</span>)))</span>
+<span class="line"></span>
+<span class="line"><span class="fn">print</span>(<span class="val">"(1) about to make call 1"</span>)</span>
+<span class="line">result = f(jnp.float32(<span class="val">3.0</span>))</span>
+<span class="line"><span class="fn">print</span>(<span class="val">"(3) call 1 returned:"</span>, result)</span>
+<span class="line">result = f(jnp.float32(<span class="val">4.0</span>))</span>
+<span class="line"><span class="fn">print</span>(<span class="val">"(4) call 2 returned:"</span>, result)</span>
 </div>
 <div class="math out"><span class="outlabel">output — real run</span>
-<span class="line">  [python print] tracing, x = JitTracer(float32[])</span>
-<span class="line">call 1: 6.0</span>
-<span class="line">call 2: 8.0</span>
+<span class="line">(1) about to make call 1</span>
+<span class="line">  (2) inside f — tracing, x = JitTracer(float32[])</span>
+<span class="line">(3) call 1 returned: 6.0</span>
+<span class="line">(4) call 2 returned: 8.0</span>
 </div>
-<p>Read that first line slowly. The print fired, but <span class="inline">x</span> was not 3.0 — it was <span class="inline">JitTracer(float32[])</span>, an object that says only "I am <em>some</em> float32 scalar" (<span class="inline">[]</span> means no dimensions — a single number). Your function ran once with this stand-in. This recording run is called <span class="key">tracing</span> — like tracing a drawing through paper: JAX follows your function's pen strokes without caring about the specific picture.</p>
-<p>Now read the last two output lines with that in mind. <span class="inline">call 1: 6.0</span> — that 6.0 did <em>not</em> come from your function body (it never saw a real number); it came from the <span class="key">compiled recording, run with your real 3.0</span> immediately after tracing finished. <span class="inline">call 2: 8.0</span> — this time nothing of yours ran at all: no print, because Python was skipped entirely. So the standing arrangement is: <span class="key">your Python function body runs exactly once, on the first call; every call after that goes straight to the compiled version.</span></p>
-<details><summary>Refresher: wait — if x was fake, where did call 1's answer 6.0 come from?</summary>
-<p style="padding:8px 4px">Because the first call does <span class="key">both jobs, back to back</span>. Timeline of <span class="inline">f(3.0)</span>, call 1: <span class="key">(1)</span> your Python runs once with the fake → produces the recipe; <span class="key">(2)</span> XLA compiles the recipe; <span class="key">(3)</span> the compiled code runs <em>with your real 3.0</em> → 6.0 comes out of step 3, not from your Python. Call 2 skips straight to step 3 with 4.0. So the real numbers never meet your Python — they only ever meet the compiled recipe.</p>
+<p>The prints are numbered so the order can't lie to you. Read the four lines top to bottom:</p>
+<table>
+<tr><th>Line</th><th>When it printed</th><th>What it proves</th></tr>
+<tr><td><span class="inline">(1)</span></td><td>before any call</td><td>note what's <em>missing</em> above it: no tracing line. Writing <span class="inline">@jax.jit</span> did <span class="key">nothing</span> — tracing has not happened yet at definition time</td></tr>
+<tr><td><span class="inline">(2)</span></td><td><span class="key">during call 1</span> — after (1), before (3)</td><td>your function body is running — once, now, with the stand-in <span class="inline">JitTracer(float32[])</span> instead of 3.0. This run IS the tracing. It sits between (1) and (3) because your body must finish before call 1 can return</td></tr>
+<tr><td><span class="inline">(3)</span> <span class="inline">6.0</span></td><td>end of call 1</td><td>the answer was computed <em>after</em> tracing, by the freshly-compiled recording running with your real 3.0</td></tr>
+<tr><td><span class="inline">(4)</span> <span class="inline">8.0</span></td><td>call 2</td><td>no (2)-line between (3) and (4): <span class="key">your body never ran again</span> — the compiled version answered directly</td></tr>
+</table>
+<p><span class="inline">JitTracer(float32[])</span> reads as "I am <em>some</em> float32 scalar" (<span class="inline">[]</span> = no dimensions); the recording run is called <span class="key">tracing</span> — like tracing a drawing through paper: JAX follows your function's pen strokes without caring about the specific picture.</p>
+<p>And one thing to be completely clear about: <span class="key">JAX itself prints nothing during tracing.</span> Line (2) exists only because <em>we</em> planted a print inside <span class="inline">f</span> to catch the tracing run in the act. Remove it, and the same machinery runs in silence:</p>
+<div class="math">
+<span class="line"><span class="kw">@jax.jit</span></span>
+<span class="line"><span class="kw">def</span> <span class="fn">f2</span>(x):</span>
+<span class="line">    <span class="kw">return</span> x * <span class="val">2.0</span>          <span class="cmt"># identical, minus the flashlight</span></span>
+<span class="line"><span class="fn">print</span>(<span class="val">"call 1 returned:"</span>, f2(jnp.float32(<span class="val">3.0</span>)))</span>
+<span class="line"><span class="fn">print</span>(<span class="val">"call 2 returned:"</span>, f2(jnp.float32(<span class="val">4.0</span>)))</span>
+</div>
+<div class="math out"><span class="outlabel">output — real run</span>
+<span class="line">call 1 returned: 6.0</span>
+<span class="line">call 2 returned: 8.0</span>
+</div>
+<p>Tracing, compiling, caching — all of it still happened during call 1, invisibly. So the standing arrangement is: <span class="key">your Python function body runs exactly once, inside the first call; every call after that goes straight to the compiled version.</span></p>
+<details><summary>Refresher: what happens inside call 1, sub-step by sub-step?</summary>
+<p style="padding:8px 4px">The first call does three jobs, back to back — all of them between output lines (1) and (3): <span class="key">(a)</span> your Python body runs once with the fake → produces the recipe (this is when line (2) printed); <span class="key">(b)</span> XLA compiles the recipe; <span class="key">(c)</span> the compiled code runs <em>with your real 3.0</em> → 6.0. The answer comes out of (c), never from your Python. Call 2 skips straight to (c) with 4.0. The real numbers never meet your Python — they only ever meet the compiled recipe.</p>
 <p style="padding:0 4px 8px">Where does the compiled recipe live? In an in-memory cache keyed by (function, shapes, dtypes) — restart Python and everything recompiles on first use. (For huge models there's an optional on-disk "compilation cache" so restarts don't pay the minutes again.)</p></details>
+<details><summary>Refresher: so tracing happens at the FIRST CALL — not when I write @jax.jit?</summary>
+<p style="padding:8px 4px">Correct, and the demo proves it: line (1) printed with <span class="key">no tracing line above it</span>, so decorating <span class="inline">f</span> traced nothing. <span class="inline">@jax.jit</span> only wraps the function ("when someone calls this, do the trace-compile-run routine"). It has to be lazy: tracing needs to know the argument's <em>shape and dtype</em> — <span class="inline">float32[]</span> went into the tracer — and shapes only exist once a real call arrives. Corollary (page 2): a call with a <em>new</em> shape triggers a fresh tracing run, so line (2)-style prints fire once per shape, not once per function.</p></details>
+<details><summary>Refresher: cheat sheet — which calls run my Python, and which don't?</summary>
+<table style="margin:8px 4px">
+<tr><th>Event</th><th>Does your function body run?</th></tr>
+<tr><td>writing <span class="inline">@jax.jit</span> over the def</td><td>no — nothing happens yet</td></tr>
+<tr><td>first call (a given shape/dtype)</td><td><span class="key">yes, once</span> — with tracers (this is tracing; your prints fire here)</td></tr>
+<tr><td>every later call, same shapes</td><td>no — compiled code only</td></tr>
+<tr><td>first call with a NEW shape/dtype</td><td>yes, once more — a new recipe is needed</td></tr>
+<tr><td><span class="inline">jax.make_jaxpr(f)(…)</span></td><td>yes, once — trace only; nothing compiled or executed after (next step)</td></tr>
+</table></details>
 </div>
 
 <div class="card blue">
@@ -176,6 +212,21 @@ details .card{margin-top:10px}
 <span class="line">    f:f32[] = integer_pow[y=2] e</span>
 <span class="line">  in (f,) }</span>
 </div>
+<details><summary>Refresher: does make_jaxpr also RUN my function, like jit's first call did?</summary>
+<p style="padding:8px 4px">Yes — the recording step is the same: your function body executes once, with a tracer standing in for each argument. Proof with the flashlight trick — a print inside the function fires during <span class="inline">make_jaxpr</span> too:</p>
+<div class="math" style="margin:8px 4px">
+<span class="line"><span class="kw">def</span> <span class="fn">f3</span>(x):</span>
+<span class="line">    <span class="fn">print</span>(<span class="val">"  inside f3 — tracing, x ="</span>, x)</span>
+<span class="line">    <span class="kw">return</span> x * <span class="val">2.0</span></span>
+<span class="line">jpr = jax.<span class="fn">make_jaxpr</span>(f3)(<span class="val">3.0</span>)</span>
+<span class="line"><span class="fn">print</span>(<span class="val">"returned object:"</span>); <span class="fn">print</span>(jpr)</span>
+</div>
+<div class="math out" style="margin:8px 4px"><span class="outlabel">output — real run</span>
+<span class="line">  inside f3 — tracing, x = JitTracer(~float32[])</span>
+<span class="line">returned object:</span>
+<span class="line">{ lambda ; a:f32[]. let b:f32[] = mul a 2.0:f32[] in (b,) }</span>
+</div>
+<p style="padding:0 4px 8px">Same tracer, same run-once — but then it <span class="key">stops</span>: no compiling, no executing, no 6.0. It just hands you the recording. (The <span class="inline">~</span> in <span class="inline">~float32[]</span> marks a "weak" type — we passed a plain Python <span class="inline">3.0</span> rather than a <span class="inline">jnp.float32</span>; harmless here.)</p></details>
 <p>Don't skim it — read it against your Python, line by line:</p>
 <table>
 <tr><th>Your Python</th><th>The jaxpr line</th><th>In words</th></tr>
@@ -246,7 +297,7 @@ details .card{margin-top:10px}
 <span class="line">  [tracing] for shape (3,)</span>
 <span class="line">  [tracing] for shape (4,)</span>
 </div>
-<p>Two calls with shape (3,) → one recording, reused (different <em>values</em>, same recipe — values aren't in the recipe!). Shape (4,) → recorded again. This is the #1 real-world JAX performance bug: data with ever-changing shapes silently recompiles forever. (TF retraced on new Python <em>values</em>; JAX retraces on new <em>shapes</em>. Same disease, different trigger.)</p>
+<p>The <span class="inline">[tracing]</span> lines are the flashlight again — our own print inside <span class="inline">g</span>, firing only when the body actually runs. Two calls with shape (3,) → one recording, reused (different <em>values</em>, same recipe — values aren't in the recipe!), which is why the second call printed nothing. Shape (4,) → recorded again. This is the #1 real-world JAX performance bug: data with ever-changing shapes silently recompiles forever. (TF retraced on new Python <em>values</em>; JAX retraces on new <em>shapes</em>. Same disease, different trigger.)</p>
 <details><summary>Refresher: if every new shape recompiles, how does anyone train on real data — sentences all have different lengths!</summary>
 <p style="padding:8px 4px">By making the shapes lie: <span class="key">pad</span> every sentence in a batch up to a fixed length (fill with a dummy token), and <span class="key">mask</span> so the padded positions can't affect the loss. Now every batch is, say, <span class="inline">(32, 512)</span> — one shape, one compile, forever. Codebases with widely varying lengths use a few <span class="key">buckets</span> (128 / 512 / 2048) and pad each example up to the nearest one: three compiles total instead of thousands. This isn't JAX-exotic — PyTorch code pads and masks too (that's half of what attention masks are for); JAX just punishes you immediately if you don't.</p></details>
 </div>
