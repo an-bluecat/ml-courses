@@ -166,19 +166,7 @@ details .card{margin-top:10px}
 <tr><td><span class="inline">(4)</span> <span class="inline">8.0</span></td><td>call 2</td><td>no (2)-line between (3) and (4): <span class="key">your body never ran again</span> — the compiled version answered directly</td></tr>
 </table>
 <p><span class="inline">JitTracer(float32[])</span> reads as "I am <em>some</em> float32 scalar" (<span class="inline">[]</span> = no dimensions); the recording run is called <span class="key">tracing</span> — like tracing a drawing through paper: JAX follows your function's pen strokes without caring about the specific picture.</p>
-<p>And one thing to be completely clear about: <span class="key">JAX itself prints nothing during tracing.</span> Line (2) exists only because <em>we</em> planted a print inside <span class="inline">f</span> to catch the tracing run in the act. Remove it, and the same machinery runs in silence:</p>
-<div class="math">
-<span class="line"><span class="kw">@jax.jit</span></span>
-<span class="line"><span class="kw">def</span> <span class="fn">f2</span>(x):</span>
-<span class="line">    <span class="kw">return</span> x * <span class="val">2.0</span>          <span class="cmt"># identical, minus the flashlight</span></span>
-<span class="line"><span class="fn">print</span>(<span class="val">"call 1 returned:"</span>, f2(jnp.float32(<span class="val">3.0</span>)))</span>
-<span class="line"><span class="fn">print</span>(<span class="val">"call 2 returned:"</span>, f2(jnp.float32(<span class="val">4.0</span>)))</span>
-</div>
-<div class="math out"><span class="outlabel">output — real run</span>
-<span class="line">call 1 returned: 6.0</span>
-<span class="line">call 2 returned: 8.0</span>
-</div>
-<p>Tracing, compiling, caching — all of it still happened during call 1, invisibly. So the standing arrangement is: <span class="key">your Python function body runs exactly once, inside the first call; every call after that goes straight to the compiled version.</span></p>
+<p>So the standing arrangement is: <span class="key">your Python function body runs exactly once, inside the first call; every call after that goes straight to the compiled version.</span></p>
 <details><summary>Refresher: what happens inside call 1, sub-step by sub-step?</summary>
 <p style="padding:8px 4px">The first call does three jobs, back to back — all of them between output lines (1) and (3): <span class="key">(a)</span> your Python body runs once with the fake → produces the recipe (this is when line (2) printed); <span class="key">(b)</span> XLA compiles the recipe; <span class="key">(c)</span> the compiled code runs <em>with your real 3.0</em> → 6.0. The answer comes out of (c), never from your Python. Call 2 skips straight to (c) with 4.0. The real numbers never meet your Python — they only ever meet the compiled recipe.</p>
 <p style="padding:0 4px 8px">Where does the compiled recipe live? In an in-memory cache keyed by (function, shapes, dtypes) — restart Python and everything recompiles on first use. (For huge models there's an optional on-disk "compilation cache" so restarts don't pay the minutes again.)</p></details>
@@ -227,6 +215,51 @@ details .card{margin-top:10px}
 <span class="line">        cache[key] = <span class="fn">compile</span>(recipe)</span>
 <span class="line">    <span class="kw">return</span> cache[key](x)              <span class="cmt"># hit → compiled binary; your def never entered</span></span>
 </div>
+<p>The same checklist as a picture — follow your call along the arrows:</p>
+<svg viewBox="0 0 760 300" style="width:100%;max-width:760px;display:block;margin:14px auto" font-family="'Segoe UI',system-ui,sans-serif" xmlns="http://www.w3.org/2000/svg">
+<defs>
+<marker id="wA" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#888"/></marker>
+<marker id="wG" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#4caf50"/></marker>
+<marker id="wO" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#ffb74d"/></marker>
+</defs>
+<!-- caller -->
+<rect x="16" y="58" width="118" height="40" rx="8" fill="#1a1a2e" stroke="#4fc3f7" stroke-width="1.2"/>
+<text x="75" y="83" text-anchor="middle" font-family="'Fira Code',Consolas,monospace" font-size="14" fill="#9cdcfe">f(4.0)</text>
+<text x="75" y="118" text-anchor="middle" font-size="11" fill="#888">your call</text>
+<!-- wrapper -->
+<rect x="170" y="14" width="440" height="264" rx="12" fill="rgba(206,147,216,0.05)" stroke="#ce93d8" stroke-width="1.5"/>
+<text x="390" y="40" text-anchor="middle" font-size="13" font-weight="600" fill="#ce93d8">PjitFunction wrapper — the name f points HERE now</text>
+<!-- A: cache check -->
+<rect x="192" y="58" width="190" height="40" rx="8" fill="#1a1a2e" stroke="#555"/>
+<text x="287" y="83" text-anchor="middle" font-family="'Fira Code',Consolas,monospace" font-size="12.5" fill="#e0e0e0">cache[(float32,[])] ?</text>
+<!-- B: compiled binary -->
+<rect x="428" y="58" width="160" height="40" rx="8" fill="rgba(76,175,80,0.08)" stroke="#4caf50"/>
+<text x="508" y="83" text-anchor="middle" font-size="13" fill="#a5d6a7">compiled binary</text>
+<!-- result -->
+<rect x="648" y="58" width="96" height="40" rx="8" fill="#0d1a12" stroke="#4caf50"/>
+<text x="696" y="83" text-anchor="middle" font-family="'Fira Code',Consolas,monospace" font-size="14" fill="#a5d6a7">8.0</text>
+<text x="696" y="118" text-anchor="middle" font-size="11" fill="#888">returned</text>
+<!-- C: your def -->
+<rect x="192" y="180" width="230" height="52" rx="8" fill="rgba(206,147,216,0.08)" stroke="#ce93d8"/>
+<text x="307" y="201" text-anchor="middle" font-size="13" font-weight="600" fill="#ce93d8">your def plain</text>
+<text x="307" y="219" text-anchor="middle" font-size="11" fill="#9aa0b5">runs once, with the tracer — print fires</text>
+<!-- D: compile -->
+<rect x="452" y="180" width="136" height="52" rx="8" fill="#1a1a2e" stroke="#555"/>
+<text x="520" y="201" text-anchor="middle" font-size="12.5" fill="#e0e0e0">XLA compiles</text>
+<text x="520" y="219" text-anchor="middle" font-size="12.5" fill="#e0e0e0">the recipe</text>
+<!-- arrows -->
+<line x1="134" y1="78" x2="186" y2="78" stroke="#888" stroke-width="1.5" marker-end="url(#wA)"/>
+<line x1="382" y1="78" x2="422" y2="78" stroke="#4caf50" stroke-width="1.5" marker-end="url(#wG)"/>
+<text x="402" y="68" text-anchor="middle" font-size="11" fill="#4caf50">hit</text>
+<line x1="588" y1="78" x2="642" y2="78" stroke="#4caf50" stroke-width="1.5" marker-end="url(#wG)"/>
+<line x1="287" y1="98" x2="287" y2="174" stroke="#ffb74d" stroke-width="1.5" stroke-dasharray="5,4" marker-end="url(#wO)"/>
+<text x="297" y="140" font-size="11" fill="#ffb74d">miss — 1st call only</text>
+<line x1="422" y1="206" x2="446" y2="206" stroke="#888" stroke-width="1.5" marker-end="url(#wA)"/>
+<line x1="520" y1="176" x2="520" y2="104" stroke="#4caf50" stroke-width="1.5" stroke-dasharray="5,4" marker-end="url(#wG)"/>
+<text x="512" y="140" text-anchor="end" font-size="11" fill="#4caf50">stored in cache</text>
+<!-- footnote -->
+<text x="390" y="260" text-anchor="middle" font-size="11.5" fill="#9aa0b5">your def sits INSIDE the wrapper — a resource, not the call target</text>
+</svg>
 <p>Now watch all of it at once — the original is a perfectly normal function that prints on <em>every</em> call (with real values — no tracer, because direct calls don't trace!), while the wrapper enters it exactly once:</p>
 <div class="math">
 <span class="line">plain(jnp.float32(<span class="val">3.0</span>)); plain(jnp.float32(<span class="val">4.0</span>))   <span class="cmt"># call the original directly</span></span>
@@ -317,6 +350,38 @@ details .card{margin-top:10px}
 <span class="line">first jit  :   14.41 ms           (paid once: tracing + compiling)</span>
 <span class="line">jitted     :    0.47 ms/call      (ONE fused pass: 4.2x)</span>
 </div>
+<p>The whole arrangement as one picture — note which lane your Python is in, and which lane it isn't:</p>
+<svg viewBox="0 0 760 240" style="width:100%;max-width:760px;display:block;margin:14px auto" font-family="'Segoe UI',system-ui,sans-serif" xmlns="http://www.w3.org/2000/svg">
+<defs>
+<marker id="pA" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#888"/></marker>
+<marker id="pG" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#4caf50"/></marker>
+</defs>
+<!-- lane 1 -->
+<text x="16" y="30" font-size="12" font-weight="600" fill="#ffb74d">THE FIRST CALL — happens once</text>
+<rect x="16" y="44" width="150" height="44" rx="8" fill="rgba(206,147,216,0.06)" stroke="#ce93d8"/>
+<text x="91" y="71" text-anchor="middle" font-size="13" fill="#ce93d8">your Python def</text>
+<line x1="166" y1="66" x2="270" y2="66" stroke="#888" stroke-width="1.5" marker-end="url(#pA)"/>
+<text x="221" y="56" text-anchor="middle" font-size="10.5" fill="#9aa0b5">runs once (tracing)</text>
+<rect x="276" y="44" width="180" height="44" rx="8" fill="rgba(79,195,247,0.06)" stroke="#4fc3f7"/>
+<text x="366" y="71" text-anchor="middle" font-size="13" fill="#4fc3f7">jaxpr — the recipe</text>
+<line x1="456" y1="66" x2="560" y2="66" stroke="#888" stroke-width="1.5" marker-end="url(#pA)"/>
+<text x="511" y="56" text-anchor="middle" font-size="10.5" fill="#9aa0b5">XLA compiles it</text>
+<rect x="566" y="44" width="178" height="44" rx="8" fill="rgba(76,175,80,0.07)" stroke="#4caf50"/>
+<text x="655" y="71" text-anchor="middle" font-size="13" fill="#a5d6a7">compiled kernel</text>
+<!-- connector -->
+<polyline points="655,88 655,130 366,130 366,156" fill="none" stroke="#4caf50" stroke-width="1.5" stroke-dasharray="5,4" marker-end="url(#pG)"/>
+<text x="510" y="122" text-anchor="middle" font-size="11" fill="#4caf50">kept in the cache — reused forever</text>
+<!-- lane 2 -->
+<text x="16" y="148" font-size="12" font-weight="600" fill="#4caf50">EVERY CALL AFTER — no Python in sight</text>
+<rect x="16" y="162" width="180" height="44" rx="8" fill="#1a1a2e" stroke="#555"/>
+<text x="106" y="189" text-anchor="middle" font-family="'Fira Code',Consolas,monospace" font-size="12.5" fill="#e0e0e0">real 3.0, 4.0, 5.0 …</text>
+<line x1="196" y1="184" x2="270" y2="184" stroke="#4caf50" stroke-width="1.5" marker-end="url(#pG)"/>
+<rect x="276" y="162" width="180" height="44" rx="8" fill="rgba(76,175,80,0.07)" stroke="#4caf50"/>
+<text x="366" y="189" text-anchor="middle" font-size="13" fill="#a5d6a7">the compiled kernel</text>
+<line x1="456" y1="184" x2="560" y2="184" stroke="#4caf50" stroke-width="1.5" marker-end="url(#pG)"/>
+<rect x="566" y="162" width="178" height="44" rx="8" fill="#0d1a12" stroke="#4caf50"/>
+<text x="655" y="189" text-anchor="middle" font-family="'Fira Code',Consolas,monospace" font-size="12.5" fill="#a5d6a7">6.0, 8.0, 10.0 …</text>
+</svg>
 <p>So the whole trick in one sentence: <span class="key">run the Python once with fakes → get the recipe (jaxpr) → compile the recipe (XLA) → replay the fast version forever.</span> That's JAX. Everything else in this chapter is just consequences.</p>
 <details><summary>Refresher: what is XLA actually — who wrote it, and what does it run on?</summary>
 <p style="padding:8px 4px"><span class="key">XLA</span> ("Accelerated Linear Algebra") is a compiler Google built in 2017, originally so TensorFlow graphs could run on TPUs. "Compiler" in the same sense as gcc/clang: read a whole program, optimize it, emit machine code — except its input language is array recipes (jaxprs, TF graphs) instead of C.</p>
@@ -506,6 +571,110 @@ details .card{margin-top:10px}
 <span class="line">normal(k2)   : [-2.4424558 -2.0356805  0.20554423]</span>
 </div>
 <p>Annoying for the first hour, then it clicks: your run is <span class="key">reproducible by construction</span> (a key pins the numbers, no matter what order things execute in, or on how many devices), and the classic torch bug of two dataloader workers accidentally sharing a seed becomes impossible to write.</p>
+</div>
+
+<div class="card green">
+<h3>Put it all together: train a line, save it, serve it</h3>
+<p>Everything on this page in motion — a linear model <span class="inline">y = w·x + b</span> fitted to four points that lie on <span class="inline">y = 2x + 1</span>, so we know the right answer in advance: w should land on 2, b on 1. Watch what the "model" is: <span class="key">two small functions and a dict.</span> Nothing else exists.</p>
+<svg viewBox="0 0 760 150" style="width:100%;max-width:760px;display:block;margin:14px auto" font-family="'Segoe UI',system-ui,sans-serif" xmlns="http://www.w3.org/2000/svg">
+<defs>
+<marker id="tA" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#888"/></marker>
+</defs>
+<rect x="16" y="52" width="150" height="44" rx="8" fill="rgba(206,147,216,0.08)" stroke="#ce93d8"/>
+<text x="91" y="79" text-anchor="middle" font-family="'Fira Code',Consolas,monospace" font-size="12.5" fill="#ce93d8">params {w, b}</text>
+<rect x="250" y="52" width="160" height="44" rx="8" fill="rgba(79,195,247,0.06)" stroke="#4fc3f7"/>
+<text x="330" y="79" text-anchor="middle" font-family="'Fira Code',Consolas,monospace" font-size="12.5" fill="#4fc3f7">train_step (jit)</text>
+<line x1="166" y1="64" x2="244" y2="64" stroke="#888" stroke-width="1.5" marker-end="url(#tA)"/>
+<line x1="244" y1="84" x2="172" y2="84" stroke="#888" stroke-width="1.5" marker-end="url(#tA)"/>
+<text x="205" y="112" text-anchor="middle" font-size="10.5" fill="#9aa0b5">returns a NEW dict — ×101</text>
+<line x1="410" y1="74" x2="464" y2="74" stroke="#888" stroke-width="1.5" marker-end="url(#tA)"/>
+<text x="437" y="46" text-anchor="middle" font-family="'Fira Code',Consolas,monospace" font-size="10.5" fill="#9aa0b5">pickle.dump</text>
+<rect x="470" y="52" width="120" height="44" rx="8" fill="rgba(255,152,0,0.06)" stroke="#ff9800"/>
+<text x="530" y="79" text-anchor="middle" font-family="'Fira Code',Consolas,monospace" font-size="13" fill="#ffb74d">model.pkl</text>
+<line x1="590" y1="74" x2="624" y2="74" stroke="#888" stroke-width="1.5" marker-end="url(#tA)"/>
+<rect x="630" y="42" width="114" height="64" rx="8" fill="rgba(76,175,80,0.07)" stroke="#4caf50"/>
+<text x="687" y="62" text-anchor="middle" font-size="12" fill="#a5d6a7">server:</text>
+<text x="687" y="80" text-anchor="middle" font-family="'Fira Code',Consolas,monospace" font-size="10" fill="#e0e0e0">predict(params,x)</text>
+<text x="687" y="96" text-anchor="middle" font-family="'Fira Code',Consolas,monospace" font-size="10" fill="#a5d6a7">→ 21.000</text>
+<text x="213" y="140" text-anchor="middle" font-size="11" fill="#888">training — one process</text>
+<text x="607" y="140" text-anchor="middle" font-size="11" fill="#888">serving — another process, later</text>
+</svg>
+<div class="math">
+<span class="line"><span class="cmt"># train.py — fit a line to four points, save the model</span></span>
+<span class="line"><span class="kw">import</span> jax, jax.numpy <span class="kw">as</span> jnp, pickle</span>
+<span class="line"></span>
+<span class="line"><span class="kw">def</span> <span class="fn">predict</span>(params, x):                      <span class="cmt"># the model: y = w*x + b</span></span>
+<span class="line">    <span class="kw">return</span> params[<span class="val">"w"</span>] * x + params[<span class="val">"b"</span>]</span>
+<span class="line"></span>
+<span class="line"><span class="kw">def</span> <span class="fn">loss_fn</span>(params, x, t):</span>
+<span class="line">    <span class="kw">return</span> jnp.<span class="fn">mean</span>((<span class="fn">predict</span>(params, x) - t) ** <span class="val">2</span>)</span>
+<span class="line"></span>
+<span class="line">xs = jnp.<span class="fn">array</span>([<span class="val">0.0</span>, <span class="val">1.0</span>, <span class="val">2.0</span>, <span class="val">3.0</span>])         <span class="cmt"># four points that lie on y = 2x + 1</span></span>
+<span class="line">ts = jnp.<span class="fn">array</span>([<span class="val">1.0</span>, <span class="val">3.0</span>, <span class="val">5.0</span>, <span class="val">7.0</span>])</span>
+<span class="line"></span>
+<span class="line"><span class="kw">@jax.jit</span></span>
+<span class="line"><span class="kw">def</span> <span class="fn">train_step</span>(params, x, t):</span>
+<span class="line">    grads = jax.<span class="fn">grad</span>(loss_fn)(params, x, t)</span>
+<span class="line">    <span class="kw">return</span> jax.tree.<span class="fn">map</span>(<span class="kw">lambda</span> p, g: p - <span class="val">0.1</span> * g, params, grads)</span>
+<span class="line"></span>
+<span class="line">params = {<span class="val">"w"</span>: jnp.<span class="fn">float32</span>(<span class="val">0.0</span>), <span class="val">"b"</span>: jnp.<span class="fn">float32</span>(<span class="val">0.0</span>)}</span>
+<span class="line"><span class="kw">for</span> step <span class="kw">in</span> <span class="fn">range</span>(<span class="val">101</span>):</span>
+<span class="line">    <span class="kw">if</span> step <span class="kw">in</span> (<span class="val">0</span>, <span class="val">1</span>, <span class="val">5</span>, <span class="val">20</span>, <span class="val">100</span>):</span>
+<span class="line">        <span class="fn">print</span>(<span class="val">f"step {step:3d}   loss {loss_fn(params, xs, ts):8.5f}   w {params['w']:6.3f}   b {params['b']:6.3f}"</span>)</span>
+<span class="line">    params = <span class="fn">train_step</span>(params, xs, ts)</span>
+<span class="line"></span>
+<span class="line"><span class="kw">with</span> <span class="fn">open</span>(<span class="val">"model.pkl"</span>, <span class="val">"wb"</span>) <span class="kw">as</span> f:</span>
+<span class="line">    pickle.<span class="fn">dump</span>(params, f)</span>
+<span class="line"><span class="fn">print</span>(<span class="val">"saved model.pkl — the ENTIRE model:"</span>, jax.tree.<span class="fn">map</span>(<span class="kw">lambda</span> p: <span class="fn">round</span>(<span class="fn">float</span>(p), <span class="val">3</span>), params))</span>
+</div>
+<div class="math out"><span class="outlabel">output — real run</span>
+<span class="line">step   0   loss 21.00000   w  0.000   b  0.000</span>
+<span class="line">step   1   loss  0.53500   w  1.700   b  0.800</span>
+<span class="line">step   5   loss  0.00053   w  2.018   b  0.962</span>
+<span class="line">step  20   loss  0.00008   w  2.007   b  0.985</span>
+<span class="line">step 100   loss  0.00000   w  2.000   b  1.000</span>
+<span class="line">saved model.pkl — the ENTIRE model: {'b': 1.0, 'w': 2.0}</span>
+</div>
+<p>Read the w column: one SGD step takes it from 0 to 1.700 (the gradient is huge when the loss is 21), step 5 has already <em>overshot</em> to 2.018, and the tail of training is tiny corrections back down to exactly 2.000. And note the shape of the loop — <span class="inline">params = train_step(params, ...)</span> — a value bouncing between your hand and a pure function, exactly as the optimizer card promised.</p>
+<p>Now the part courses usually skip: <span class="key">serving.</span> A different process, maybe a different machine, days later. What does it need? The dict, and the same two-line <span class="inline">predict</span>:</p>
+<div class="math">
+<span class="line"><span class="cmt"># serve.py — a different process, later: load the dict, answer requests</span></span>
+<span class="line"><span class="kw">import</span> jax, jax.numpy <span class="kw">as</span> jnp, pickle</span>
+<span class="line"></span>
+<span class="line"><span class="kw">def</span> <span class="fn">predict</span>(params, x):                      <span class="cmt"># same 2 lines as training — that's the whole model code</span></span>
+<span class="line">    <span class="kw">return</span> params[<span class="val">"w"</span>] * x + params[<span class="val">"b"</span>]</span>
+<span class="line"></span>
+<span class="line"><span class="kw">with</span> <span class="fn">open</span>(<span class="val">"model.pkl"</span>, <span class="val">"rb"</span>) <span class="kw">as</span> f:</span>
+<span class="line">    params = pickle.<span class="fn">load</span>(f)</span>
+<span class="line"><span class="fn">print</span>(<span class="val">"loaded:"</span>, jax.tree.<span class="fn">map</span>(<span class="kw">lambda</span> p: <span class="fn">round</span>(<span class="fn">float</span>(p), <span class="val">3</span>), params))</span>
+<span class="line"></span>
+<span class="line">serve = jax.<span class="fn">jit</span>(predict)                     <span class="cmt"># compile the forward pass once</span></span>
+<span class="line"><span class="kw">for</span> x <span class="kw">in</span> [<span class="val">10.0</span>, <span class="val">-2.0</span>, <span class="val">0.5</span>]:</span>
+<span class="line">    <span class="fn">print</span>(<span class="val">f"request x = {x:5}   -&gt;   prediction {serve(params, jnp.float32(x)):.3f}"</span>)</span>
+</div>
+<div class="math out"><span class="outlabel">output — real run (a separate python process)</span>
+<span class="line">loaded: {'b': 1.0, 'w': 2.0}</span>
+<span class="line">request x =  10.0   -&gt;   prediction 21.000</span>
+<span class="line">request x =  -2.0   -&gt;   prediction -3.000</span>
+<span class="line">request x =   0.5   -&gt;   prediction 2.000</span>
+</div>
+<p>Checkpointing was <span class="key">"save the dict."</span> Deployment was <span class="key">"ship the dict."</span> No class to reconstruct, no <span class="inline">load_state_dict</span> to match up against a module tree — because the model never was an object, just numbers plus a pure function. (Real deployments graduate from pickle to <span class="inline">jax.export</span> / checkpoint libraries so serving needs no Python at all — Chapter 7 — but the shape of the idea stays exactly this.)</p>
+<details><summary>Refresher: 101 calls to train_step — how many times did my Python body actually run?</summary>
+<p style="padding:8px 4px">Once. Page 1's cheat sheet, now with the receipts — add a counter to train.py's <span class="inline">train_step</span>:</p>
+<div class="math" style="margin:8px 4px">
+<span class="line">count = <span class="val">0</span></span>
+<span class="line"><span class="kw">@jax.jit</span></span>
+<span class="line"><span class="kw">def</span> <span class="fn">train_step</span>(params, x, t):</span>
+<span class="line">    <span class="kw">global</span> count; count += <span class="val">1</span>                 <span class="cmt"># ← new line; rest identical to above</span></span>
+<span class="line">    grads = jax.<span class="fn">grad</span>(loss_fn)(params, x, t)</span>
+<span class="line">    <span class="kw">return</span> jax.tree.<span class="fn">map</span>(<span class="kw">lambda</span> p, g: p - <span class="val">0.1</span> * g, params, grads)</span>
+<span class="line"><span class="cmt"># ... the same 101-iteration loop as train.py, then:</span></span>
+<span class="line"><span class="fn">print</span>(<span class="val">"train_step called 101 times; body entered"</span>, count, <span class="val">"time(s)"</span>)</span>
+</div>
+<div class="math out" style="margin:8px 4px"><span class="outlabel">output — real run</span>
+<span class="line">train_step called 101 times; body entered 1 time(s)</span>
+</div>
+<p style="padding:0 4px 8px">Every call carries the same key — params are two <span class="inline">float32[]</span> scalars, xs and ts are <span class="inline">float32[4]</span> — so call 0 traces and compiles, and calls 1–100 are pure cache hits running the compiled step. (The <span class="inline">loss_fn(...)</span> inside the logging print is <em>not</em> jitted — it runs eagerly, op by op, five times. Fine for logging; the hot path is the compiled one.)</p></details>
 </div>
 <button class="nx" onclick="go(5)">Next: who uses it &amp; the honest verdict</button>
 </div>
