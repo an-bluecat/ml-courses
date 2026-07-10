@@ -187,12 +187,64 @@ details .card{margin-top:10px}
 <details><summary>Refresher: cheat sheet — which calls run my Python, and which don't?</summary>
 <table style="margin:8px 4px">
 <tr><th>Event</th><th>Does your function body run?</th></tr>
-<tr><td>writing <span class="inline">@jax.jit</span> over the def</td><td>no — nothing happens yet</td></tr>
+<tr><td>writing <span class="inline">@jax.jit</span> over the def</td><td>no — it only rebinds the name to a wrapper (Step 2½)</td></tr>
 <tr><td>first call (a given shape/dtype)</td><td><span class="key">yes, once</span> — with tracers (this is tracing; your prints fire here)</td></tr>
 <tr><td>every later call, same shapes</td><td>no — compiled code only</td></tr>
 <tr><td>first call with a NEW shape/dtype</td><td>yes, once more — a new recipe is needed</td></tr>
 <tr><td><span class="inline">jax.make_jaxpr(f)(…)</span></td><td>yes, once — trace only; nothing compiled or executed after (next step)</td></tr>
 </table></details>
+</div>
+
+<div class="card red">
+<h3>Step 2½: "but calling f MUST run its body — the print is right there!" …right?</h3>
+<p>Hold that objection — it's completely reasonable: a Python function call always executes the body of the function being called. Every time. No exceptions. So how can <span class="inline">f(4.0)</span> skip the print?</p>
+<p>Because <span class="key">the thing named <span class="inline">f</span> is no longer your function.</span> The decorator syntax is shorthand for a rebinding:</p>
+<div class="math">
+<span class="line"><span class="kw">@jax.jit</span>                    <span class="cmt"># this line means EXACTLY:</span></span>
+<span class="line"><span class="kw">def</span> <span class="fn">f</span>(x): ...                <span class="cmt">#   def f(x): ...</span></span>
+<span class="line">                            <span class="cmt">#   f = jax.jit(f)   ← the name f now points to a NEW object</span></span>
+</div>
+<p>Ask Python what the two objects are (using the undecorated form so both have names):</p>
+<div class="math">
+<span class="line"><span class="kw">def</span> <span class="fn">plain</span>(x):</span>
+<span class="line">    <span class="fn">print</span>(<span class="val">"  inside the body! x ="</span>, x)</span>
+<span class="line">    <span class="kw">return</span> x * <span class="val">2.0</span></span>
+<span class="line">fast = jax.<span class="fn">jit</span>(plain)       <span class="cmt"># what @jax.jit really does</span></span>
+<span class="line"><span class="fn">print</span>(<span class="val">"plain :"</span>, plain)</span>
+<span class="line"><span class="fn">print</span>(<span class="val">"fast  :"</span>, fast)</span>
+</div>
+<div class="math out"><span class="outlabel">output — real run</span>
+<span class="line">plain : &lt;function plain at 0x1053980e0&gt;</span>
+<span class="line">fast  : &lt;PjitFunction of &lt;function plain at 0x1053980e0&gt;&gt;</span>
+</div>
+<p>Read the second line: <span class="inline">fast</span> is a <span class="key">PjitFunction</span> — a wrapper object — and the repr even shows your original function stored <em>inside</em> it (same memory address, <span class="inline">0x1053980e0</span>). When you call <span class="inline">fast(4.0)</span>, the body that runs is <span class="key">the wrapper's body</span>, and the wrapper's body is a checklist:</p>
+<div class="math">
+<span class="line"><span class="cmt"># what the wrapper does on every call — the logic, as pseudo-code</span></span>
+<span class="line"><span class="kw">def</span> <span class="fn">wrapper</span>(x):</span>
+<span class="line">    key = (x.shape, x.dtype)</span>
+<span class="line">    <span class="kw">if</span> key <span class="kw">not in</span> cache:              <span class="cmt"># miss → the ONLY door into your def:</span></span>
+<span class="line">        recipe = <span class="fn">trace</span>(plain, x)      <span class="cmt">#   your body runs (your print fires)</span></span>
+<span class="line">        cache[key] = <span class="fn">compile</span>(recipe)</span>
+<span class="line">    <span class="kw">return</span> cache[key](x)              <span class="cmt"># hit → compiled binary; your def never entered</span></span>
+</div>
+<p>Now watch all of it at once — the original is a perfectly normal function that prints on <em>every</em> call (with real values — no tracer, because direct calls don't trace!), while the wrapper enters it exactly once:</p>
+<div class="math">
+<span class="line">plain(jnp.float32(<span class="val">3.0</span>)); plain(jnp.float32(<span class="val">4.0</span>))   <span class="cmt"># call the original directly</span></span>
+<span class="line"><span class="fn">print</span>(<span class="val">"fast(3.0) -&gt;"</span>, fast(jnp.float32(<span class="val">3.0</span>)))</span>
+<span class="line"><span class="fn">print</span>(<span class="val">"fast(4.0) -&gt;"</span>, fast(jnp.float32(<span class="val">4.0</span>)))</span>
+<span class="line">plain(jnp.float32(<span class="val">5.0</span>))                            <span class="cmt"># original: still normal, still untouched</span></span>
+</div>
+<div class="math out"><span class="outlabel">output — real run</span>
+<span class="line">  inside the body! x = 3.0</span>
+<span class="line">  inside the body! x = 4.0</span>
+<span class="line">  inside the body! x = JitTracer(float32[])</span>
+<span class="line">fast(3.0) -> 6.0</span>
+<span class="line">fast(4.0) -> 8.0</span>
+<span class="line">  inside the body! x = 5.0</span>
+</div>
+<p>So your instinct was right all along: <span class="key">every call runs a body — the wrapper's body.</span> Yours simply isn't on the call path anymore; it's a resource the wrapper consults once per new shape, to make a recipe.</p>
+<details><summary>Refresher: is this JAX magic? No — it's what every Python decorator is</summary>
+<p style="padding:8px 4px">Any <span class="inline">@decorator</span> line is sugar for <span class="inline">name = decorator(name)</span> — the decorator receives your function as an argument and may return <em>anything</em>, and whatever it returns is what the name points to afterwards. Most decorators return a lightweight wrapper that calls your function every time (logging, timing). Compiler decorators return a wrapper that <span class="key">avoids</span> calling it: <span class="inline">@torch.compile</span> (Chapter 3) puts a guard-checking wrapper in front of compiled graphs; <span class="inline">@tf.function</span> (Chapter 2) returns a tracing wrapper with a trace cache — the very machinery behind its "traces once" behavior you already saw. Three frameworks, one Python mechanism: <span class="key">the name stops meaning your code and starts meaning "my code, plus a plan for when to consult yours."</span></p></details>
 </div>
 
 <div class="card blue">
