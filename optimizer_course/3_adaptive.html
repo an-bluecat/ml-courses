@@ -135,6 +135,22 @@ details[open] summary{color:#4fc3f7;border-color:#4fc3f7}
 <h3>But squint at that number: 0.3162 ≠ lr = 0.1</h3>
 <p>The wish said "move about lr." We got 3.16× lr. Why: on the very first step, v = <span class="key">0.1</span>·g² — the EMA has only collected 10% of one sample, so it <span class="key">underestimates</span> the typical g² by 10×, and √v underestimates by √10 ≈ 3.16 — inflating the step by exactly that. A freshly-initialized EMA lies small; dividing by a lie-small number means stepping too big, right at the start of training when weights are random and caution matters most.</p>
 <p><span class="key">Remember 0.3162.</span> Fixing precisely this number — by explicitly correcting the young EMA's underestimate — is one of the two things Adam adds in the next chapter.</p>
+<p>The whole chapter is one picture — feed both optimizers the same constant gradient and just watch the effective step over time:</p>
+<svg viewBox="0 0 760 300" style="width:100%;max-width:760px;display:block;margin:14px auto" font-family="'Segoe UI',system-ui,sans-serif" xmlns="http://www.w3.org/2000/svg">
+<line x1="60" y1="260" x2="740" y2="260" stroke="#333"/>
+<line x1="60" y1="30" x2="60" y2="260" stroke="#333"/>
+<line x1="60" y1="197" x2="740" y2="197" stroke="#4caf50" stroke-dasharray="4,4" opacity="0.5"/>
+<text x="54" y="201" text-anchor="end" font-size="11" fill="#4caf50">lr=0.1</text>
+<polyline fill="none" stroke="#ef5350" stroke-width="2" points="60,197.1 72,215.6 83,223.7 95,228.6 106,231.9 118,234.3 129,236.2 141,237.8 152,239.0 164,240.1 175,241.0 187,241.9 198,242.6 210,243.2 221,243.8 233,244.3 244,244.8 256,245.2 267,245.6 279,245.9 291,246.3 302,246.6 314,246.9 325,247.2 337,247.4 348,247.7 360,247.9 371,248.1 383,248.3 394,248.5 406,248.7 417,248.9 429,249.1 440,249.2 452,249.4 463,249.5 475,249.7 486,249.8 498,249.9 509,250.1 521,250.2 533,250.3 544,250.4 556,250.5 567,250.6 579,250.7 590,250.8 602,250.9 613,251.0 625,251.1 636,251.2 648,251.3 659,251.4 671,251.4 682,251.5 694,251.6 705,251.7 717,251.7 728,251.8 740,251.9"/>
+<polyline fill="none" stroke="#4fc3f7" stroke-width="2" points="60,61.2 72,115.8 83,139.3 95,152.8 106,161.8 118,168.2 129,173.0 141,176.7 152,179.7 164,182.1 175,184.1 187,185.8 198,187.2 210,188.4 221,189.5 233,190.4 244,191.1 256,191.8 267,192.4 279,192.9 291,193.4 302,193.8 314,194.2 325,194.5 337,194.8 348,195.0 360,195.2 371,195.4 383,195.6 394,195.8 406,195.9 417,196.0 429,196.1 440,196.3 452,196.3 463,196.4 475,196.5 486,196.6 498,196.6 509,196.7 521,196.7 533,196.8 544,196.8 556,196.8 567,196.9 579,196.9 590,196.9 602,196.9 613,197.0 625,197.0 636,197.0 648,197.0 659,197.0 671,197.0 682,197.0 694,197.1 705,197.1 717,197.1 728,197.1 740,197.1"/>
+<circle cx="60" cy="61.2" r="3.5" fill="#4fc3f7"/>
+<text x="74" y="56" font-size="11.5" fill="#4fc3f7">starts at 0.3162 — the young-EMA lie (÷√0.1)</text>
+<text x="440" y="176" text-anchor="middle" font-size="11.5" fill="#4fc3f7">RMSProp: settles at exactly lr and stays</text>
+<text x="440" y="234" text-anchor="middle" font-size="11.5" fill="#ef5350">AdaGrad: lr/√t — still shrinking at t=60, will shrink forever</text>
+<text x="62" y="278" font-size="11" fill="#9aa0b5">t = 1</text>
+<text x="740" y="278" text-anchor="end" font-size="11" fill="#9aa0b5">t = 60</text>
+<text x="380" y="296" text-anchor="middle" font-size="11" fill="#9aa0b5">real data: effective step size per step, constant gradient, lr = 0.1 — AdaGrad ages to death; RMSProp overshoots young, then holds lr</text>
+</svg>
 <details><summary>Refresher: why divide by the SQUARE ROOT of v, not v itself?</summary>
 <p style="padding:8px 4px">Units. v averages <span class="inline">g²</span>, so its natural scale is (gradient)² — for g ≈ 24, v ≈ 576. Divide g by v and you'd get 24/576 = 1/24: the step would <em>shrink</em> for big gradients and <em>blow up</em> for tiny ones far too aggressively (1000× spread becomes 1000× the other way). Take the root first and √v ≈ |g|, so <span class="inline">g/√v ≈ ±1</span> — a clean, dimensionless "which way, in units of my own typical size." Then lr alone sets the distance. Rule of thumb: <span class="key">anything that averages squares must be un-squared before it meets the gradient.</span></p></details>
 <details><summary>Refresher: what is ε actually for, and why 1e-8?</summary>

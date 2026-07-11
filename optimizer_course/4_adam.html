@@ -114,6 +114,21 @@ details[open] summary{color:#4fc3f7;border-color:#4fc3f7}
 <span class="line">  t=3: ema of constant 1.0 = 0.2710   corrected: 1.0000</span>
 </div>
 <p>Why it lies: the EMA started at 0, and that phantom zero still holds 90% of the weight at t=1, 81% at t=2… The fix is almost embarrassing: at step t, the real data has received exactly <span class="inline">1 − βᵗ</span> of the total weight (t=1: 0.1; t=2: 0.19; t=3: 0.271 — the very numbers in the left column!). So <span class="key">divide by (1 − βᵗ)</span> and the lie cancels — right column, exact 1.0 every time. That division is all that <span class="inline">m̂</span> and <span class="inline">v̂</span> are.</p>
+<svg viewBox="0 0 760 290" style="width:100%;max-width:760px;display:block;margin:14px auto" font-family="'Segoe UI',system-ui,sans-serif" xmlns="http://www.w3.org/2000/svg">
+<line x1="60" y1="240" x2="740" y2="240" stroke="#333"/>
+<line x1="60" y1="30" x2="60" y2="240" stroke="#333"/>
+<line x1="60" y1="50" x2="740" y2="50" stroke="#4caf50" stroke-width="2" stroke-dasharray="6,4"/>
+<text x="400" y="40" text-anchor="middle" font-size="11.5" fill="#4caf50">corrected EMA = m/(1−0.9ᵗ) = 1.0000 at every t — pinned to the true average from step one</text>
+<polyline fill="none" stroke="#ff9800" stroke-width="2" points="60,221.0 77,203.9 95,188.5 112,174.7 130,162.2 147,151.0 165,140.9 182,131.8 199,123.6 217,116.2 234,109.6 252,103.7 269,98.3 287,93.5 304,89.1 322,85.2 339,81.7 356,78.5 374,75.7 391,73.1 409,70.8 426,68.7 444,66.8 461,65.2 478,63.6 496,62.3 513,61.0 531,59.9 548,58.9 566,58.1 583,57.2 601,56.5 618,55.9 635,55.3 653,54.8 670,54.3 688,53.9 705,53.5 723,53.1 740,52.8"/>
+<circle cx="60" cy="221" r="3.5" fill="#ff9800"/><text x="72" y="226" font-size="11" fill="#ff9800">t=1: 0.100</text>
+<circle cx="95" cy="188.5" r="3.5" fill="#ff9800"/><text x="107" y="193" font-size="11" fill="#ff9800">t=3: 0.271</text>
+<circle cx="426" cy="68.7" r="3.5" fill="#ff9800"/><text x="426" y="90" text-anchor="middle" font-size="11" fill="#ff9800">t=22: 0.902</text>
+<text x="330" y="140" font-size="11.5" fill="#ff9800">raw EMA of constant 1.0: reports 1−0.9ᵗ</text>
+<text x="330" y="158" font-size="11.5" fill="#ff9800">— the phantom zero's share, still missing</text>
+<text x="62" y="258" font-size="11" fill="#9aa0b5">t = 1</text>
+<text x="740" y="258" text-anchor="end" font-size="11" fill="#9aa0b5">t = 40</text>
+<text x="380" y="282" text-anchor="middle" font-size="11" fill="#9aa0b5">real data — the raw EMA needs ~22 steps to stop lying by 10%; the divided version never lies at all</text>
+</svg>
 </div>
 
 <div class="card green">
