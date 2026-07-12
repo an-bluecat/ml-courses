@@ -177,6 +177,52 @@
     </table>
   </div>
 
+  <div class="card">
+    <h3>The whole objective in one picture</h3>
+    <svg viewBox="0 0 760 330" xmlns="http://www.w3.org/2000/svg" style="display:block;margin:0 auto">
+      <!-- ===== panel A: advantage +1 ===== -->
+      <text x="200" y="24" fill="#4caf50" font-size="13" text-anchor="middle" font-weight="600">GOOD action (advantage = +1)</text>
+      <line x1="40" y1="250" x2="360" y2="250" stroke="#555" stroke-width="1.5"/>
+      <line x1="40" y1="250" x2="40" y2="60" stroke="#555" stroke-width="1.5"/>
+      <text x="200" y="278" fill="#888" font-size="11" text-anchor="middle">ratio (new prob / old prob)</text>
+      <text x="40" y="294" fill="#666" font-size="10" text-anchor="middle">0</text>
+      <text x="200" y="294" fill="#666" font-size="10" text-anchor="middle">1.0</text>
+      <text x="232" y="294" fill="#ffb74d" font-size="10" text-anchor="middle">1.2</text>
+      <text x="360" y="294" fill="#666" font-size="10" text-anchor="middle">2.0</text>
+      <!-- objective: rises y=250-100r until r=1.2, then flat -->
+      <polyline points="40,250 232,130" fill="none" stroke="#4caf50" stroke-width="2.5"/>
+      <polyline points="232,130 360,130" fill="none" stroke="#ef5350" stroke-width="2.5"/>
+      <line x1="232" y1="250" x2="232" y2="120" stroke="#ffb74d" stroke-width="1" stroke-dasharray="4,4"/>
+      <line x1="200" y1="250" x2="200" y2="150" stroke="#333" stroke-width="1" stroke-dasharray="3,4"/>
+      <text x="110" y="146" fill="#4caf50" font-size="11" text-anchor="middle">slope up:</text>
+      <text x="110" y="162" fill="#4caf50" font-size="11" text-anchor="middle">"more of this!"</text>
+      <text x="298" y="112" fill="#ef5350" font-size="11" text-anchor="middle" font-weight="600">FLAT: gradient = 0</text>
+      <text x="298" y="158" fill="#888" font-size="10" text-anchor="middle">already boosted 20% —</text>
+      <text x="298" y="172" fill="#888" font-size="10" text-anchor="middle">no reward for pushing more</text>
+
+      <!-- ===== panel B: advantage -1 ===== -->
+      <text x="580" y="24" fill="#ef5350" font-size="13" text-anchor="middle" font-weight="600">BAD action (advantage = &minus;1)</text>
+      <line x1="420" y1="250" x2="740" y2="250" stroke="#555" stroke-width="1.5"/>
+      <line x1="420" y1="250" x2="420" y2="60" stroke="#555" stroke-width="1.5"/>
+      <text x="580" y="278" fill="#888" font-size="11" text-anchor="middle">ratio (new prob / old prob)</text>
+      <text x="420" y="294" fill="#666" font-size="10" text-anchor="middle">0</text>
+      <text x="548" y="294" fill="#ffb74d" font-size="10" text-anchor="middle">0.8</text>
+      <text x="580" y="294" fill="#666" font-size="10" text-anchor="middle">1.0</text>
+      <text x="740" y="294" fill="#666" font-size="10" text-anchor="middle">2.0</text>
+      <!-- objective: flat at -0.8 (y=80+? ) use y(o)=60-100o: o=-0.8 -> 140; o=-2 -> 260... shift: y(o)=68-90o: -0.8->140, -2->248 -->
+      <polyline points="420,140 548,140" fill="none" stroke="#ef5350" stroke-width="2.5"/>
+      <polyline points="548,140 740,248" fill="none" stroke="#4caf50" stroke-width="2.5"/>
+      <line x1="548" y1="250" x2="548" y2="130" stroke="#ffb74d" stroke-width="1" stroke-dasharray="4,4"/>
+      <line x1="580" y1="250" x2="580" y2="158" stroke="#333" stroke-width="1" stroke-dasharray="3,4"/>
+      <text x="484" y="112" fill="#ef5350" font-size="11" text-anchor="middle" font-weight="600">FLAT: gradient = 0</text>
+      <text x="478" y="170" fill="#888" font-size="10" text-anchor="middle">already suppressed 20%,</text>
+      <text x="484" y="184" fill="#888" font-size="10" text-anchor="middle">stop kicking it</text>
+      <text x="636" y="222" fill="#4caf50" font-size="11" text-anchor="middle">slope down:</text>
+      <text x="636" y="238" fill="#4caf50" font-size="11" text-anchor="middle">"less of this!"</text>
+    </svg>
+    <p style="margin-top:8px;font-size:.9em">Read the green segments: while the ratio is near 1.0, the objective has slope — gradients flow, learning happens. Read the red segments: once the ratio has moved 20% <em>in the direction the advantage wanted</em>, the objective goes flat — the gradient is exactly zero and that sample stops teaching. The wall is one-sided on each panel: a good action's ratio is capped above (1.2), a bad action's below (0.8), because clipping only limits <em>over-reacting</em>, never correcting back toward 1.0.</p>
+  </div>
+
   <div class="card ok">
     <h3>The clip in one sentence</h3>
     <p>If the policy hasn't changed much (ratio near 1.0), the update goes through normally. If the policy has changed a lot (ratio far from 1.0), the update is capped — and once it's far enough, the gradient becomes exactly zero.</p>

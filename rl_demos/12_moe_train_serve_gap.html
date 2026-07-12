@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chapter 12: The MoE Training-vs-Serving Gap in GRPO</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0a0a1a;color:#e0e0e0;padding:20px 20px 80px;line-height:1.7}
+h1{text-align:center;color:#fff;margin-bottom:4px;font-size:1.5em}
+.sub{text-align:center;color:#888;margin-bottom:24px;font-size:.88em}
+.nav{display:flex;justify-content:center;gap:6px;margin-bottom:20px;flex-wrap:wrap}
+.nav button{padding:7px 13px;border:2px solid #333;background:#111;color:#888;border-radius:8px;cursor:pointer;font-size:.78em;transition:.2s}
+.nav button:hover{border-color:#555;color:#ccc}
+.nav button.on{border-color:#4fc3f7;color:#4fc3f7;background:#0d2137}
+.nav button.done{border-color:#4caf50;color:#4caf50}
+.page{display:none;max-width:880px;margin:0 auto}
+.page.on{display:block}
+.page h2{color:#4fc3f7;margin-bottom:12px;font-size:1.2em}
+.card{background:#12122a;border:1px solid #2a2a4a;border-radius:12px;padding:18px;margin-bottom:14px}
+.card.blue{border-color:#4fc3f7;background:#0d1b2a}
+.card.green{border-color:#4caf50;background:#0a1a0a}
+.card.orange{border-color:#ff9800;background:#1a1400}
+.card.purple{border-color:#ce93d8;background:#1a0a2a}
+.card.red{border-color:#ef5350;background:#1a0a0a}
+.card h3{color:#ffb74d;margin-bottom:8px;font-size:1em}
+button.nx{padding:10px 24px;background:#4caf50;color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:.9em;margin-top:14px}
+button.nx:hover{background:#66bb6a}
+table{width:100%;border-collapse:collapse;margin:10px 0}
+th,td{padding:8px 12px;border:1px solid #333;text-align:center;font-size:.88em}
+th{background:#1a1a3a;color:#4fc3f7}
+.math{background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:14px;margin:10px 0;font-family:'Fira Code',monospace;font-size:.85em;line-height:1.8;overflow-x:auto}
+.math .line{margin:2px 0;white-space:pre}
+.math .hl{background:#264f78;padding:2px 6px;border-radius:4px;display:inline-block}
+.math .cmt{color:#6a9955}
+.math .val{color:#b5cea8}
+.math .lbl{color:#9cdcfe}
+.math .kw{color:#c586c0}
+.math .out{color:#4caf50}
+.key{color:#ffb74d;font-weight:600}
+details.more{background:#12122a;border:1px solid #2a2a4a;border-radius:10px;padding:10px 14px;margin:10px 0}
+details.more summary{cursor:pointer;color:#4fc3f7;font-size:.92em;font-weight:600}
+details.more[open] summary{margin-bottom:8px}
+svg text{font-family:'Segoe UI',system-ui,sans-serif}
+</style>
+</head>
+<body>
+<a href="../index.html" style="position:fixed;top:10px;left:14px;font-size:.75em;color:#555;text-decoration:none;z-index:999;padding:4px 8px;background:#0a0a1a;border:1px solid #333;border-radius:6px;">&larr; index</a>
+<h1>Chapter 12: The MoE Training-vs-Serving Gap</h1>
+<p class="sub">The interview question: "GRPO on a Mixture-of-Experts model — what goes wrong between training and serving, and how do you fix it?"</p>
+<div class="nav" id="nav"></div>
+
+<!-- ============================ PAGE 0 ============================ -->
+<div class="page on" data-t="0. Two Engines">
+<h2>First, Without MoE: Every RL Framework Runs TWO Copies of Your Policy</h2>
+
+<div class="card blue">
+<h3>Why two? Because generating and training want opposite hardware tricks</h3>
+<p>Chapter 8's toy called <code>generate()</code> and <code>loss.backward()</code> on the same object. At scale nobody does that: generating a 20,000-token chain of thought token-by-token is <em>brutally slow</em> on a training stack, so rollouts run on a dedicated <strong>inference engine</strong> (vLLM or SGLang — paged KV cache, continuous batching, fused sampling kernels), while gradients run on a <strong>training engine</strong> (FSDP or Megatron — kernels optimized for big batched backward passes). Same checkpoint, two completely different programs.</p>
+<svg viewBox="0 0 760 290" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="m12a" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6" fill="none" stroke="#888" stroke-width="1.4"/></marker>
+  </defs>
+  <!-- weights box -->
+  <rect x="310" y="20" width="140" height="52" rx="10" fill="#1a1a2e" stroke="#e0e0e0"/>
+  <text x="380" y="42" fill="#fff" font-size="13" text-anchor="middle" font-weight="600">one checkpoint</text>
+  <text x="380" y="60" fill="#888" font-size="11" text-anchor="middle">identical weights &theta;</text>
+  <!-- arrows down -->
+  <path d="M330,72 L200,110" stroke="#888" stroke-width="1.4" fill="none" marker-end="url(#m12a)"/>
+  <path d="M430,72 L560,110" stroke="#888" stroke-width="1.4" fill="none" marker-end="url(#m12a)"/>
+  <!-- inference lane -->
+  <rect x="60" y="114" width="280" height="100" rx="10" fill="#0d1b2a" stroke="#4fc3f7" stroke-width="1.5"/>
+  <text x="200" y="138" fill="#4fc3f7" font-size="13" text-anchor="middle" font-weight="600">INFERENCE ENGINE (vLLM / SGLang)</text>
+  <text x="200" y="158" fill="#e0e0e0" font-size="11" text-anchor="middle">generates the rollouts, token by token</text>
+  <text x="200" y="176" fill="#888" font-size="9.5" text-anchor="middle">fused kernels &middot; paged KV cache &middot; its own rounding</text>
+  <text x="200" y="200" fill="#b5cea8" font-size="12" text-anchor="middle" font-family="monospace">P('7'|'3+4=') = 0.5843</text>
+  <!-- training lane -->
+  <rect x="420" y="114" width="280" height="100" rx="10" fill="#1a0a2a" stroke="#ce93d8" stroke-width="1.5"/>
+  <text x="560" y="138" fill="#ce93d8" font-size="13" text-anchor="middle" font-weight="600">TRAINING ENGINE (FSDP / Megatron)</text>
+  <text x="560" y="158" fill="#e0e0e0" font-size="11" text-anchor="middle">recomputes log-probs, runs backward()</text>
+  <text x="560" y="176" fill="#888" font-size="9.5" text-anchor="middle">different kernels &middot; different batching &middot; different rounding</text>
+  <text x="560" y="200" fill="#b5cea8" font-size="12" text-anchor="middle" font-family="monospace">P('7'|'3+4=') = 0.5839</text>
+  <!-- mismatch -->
+  <path d="M340,164 L420,164" stroke="#ef5350" stroke-width="1.6" fill="none" stroke-dasharray="5,4"/>
+  <text x="380" y="152" fill="#ef5350" font-size="12" text-anchor="middle" font-weight="600">&ne;</text>
+  <text x="380" y="250" fill="#ef5350" font-size="12" text-anchor="middle">same weights, same token — two different probabilities.</text>
+  <text x="380" y="268" fill="#888" font-size="11" text-anchor="middle">The policy that generated your data is not the policy you differentiate. (Numbers illustrative of typical ~1e-3 scale gaps.)</text>
+</svg>
+</div>
+
+<div class="card red">
+<h3>Why the loss never notices — look at chapter 8's code again</h3>
+<div class="math">
+<div class="line">old_lp = token_lp.detach()          <span class="cmt"># computed by the TRAINER</span></div>
+<div class="line">new_lp = response_logprobs(model, ...)  <span class="cmt"># computed by the TRAINER</span></div>
+<div class="line">ratio  = torch.exp(new_lp - old_lp)  <span class="cmt"># trainer / trainer</span></div>
+</div>
+<p style="margin-top:6px">The probabilities of the engine that <em>actually sampled the tokens</em> — call it π<sub>infer</sub> — appear <strong>nowhere</strong>. The importance ratio corrects staleness between two <em>trainer</em> snapshots, and silently assumes π<sub>infer</sub> = π<sub>train</sub>. When that's false, you're doing off-policy RL with no correction: chapter 9's leak #3, the "secretly off-policy" problem (Yao, Liu et al. 2025 made this famous). Gradient bias with no alarm going off.</p>
+</div>
+
+<div class="card">
+<h3>How big is the gap for a dense model? Tiny. Move on? Not yet.</h3>
+<p>Measured per-token KL between the two engines for a dense 8B model: about <strong>6&times;10<sup>-4</sup></strong> — harmless-sounding, and mostly it is. Two things stop it from being harmless: (1) errors compound along autoregressive sequences (BF16's coarse rounding makes long sequences drift measurably — one study found switching both engines to FP16 shrinks the sequence-level mismatch ~24&times;), and (2) occasional single tokens go wild — one engine says p&asymp;0.9, the other p&asymp;0.01. Rare, but with 20k-token responses "rare per token" is "guaranteed per batch."</p>
+<p style="margin-top:8px">Still, dense GRPO mostly survives this. Now add a router.</p>
+</div>
+<button class="nx" onclick="go(1)">Next: why MoE turns a wobble into a cliff &#x2192;</button>
+</div>
+
+<!-- ============================ PAGE 1 ============================ -->
+<div class="page" data-t="1. The Router Flip">
+<h2>MoE: A Rounding Error Picks a Different Brain</h2>
+
+<div class="card blue">
+<h3>Recall what a Mixture-of-Experts layer does (systems course, ch. 4)</h3>
+<p>Instead of one big feed-forward block, the layer holds many "experts" (say 128 small FFNs). A <strong>router</strong> scores them per token and sends the token through only the <strong>top-k</strong> (say 8). The scores are ordinary logits; the selection is an <strong>argmax-style cutoff</strong> — and cutoffs are discontinuous: two candidates separated by 0.0003 are one rounding error away from swapping.</p>
+</div>
+
+<div class="card">
+<h3>The flip, concretely</h3>
+<div class="math">
+<div class="line"><span class="cmt"># router scores for one token, top-2 routing (illustrating the mechanism):</span></div>
+<div class="line"><span class="lbl">inference engine</span>: scores = [2.3100, <span class="hl">1.4001</span>, 1.3998]  &rarr; top-2 = {expert 0, <span style="color:#4fc3f7">expert 1</span>}</div>
+<div class="line"><span class="lbl">training engine </span>: scores = [2.3100, 1.3999, <span class="hl">1.4002</span>]  &rarr; top-2 = {expert 0, <span style="color:#ef5350">expert 2</span>}</div>
+<div class="line"></div>
+<div class="line"><span class="cmt"># same weights. A ~1e-4 rounding difference — the SIZE of the normal</span></div>
+<div class="line"><span class="cmt"># dense-model wobble — just swapped which subnetwork processes this token.</span></div>
+<div class="line"><span class="cmt"># Expert 1 and expert 2 are entirely different sets of weights:</span></div>
+<div class="line"><span class="cmt"># the token's output, and every layer after it, now diverge for real.</span></div>
+</div>
+<p style="margin-top:6px">In a dense model, a 10<sup>-4</sup> wobble stays a 10<sup>-4</sup> wobble. In an MoE, any wobble near a top-k boundary is <strong>amplified into executing different code</strong>. And with dozens of MoE layers &times; thousands of tokens, some router somewhere is always near a boundary.</p>
+</div>
+
+<div class="card red">
+<h3>Measured, not imagined (Qwen3-30B-A3B, SGLang vs Megatron-style trainer, same weights)</h3>
+<table>
+<tr><th>quantity</th><th>dense 8B</th><th>MoE 30B-A3B</th></tr>
+<tr><td>routers choosing different experts for the same token</td><td>—</td><td style="color:#ef5350">~10%</td></tr>
+<tr><td>tokens with &ge;1 layer routed differently</td><td>—</td><td style="color:#ef5350;font-weight:700">94%</td></tr>
+<tr><td>train-vs-inference per-token KL</td><td>6.4&times;10<sup>-4</sup></td><td style="color:#ef5350">1.5&times;10<sup>-3</sup> (&asymp;2.4&times;), with ~10&times; more extreme-gap tokens</td></tr>
+</table>
+<p style="font-size:.85em;color:#888">Source: "Stabilizing MoE Reinforcement Learning by Aligning Training and Inference Routers" (R3 paper), arXiv 2510.11370, Peking University + Xiaomi, Oct 2025.</p>
+</div>
+
+<div class="card purple">
+<h3>It's not only the two engines — the router churns between updates too</h3>
+<p>The Qwen team (GSPO paper) measured a second churn: after <em>each single gradient update</em>, roughly <strong>10% of activated experts change</strong> for the same rollout sample — π<sub>θ</sub> vs π<sub>old</sub> inside the trainer. So chapter 8's ratio, which is supposed to measure "how much did my <em>policy</em> move," is heavily contaminated by "which experts happened to fire" noise. Router sensitivity poisons both comparisons GRPO relies on.</p>
+</div>
+<button class="nx" onclick="go(2)">Next: how this kills a training run &#x2192;</button>
+</div>
+
+<!-- ============================ PAGE 2 ============================ -->
+<div class="page" data-t="2. The Collapse">
+<h2>From Noisy Ratios to a Dead Run</h2>
+
+<div class="card blue">
+<h3>The causal chain, step by step</h3>
+<div class="math">
+<div class="line">1. router flips  &rarr;  token probs differ between sampler and trainer</div>
+<div class="line">2. the loss's ratio no longer measures policy change — it measures routing luck</div>
+<div class="line">3. a few tokens get extreme ratios &rarr; huge spurious gradient terms</div>
+<div class="line">   (every token carries the full response advantage — ch. 8 p. 2 —</div>
+<div class="line">    so one poisoned token weighs as much as a real learning signal)</div>
+<div class="line">4. updates chase noise; the noise compounds over steps</div>
+<div class="line">5. reward curve stalls, then <span style="color:#ef5350">collapses — often unrecoverably</span></div>
+</div>
+<p style="margin-top:6px">Note where the clip fails you: clipping was designed for <em>honest</em> staleness (ratio drifting as θ moves). Ratio noise from routing flips sits <em>inside</em> the clip window most of the time — it doesn't get cut, it gets <em>trained on</em>.</p>
+</div>
+
+<div class="card red">
+<h3>What it looks like in practice (R3 paper's own baseline runs)</h3>
+<table>
+<tr><th>setup (Qwen3-30B-A3B, math RLVR)</th><th>avg benchmark score</th><th>fate</th></tr>
+<tr><td>plain GRPO</td><td>62.23</td><td style="color:#ef5350">reward collapses around step 60</td></tr>
+<tr><td>GRPO + TIS (importance-sampling patch, next page)</td><td>66.24</td><td style="color:#ff9800">collapses later, ~step 105</td></tr>
+<tr><td>GRPO + Routing Replay (R3)</td><td style="color:#4caf50;font-weight:700">71.83</td><td style="color:#4caf50">stable, no collapse</td></tr>
+</table>
+<p style="font-size:.88em">The Qwen team says it outright: vanilla GRPO on their MoE models <strong>would not converge at all</strong> without a routing-replay-style fix. Anyone who has actually run GRPO on a MoE has met this problem — which is what makes it a natural probing question for claimed GRPO experience. (It's one member of a whole family of documented production failure modes — see <a href="13_production_atlas.html" style="color:#4fc3f7">chapter 13, the failure-mode atlas</a>.)</p>
+</div>
+
+<div class="card orange">
+<h3>Why GRPO specifically gets hit hardest</h3>
+<ul style="margin-left:18px;line-height:1.9">
+<li><strong>Long reasoning rollouts</strong> (10k-30k tokens) — more tokens, more layers, more chances per sequence for a bad flip; sequence-level drift compounds.</li>
+<li><strong>Batch reuse / async rollouts</strong> — the honest staleness the clip must absorb is already large; routing noise rides on top.</li>
+<li><strong>Verifier rewards are sparse</strong> (one bit per response) — signal-to-noise is thin to begin with; poisoned ratio terms compete directly with the real gradient.</li>
+</ul>
+</div>
+<button class="nx" onclick="go(3)">Next: the fixes — including "write down the experts" &#x2192;</button>
+</div>
+
+<!-- ============================ PAGE 3 ============================ -->
+<div class="page" data-t="3. The Fixes">
+<h2>Three Fixes, Three Different Layers</h2>
+
+<div class="card blue">
+<h3>Fix 1 — TIS: admit you're off-policy and correct for it</h3>
+<p><strong>Truncated Importance Sampling</strong> (Yao, Liu et al. 2025). Record π<sub>infer</sub>'s per-token log-probs during rollout (the inference engine already computes them), then weight each token's gradient by the trainer/sampler ratio, capped:</p>
+<div class="math">
+<div class="line">weight_t = min( &pi;_train(token_t) / &pi;_infer(token_t), <span class="val">C</span> )   <span class="cmt"># C = 2 typically</span></div>
+</div>
+<p style="margin-top:6px">This is chapter 9's coin-flip correction, aimed at leak #3, with a cap for variance control. It fixes the <em>gradient bias</em> — but the two engines still run different subnetworks; you've reweighted the mismatch, not removed it. On MoE it delays the collapse (step 60 → 105 above) rather than preventing it.</p>
+</div>
+
+<div class="card green">
+<h3>Fix 2 — Routing Replay (R3): make both engines run the SAME subnetwork</h3>
+<p>This is the answer your interviewer was looking for: <span class="key">during rollout, record which experts each token used, at every MoE layer. During the training forward pass, don't let the trainer's router choose — replay the recorded choices.</span></p>
+<div class="math">
+<div class="line"><span class="cmt"># rollout (inference engine): for each token, each MoE layer,</span></div>
+<div class="line"><span class="cmt"># save the top-k mask alongside the generated tokens:</span></div>
+<div class="line"><span class="lbl">mask</span> = top_k_experts(s_infer)          <span class="cmt"># e.g. {expert 0, expert 1}</span></div>
+<div class="line"></div>
+<div class="line"><span class="cmt"># training forward: SELECTION is replayed, WEIGHTS are recomputed:</span></div>
+<div class="line"><span class="lbl">gate_i</span> = mask_i &middot; exp(s_train_i) / &Sigma;_j mask_j &middot; exp(s_train_j)</div>
+<div class="line"></div>
+<div class="line"><span class="cmt"># - both engines now execute the same experts &rarr; same subnetwork</span></div>
+<div class="line"><span class="cmt"># - gate weights still come from s_train &rarr; the ROUTER STILL GETS GRADIENTS</span></div>
+<div class="line"><span class="cmt">#   (it learns how much to trust the replayed experts, and everything</span></div>
+<div class="line"><span class="cmt">#    upstream of the router trains normally)</span></div>
+</div>
+<p style="margin-top:6px">Effect: train-inference KL drops from 1.5&times;10<sup>-3</sup> to <strong>7.5&times;10<sup>-4</sup></strong> — right back at dense-model levels — and the extreme-token count falls by an order of magnitude. The run stops collapsing (table on page 2). Engineering note: the masks are cached with the KV-cache, so multi-turn/agentic rollouts replay them nearly for free.</p>
+<p style="margin-top:6px;font-size:.88em">Two names, one idea: the Qwen team had used an internal "Routing Replay" between π<sub>old</sub> and π<sub>θ</sub>; the R3 paper (PKU + Xiaomi, Oct 2025) formalized replaying <em>inference-engine</em> routing into training. Your friend's "把 rollout 时的 expert 记下来" is exactly this.</p>
+</div>
+
+<div class="card purple">
+<h3>Fix 3 — GSPO: change the objective so it stops caring about single tokens</h3>
+<p>Qwen's shipped alternative: if token-level ratios are routing-noise garbage, stop using token-level ratios. <strong>Group Sequence Policy Optimization</strong> replaces them with one <em>sequence-level</em> ratio — the length-normalized product:</p>
+<div class="math">
+<div class="line">s_i = ( &pi;_&theta;(response_i) / &pi;_old(response_i) )^(1/|response_i|)</div>
+<div class="line"><span class="cmt"># = exp( mean of per-token log-ratios ) — individual flips average out</span></div>
+<div class="line"><span class="cmt"># clip range shrinks accordingly: &epsilon; &asymp; 3e-4 instead of 0.2</span></div>
+</div>
+<p style="margin-top:6px">One noisy token barely moves the mean of 10,000 log-ratios, so the objective is robust to routing churn — GSPO trains Qwen3's MoE models without replay. Trade-off: coarser credit (whole sequences, not tokens). And the R3 authors' head-to-head suggests alignment still helps: GSPO 66.76 &lt; GRPO+R3 68.05 &lt; GSPO+R3 69.00 in their multi-step setting.</p>
+</div>
+
+<details class="more">
+<summary>Sidetrack: the root-cause school — just use FP16?</summary>
+<p style="margin-top:6px;font-size:.92em">Sea AI Lab (arXiv 2510.26788) traces the whole mismatch to BF16's 7 mantissa bits: the two engines round differently and the error compounds along the sequence. Switching rollout + training to FP16 (10 mantissa bits) cuts sequence-level log-prob mismatch ~24&times; and stabilized their runs where BF16 collapsed. It attacks the wobble itself; R3 attacks the amplifier (the router); TIS attacks the gradient math. Layers of the same onion — and a good thing to mention unprompted in an interview.</p>
+</details>
+
+<details class="more">
+<summary>Refresher: why not replay in serving instead — "record training experts and use them at inference"?</summary>
+<p style="margin-top:6px;font-size:.92em">Direction matters. The tokens were <em>generated</em> by the inference engine's routing — those choices are frozen history; the trainer's job is to compute the probability of <em>that</em> history under the current weights. So training must replay <em>inference's</em> choices, not vice versa. At serving time there's nothing to replay against — the router just routes. (If you remember the fix as "记下训练时的 expert," flip it: record at <em>rollout</em>, replay at <em>training</em>.)</p>
+</details>
+<button class="nx" onclick="go(4)">Next: the fix map &#x2192;</button>
+</div>
+
+<!-- ============================ PAGE 4 ============================ -->
+<div class="page" data-t="4. The Fix Map">
+<h2>The Fix Map, In One Place</h2>
+
+<div class="card blue">
+<h3>Four fixes, four different layers of the same problem</h3>
+<table>
+<tr><th>fix</th><th>attacks</th><th>one-liner</th></tr>
+<tr><td><strong>TIS</strong></td><td>the gradient math</td><td>"admit off-policy, importance-correct with a cap"</td></tr>
+<tr><td><strong>R3 / Routing Replay</strong></td><td>the computation path</td><td>"record experts at rollout, replay at training"</td></tr>
+<tr><td><strong>GSPO</strong></td><td>the objective's granularity</td><td>"one ratio per sequence — flips average out"</td></tr>
+<tr><td><strong>FP16</strong></td><td>the numeric root cause</td><td>"finer mantissa, engines agree more"</td></tr>
+</table>
+</div>
+
+<div class="card green">
+<h3>How this chapter connects</h3>
+<p>This is chapter 9's spectrum made physical: "on-policy" degraded not by design but by <em>infrastructure</em> — and the importance ratio (ch. 9 p. 2) reappearing as TIS. It's also chapter 8's warning label: the eleven loss lines are only as honest as the log-probs you feed them. If someone asks what makes production RL hard, this — not the math — is the answer.</p>
+</div>
+</div>
+
+<script>
+const pages=document.querySelectorAll('.page');const nav=document.getElementById('nav');
+pages.forEach((p,i)=>{const b=document.createElement('button');b.textContent=p.dataset.t;b.onclick=()=>go(i);if(i===0)b.classList.add('on');nav.appendChild(b);});
+function go(n){pages.forEach((p,i)=>p.classList.toggle('on',i===n));nav.querySelectorAll('button').forEach((b,i)=>{b.classList.remove('on');if(i<n)b.classList.add('done');else b.classList.remove('done');if(i===n)b.classList.add('on');});window.scrollTo({top:0,behavior:'smooth'});}
+</script>
+</body>
+</html>

@@ -176,16 +176,18 @@ th{background:#1a1a3a;color:#4fc3f7}
 <div class="card">
 <h3>Now you have a baseline for free: the group average</h3>
 <div class="math">
-<div class="line"><span class="lbl">rewards</span> = [1.0, 1.0, 0.6, −0.2]</div>
-<div class="line"><span class="lbl">mean</span> = (1.0 + 1.0 + 0.6 − 0.2) / 4 = <span class="val">0.60</span></div>
-<div class="line"><span class="lbl">std</span> &nbsp;= 0.49</div>
+<div class="line"><span class="cmt">// same four responses, same binary verifier as above:</span></div>
+<div class="line"><span class="lbl">rewards</span> = [1.0, 1.0, 1.0, 0.0]</div>
+<div class="line"><span class="lbl">mean</span> = (1 + 1 + 1 + 0) / 4 = <span class="val">0.75</span></div>
+<div class="line"><span class="lbl">std</span> &nbsp;= sqrt(((1−.75)²×3 + (0−.75)²) / 4) = sqrt(0.1875) = <span class="val">0.433</span></div>
 <div class="line">&nbsp;</div>
 <div class="line"><span class="cmt">// Advantage for each response = (reward - mean) / std</span></div>
-<div class="line"><span class="lbl">adv 1</span>: (1.0 − 0.60) / 0.49 = <span class="val" style="color:#4caf50">+0.82</span>  <span class="cmt">// above average</span></div>
-<div class="line"><span class="lbl">adv 2</span>: (1.0 − 0.60) / 0.49 = <span class="val" style="color:#4caf50">+0.82</span>  <span class="cmt">// above average</span></div>
-<div class="line"><span class="lbl">adv 3</span>: (0.6 − 0.60) / 0.49 = <span class="val" style="color:#888">0.00</span>   <span class="cmt">// exactly average — don't change</span></div>
-<div class="line"><span class="lbl">adv 4</span>: (−0.2 − 0.60) / 0.49 = <span class="val" style="color:#ef5350">−1.63</span> <span class="cmt">// well below average — push down</span></div>
+<div class="line"><span class="lbl">adv 1</span>: (1.0 − 0.75) / 0.433 = <span class="val" style="color:#4caf50">+0.58</span>  <span class="cmt">// above average — push up</span></div>
+<div class="line"><span class="lbl">adv 2</span>: (1.0 − 0.75) / 0.433 = <span class="val" style="color:#4caf50">+0.58</span></div>
+<div class="line"><span class="lbl">adv 3</span>: (1.0 − 0.75) / 0.433 = <span class="val" style="color:#4caf50">+0.58</span></div>
+<div class="line"><span class="lbl">adv 4</span>: (0.0 − 0.75) / 0.433 = <span class="val" style="color:#ef5350">−1.73</span> <span class="cmt">// the lone failure — push down hard</span></div>
 </div>
+<p style="margin-top:6px;font-size:.88em">Note the built-in bookkeeping: three winners share a mild +0.58 while the lone loser eats −1.73. The rarer an outcome is within its group, the louder its signal — that's just what a z-score does.</p>
 </div>
 
 <div class="card green">
@@ -221,25 +223,25 @@ th{background:#1a1a3a;color:#4fc3f7}
 </div>
 
 <div class="card">
-<h3>Step 1: Generate G responses, score each one</h3>
+<h3>Step 1: Generate G responses, run the verifier on each</h3>
 <table>
-<tr><th>#</th><th>Response</th><th>Reward</th><th>Why</th></tr>
-<tr><td>1</td><td>"x = 4"</td><td style="color:#4caf50;font-weight:700">+1.0</td><td>Correct, concise</td></tr>
-<tr><td>2</td><td>"x = 4, because 7−3=4"</td><td style="color:#4caf50">+0.9</td><td>Correct with reasoning</td></tr>
-<tr><td>3</td><td>"x = 4 or x = 5"</td><td style="color:#ffb74d">+0.2</td><td>Correct answer but introduced wrong option</td></tr>
-<tr><td>4</td><td>"x = 3"</td><td style="color:#ef5350">−1.0</td><td>Wrong</td></tr>
+<tr><th>#</th><th>Response</th><th>Verifier sees</th><th>Reward</th></tr>
+<tr><td>1</td><td>"x = 4"</td><td>last number 4 == 4</td><td style="color:#4caf50;font-weight:700">1.0</td></tr>
+<tr><td>2</td><td>"x = 4, because 7−3=4"</td><td>last number 4 == 4</td><td style="color:#4caf50;font-weight:700">1.0</td></tr>
+<tr><td>3</td><td>"x = 4 or x = 5"</td><td>last number 5 ≠ 4</td><td style="color:#ef5350;font-weight:700">0.0</td></tr>
+<tr><td>4</td><td>"x = 3"</td><td>last number 3 ≠ 4</td><td style="color:#ef5350;font-weight:700">0.0</td></tr>
 </table>
+<p style="font-size:.85em;color:#888;margin-top:4px">Same binary verifier as page 1 — no partial credit anywhere. (Response 3 contains the right answer, but the verifier reads the <em>last</em> number. Harsh, simple, ungameable.)</p>
 </div>
 
 <div class="card">
 <h3>Step 2: Compute group mean and std</h3>
 <div class="math">
-<div class="line"><span class="lbl">rewards</span> = [1.0, 0.9, 0.2, −1.0]</div>
-<div class="line"><span class="lbl">mean</span> = (1.0 + 0.9 + 0.2 + (−1.0)) / 4 = 1.1/4 = <span class="val">0.275</span></div>
+<div class="line"><span class="lbl">rewards</span> = [1.0, 1.0, 0.0, 0.0]</div>
+<div class="line"><span class="lbl">mean</span> = (1 + 1 + 0 + 0) / 4 = <span class="val">0.5</span></div>
 <div class="line"><span class="lbl">std</span> &nbsp;= sqrt(mean of squared deviations)</div>
-<div class="line">&nbsp;&nbsp;&nbsp;&nbsp; = sqrt(((1.0−.275)² + (0.9−.275)² + (0.2−.275)² + (−1.0−.275)²) / 4)</div>
-<div class="line">&nbsp;&nbsp;&nbsp;&nbsp; = sqrt((0.526 + 0.390 + 0.006 + 1.626) / 4)</div>
-<div class="line">&nbsp;&nbsp;&nbsp;&nbsp; = sqrt(0.637) = <span class="val">0.798</span></div>
+<div class="line">&nbsp;&nbsp;&nbsp;&nbsp; = sqrt(((1−.5)² + (1−.5)² + (0−.5)² + (0−.5)²) / 4)</div>
+<div class="line">&nbsp;&nbsp;&nbsp;&nbsp; = sqrt(0.25) = <span class="val">0.5</span></div>
 </div>
 </div>
 
@@ -247,11 +249,12 @@ th{background:#1a1a3a;color:#4fc3f7}
 <h3>Step 3: Compute advantage for each response</h3>
 <div class="math">
 <div class="line"><span class="cmt">// advantage = (reward − mean) / std</span></div>
-<div class="line"><span class="lbl">adv 1</span>: (1.0 − 0.275) / 0.798 = <span class="val" style="color:#4caf50">+0.91</span></div>
-<div class="line"><span class="lbl">adv 2</span>: (0.9 − 0.275) / 0.798 = <span class="val" style="color:#4caf50">+0.78</span></div>
-<div class="line"><span class="lbl">adv 3</span>: (0.2 − 0.275) / 0.798 = <span class="val" style="color:#888">−0.09</span> <span class="cmt">// barely below average</span></div>
-<div class="line"><span class="lbl">adv 4</span>: (−1.0 − 0.275) / 0.798 = <span class="val" style="color:#ef5350">−1.60</span> <span class="cmt">// well below</span></div>
+<div class="line"><span class="lbl">adv 1</span>: (1.0 − 0.5) / 0.5 = <span class="val" style="color:#4caf50">+1.0</span></div>
+<div class="line"><span class="lbl">adv 2</span>: (1.0 − 0.5) / 0.5 = <span class="val" style="color:#4caf50">+1.0</span></div>
+<div class="line"><span class="lbl">adv 3</span>: (0.0 − 0.5) / 0.5 = <span class="val" style="color:#ef5350">−1.0</span></div>
+<div class="line"><span class="lbl">adv 4</span>: (0.0 − 0.5) / 0.5 = <span class="val" style="color:#ef5350">−1.0</span></div>
 </div>
+<p style="margin-top:6px;font-size:.88em">A 50/50 group gives the cleanest possible signal: ±1. (Chapter 10 shows this is no accident — half-right is the <em>most informative</em> difficulty a prompt can have.)</p>
 </div>
 
 <div class="card green">
@@ -261,17 +264,18 @@ th{background:#1a1a3a;color:#4fc3f7}
 <div class="line"><span class="lbl">ratio_i</span> = π_new(response_i) / π_old(response_i)</div>
 <div class="line"><span class="lbl">loss_i</span> &nbsp;= −min(ratio_i × adv_i, clip(ratio_i, 0.8, 1.2) × adv_i)</div>
 <div class="line">&nbsp;</div>
-<div class="line"><span class="cmt">// Say ratio=1.1 for response 1 (policy became slightly more likely):</span></div>
-<div class="line"><span class="lbl">loss_1</span> = −min(1.1 × 0.91, clip(1.1, 0.8, 1.2) × 0.91)</div>
-<div class="line">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; = −min(1.0, 1.0) = <span class="val">−1.0</span> <span class="cmt">// push response 1 more likely</span></div>
+<div class="line"><span class="cmt">// Say ratio=1.1 for response 1 (policy already drifted up a bit):</span></div>
+<div class="line"><span class="lbl">loss_1</span> = −min(1.1 × 1.0, clip(1.1, 0.8, 1.2) × 1.0)</div>
+<div class="line">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; = −min(1.1, 1.1) = <span class="val">−1.1</span> <span class="cmt">// push response 1 more likely</span></div>
 <div class="line">&nbsp;</div>
-<div class="line"><span class="cmt">// For response 4 (x=3, wrong answer), ratio=0.9:</span></div>
-<div class="line"><span class="lbl">loss_4</span> = −min(0.9 × (−1.60), clip(0.9) × (−1.60))</div>
-<div class="line">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; = −min(−1.44, −1.44) = <span class="val">+1.44</span> <span class="cmt">// push response 4 less likely</span></div>
+<div class="line"><span class="cmt">// For response 4 (x=3, wrong), ratio=0.9:</span></div>
+<div class="line"><span class="lbl">loss_4</span> = −min(0.9 × (−1.0), clip(0.9, 0.8, 1.2) × (−1.0))</div>
+<div class="line">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; = −min(−0.9, −0.9) = <span class="val">+0.9</span> <span class="cmt">// push response 4 less likely</span></div>
 <div class="line">&nbsp;</div>
 <div class="line"><span class="cmt">// Total loss = average over all group members</span></div>
 <div class="line"><span class="hl"><span class="lbl">loss</span> = mean(loss_1, loss_2, loss_3, loss_4)</span></div>
 </div>
+<p style="margin-top:6px;font-size:.88em">Where do the ratios come from, and what does this loss do to each <em>token</em>? That's <a href="8_grpo_end_to_end.html" style="color:#4fc3f7">chapter 8</a> — the same update traced through real tensors.</p>
 </div>
 <button class="nx" onclick="go(3)">Next: GRPO vs PPO vs DPO &#x2192;</button>
 </div>
@@ -327,6 +331,7 @@ th{background:#1a1a3a;color:#4fc3f7}
 <h3>When GRPO is worse</h3>
 <p><strong>Tasks with sparse or noisy rewards.</strong> If all 4 responses in the group get the same reward (or nearly same), the group std ≈ 0, advantage ≈ 0 for everyone, and nothing gets updated. The group comparison only works when there's meaningful variation within the group.</p>
 <p style="margin-top:6px">PPO's critic can still estimate V(s) even when rewards are sparse — it builds up a picture over many updates. GRPO can't do that.</p>
+<p style="margin-top:6px">This "all-same group teaches nothing" problem turns out to be GRPO's biggest production headache — it gets a whole chapter (<a href="10_difficulty_curriculum.html" style="color:#4fc3f7">chapter 10: the difficulty curriculum</a>).</p>
 </div>
 <button class="nx" onclick="go(4)">Next: DeepSeek-R1 — the full story &#x2192;</button>
 </div>
@@ -566,6 +571,18 @@ th{background:#1a1a3a;color:#4fc3f7}
 <div class="line"><span class="cmt">// Chat/helpfulness → DPO or PPO (Llama 3, GPT-4)</span></div>
 <div class="line"><span class="cmt">// Hybrid → GRPO for reasoning + DPO for alignment</span></div>
 </div>
+</div>
+
+<div class="card orange">
+<h3>Part 2 — GRPO in production (the interview-depth chapters)</h3>
+<p>This chapter taught the idea. The next five run the machine and break it the ways it actually breaks:</p>
+<ul style="margin-left:18px;margin-top:6px;line-height:2">
+<li><a href="8_grpo_end_to_end.html" style="color:#4fc3f7">Ch. 8 — GRPO end to end</a>: reward → advantage → token gradients → weight update, every tensor real (+ a runnable <a href="../notebooks/grpo_from_scratch.ipynb" style="color:#4fc3f7">notebook</a>)</li>
+<li><a href="9_on_off_policy.html" style="color:#4fc3f7">Ch. 9 — on-policy vs off-policy</a>: the compass for everything below</li>
+<li><a href="10_difficulty_curriculum.html" style="color:#4fc3f7">Ch. 10 — the difficulty curriculum</a>: all-right/all-wrong groups teach nothing; how labs stay in the learning zone</li>
+<li><a href="11_on_policy_distillation.html" style="color:#4fc3f7">Ch. 11 — the post-training factory &amp; on-policy distillation</a>: how specialist checkpoints become one model</li>
+<li><a href="12_moe_train_serve_gap.html" style="color:#4fc3f7">Ch. 12 — the MoE training-vs-serving gap</a>: routing flips, secret off-policyness, and routing replay</li>
+</ul>
 </div>
 </div>
 

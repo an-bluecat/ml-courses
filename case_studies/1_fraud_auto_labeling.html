@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Case Study: The Fraud Auto-Labeling Project</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0a0a1a;color:#e0e0e0;padding:20px 20px 80px;line-height:1.7}
+h1{text-align:center;color:#fff;margin-bottom:4px;font-size:1.5em}
+.sub{text-align:center;color:#888;margin-bottom:24px;font-size:.88em}
+.nav{display:flex;justify-content:center;gap:6px;margin-bottom:20px;flex-wrap:wrap}
+.nav button{padding:7px 13px;border:2px solid #333;background:#111;color:#888;border-radius:8px;cursor:pointer;font-size:.78em;transition:.2s}
+.nav button:hover{border-color:#555;color:#ccc}
+.nav button.on{border-color:#4fc3f7;color:#4fc3f7;background:#0d2137}
+.nav button.done{border-color:#4caf50;color:#4caf50}
+.page{display:none;max-width:880px;margin:0 auto}
+.page.on{display:block}
+.page h2{color:#4fc3f7;margin-bottom:12px;font-size:1.2em}
+.card{background:#12122a;border:1px solid #2a2a4a;border-radius:12px;padding:18px;margin-bottom:14px}
+.card.blue{border-color:#4fc3f7;background:#0d1b2a}
+.card.green{border-color:#4caf50;background:#0a1a0a}
+.card.orange{border-color:#ff9800;background:#1a1400}
+.card.purple{border-color:#ce93d8;background:#1a0a2a}
+.card.red{border-color:#ef5350;background:#1a0a0a}
+.card h3{color:#ffb74d;margin-bottom:8px;font-size:1em}
+button.nx{padding:10px 24px;background:#4caf50;color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:.9em;margin-top:14px}
+button.nx:hover{background:#66bb6a}
+table{width:100%;border-collapse:collapse;margin:10px 0}
+th,td{padding:8px 12px;border:1px solid #333;text-align:center;font-size:.88em}
+th{background:#1a1a3a;color:#4fc3f7}
+.math{background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:14px;margin:10px 0;font-family:'Fira Code',monospace;font-size:.85em;line-height:1.8;overflow-x:auto}
+.math .line{margin:2px 0;white-space:pre}
+.math .hl{background:#264f78;padding:2px 6px;border-radius:4px;display:inline-block}
+.math .cmt{color:#6a9955}
+.math .val{color:#b5cea8}
+.math .lbl{color:#9cdcfe}
+.math .kw{color:#c586c0}
+.math .out{color:#4caf50}
+.key{color:#ffb74d;font-weight:600}
+details.more{background:#12122a;border:1px solid #2a2a4a;border-radius:10px;padding:10px 14px;margin:10px 0}
+details.more summary{cursor:pointer;color:#4fc3f7;font-size:.92em;font-weight:600}
+details.more[open] summary{margin-bottom:8px}
+svg text{font-family:'Segoe UI',system-ui,sans-serif}
+</style>
+</head>
+<body>
+<a href="../index.html" style="position:fixed;top:10px;left:14px;font-size:.75em;color:#555;text-decoration:none;z-index:999;padding:4px 8px;background:#0a0a1a;border:1px solid #333;border-radius:6px;">&larr; index</a>
+<h1>Case Study: The Fraud Auto-Labeling Project</h1>
+<p class="sub">Your own project, reconstructed — what it was, every problem it hit, and the questions it prepares you for. Source: <a href="../../underwriting/fraud_course_reconstructed_docs_clean.md" style="color:#4fc3f7">the reconstructed project doc</a>; all numbers below are observed values from the original notebooks.</p>
+<div class="nav" id="nav"></div>
+
+<!-- ============================ PAGE 0 ============================ -->
+<div class="page on" data-t="0. The Project">
+<h2>The Project in One Breath</h2>
+
+<div class="card blue">
+<h3>What you built</h3>
+<p>A <strong>high-precision fraud/ATO auto-labeling system</strong>: every day, score the whole user population, pick the top-K riskiest users (initially K=50), and automatically assign fraud labels — but <em>only</em> if precision is high enough that those labels can safely become <strong>training data for downstream fraud models</strong>.</p>
+<div class="math">
+<div class="line"><span class="lbl">baseline</span>: top 50/day &rarr; 8 fraud + 7 ATO + 1 abuse + 24 false positives = <span class="val" style="color:#ef5350">32% precision</span></div>
+<div class="line"><span class="lbl">target  </span>: <span class="val" style="color:#4caf50">&ge; 90% precision</span> at the same budget</div>
+</div>
+<p style="margin-top:6px">Closing that 32% → 90% gap was the whole project. (ATO = account takeover — a legitimate account hijacked by someone else, as opposed to a fraudulent identity from the start.)</p>
+</div>
+
+<div class="card red">
+<h3>Why this is harder than ordinary fraud scoring — the feedback loop</h3>
+<svg viewBox="0 0 760 250" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="cs1a" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6" fill="none" stroke="#888" stroke-width="1.4"/></marker>
+    <marker id="cs1r" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6" fill="none" stroke="#ef5350" stroke-width="1.4"/></marker>
+  </defs>
+  <rect x="20" y="60" width="150" height="70" rx="10" fill="#0d1b2a" stroke="#4fc3f7" stroke-width="1.5"/>
+  <text x="95" y="88" fill="#4fc3f7" font-size="12" text-anchor="middle" font-weight="600">daily population</text>
+  <text x="95" y="108" fill="#888" font-size="10" text-anchor="middle">millions of users/events</text>
+  <rect x="220" y="60" width="140" height="70" rx="10" fill="#1a0a2a" stroke="#ce93d8" stroke-width="1.5"/>
+  <text x="290" y="88" fill="#ce93d8" font-size="12" text-anchor="middle" font-weight="600">fraud model</text>
+  <text x="290" y="108" fill="#888" font-size="10" text-anchor="middle">scores everyone</text>
+  <rect x="410" y="60" width="140" height="70" rx="10" fill="#1a1400" stroke="#ff9800" stroke-width="1.5"/>
+  <text x="480" y="82" fill="#ff9800" font-size="12" text-anchor="middle" font-weight="600">top-K selection</text>
+  <text x="480" y="100" fill="#e0e0e0" font-size="10" text-anchor="middle">auto-label / review /</text>
+  <text x="480" y="114" fill="#e0e0e0" font-size="10" text-anchor="middle">abstain</text>
+  <rect x="600" y="60" width="140" height="70" rx="10" fill="#0a1a0a" stroke="#4caf50" stroke-width="1.5"/>
+  <text x="670" y="88" fill="#4caf50" font-size="12" text-anchor="middle" font-weight="600">label store</text>
+  <text x="670" y="108" fill="#888" font-size="10" text-anchor="middle">new "ground truth"</text>
+  <path d="M170,95 L216,95" stroke="#888" stroke-width="1.4" fill="none" marker-end="url(#cs1a)"/>
+  <path d="M360,95 L406,95" stroke="#888" stroke-width="1.4" fill="none" marker-end="url(#cs1a)"/>
+  <path d="M550,95 L596,95" stroke="#888" stroke-width="1.4" fill="none" marker-end="url(#cs1a)"/>
+  <!-- feedback loop -->
+  <path d="M670,130 L670,190 L290,190 L290,134" stroke="#ef5350" stroke-width="1.5" fill="none" stroke-dasharray="6,4" marker-end="url(#cs1r)"/>
+  <text x="480" y="212" fill="#ef5350" font-size="12" text-anchor="middle" font-weight="600">auto-labels become the NEXT model's training data</text>
+  <text x="480" y="230" fill="#888" font-size="11" text-anchor="middle">a false positive doesn't just cost one review — it poisons every future model that trains on it</text>
+</svg>
+<p style="margin-top:6px">A normal fraud ranker is judged on AUC; a bad score costs one wrong review. Here the output <em>re-enters the training pipeline</em> — so the governing metric is <span class="key">top-K precision per day, conservatively measured</span>, and false positives compound. This loop is why the precision bar is 90%, not "as good as we can get."</p>
+</div>
+
+<div class="card orange">
+<h3>Why the problem is structurally nasty (the six enemies, previewed)</h3>
+<ul style="margin-left:18px;line-height:1.9">
+<li>Positives are <strong>extremely rare</strong>, and their labels arrive <strong>weeks late</strong> (investigations take time).</li>
+<li>Labels come from <strong>multiple systems with different semantics</strong> (page 1 — this one dominated the project).</li>
+<li>Graph features are powerful but can <strong>leak future labels</strong> if not built point-in-time (page 3).</li>
+<li>A model can look great under one label join and terrible under another (page 2's GNN story).</li>
+<li>Good AUC ≠ good top-50 (page 3).</li>
+<li>Different pipelines score <strong>different candidate universes</strong>, so comparisons silently break (page 3).</li>
+</ul>
+</div>
+
+<details class="more">
+<summary>Sidetrack: where this connects to the GRPO course</summary>
+<p style="margin-top:6px;font-size:.92em">Two genuine rhymes. (1) The <em>information-starvation</em> economics of <a href="../rl_demos/10_difficulty_curriculum.html" style="color:#4fc3f7">chapter 10</a>: obvious cases carry no learning signal, and the scarce resource (human review here, GPU generation there) must be spent at the model's decision boundary. (2) The <em>evaluation-definition</em> lesson of the GNN story (page 2) rhymes with <a href="../rl_demos/12_moe_train_serve_gap.html" style="color:#4fc3f7">chapter 12</a>: the number you computed is not automatically the number that matters — in both cases the fix starts with aligning the measurement path, not improving the model.</p>
+</details>
+<button class="nx" onclick="go(1)">Next: the data &amp; the label zoo &#x2192;</button>
+</div>
+
+<!-- ============================ PAGE 1 ============================ -->
+<div class="page" data-t="1. Data & Labels">
+<h2>The Data — and the Label Zoo That Nearly Ate the Project</h2>
+
+<div class="card blue">
+<h3>Features: one tabular universe + one graph universe</h3>
+<table>
+<tr><th>family</th><th>what's in it</th><th>memory anchor</th></tr>
+<tr><td><strong>tabular feature store</strong> (~400 features)</td><td>identity verification, payment history, address/location match, device &amp; IP (iovation), email velocity (Emailage), merchant risk, credit signals, checkout velocity — aggregated over 6h → 1y windows</td><td>the baseline XGBoost's whole diet</td></tr>
+<tr><td><strong>graph features</strong> (new in this project)</td><td>edges from shared <em>devices</em>, shared <em>payment instruments</em>, shared <em>shipping addresses</em>; neighbor fraud counts, network degree, 2-hop stats</td><td>built from device/instrument/address tables + investigation labels</td></tr>
+</table>
+<p style="font-size:.88em">Two observed facts worth remembering because they're counter-intuitive: <strong>bad-email velocity features had ~716&times; fraud lift</strong> (sparse but devastating when present), while <strong>device sharing was almost nonexistent</strong> — only 0.2% of 475k devices were multi-user, max 14 users on one device. The "obvious" graph signal (shared devices) was thin; the value was in fraud-neighbor aggregates.</p>
+</div>
+
+<div class="card red">
+<h3>The label zoo — five sources, five different answers</h3>
+<p>The single biggest source of pain. "Is this user fraud?" had different answers depending on which system you asked:</p>
+<table>
+<tr><th>source</th><th>granularity</th><th>quirk</th></tr>
+<tr><td>investigation labels (<code>userlabel</code>/<code>labeltype</code>)</td><td>user</td><td>rich taxonomy: fraud, clear, ato, abuse, friendly, criminal, identity_issue…</td></tr>
+<tr><td>order-mart labels (<code>order_mart.fraud_label</code>)</td><td>order → user</td><td>convenient, but disagrees with investigations</td></tr>
+<tr><td>decider label store</td><td>decider event</td><td>the eventually-preferred source — keyed by <code>decider_ari</code>, matching how models score</td></tr>
+<tr><td>derived columns (<code>is_all_fraud</code>, <code>is_hard_fraud</code>, <code>is_ato</code>…)</td><td>—</td><td>hand-built mappings, e.g. abuse counts as fraud only for certain sublabels</td></tr>
+<tr><td>implicit vs explicit "clear"</td><td>—</td><td>"reviewed and cleared" ≠ "never flagged" — hugely different negatives</td></tr>
+</table>
+</div>
+
+<div class="card purple">
+<h3>The honest-measurement trick: precision_lb / precision_ub</h3>
+<div class="math">
+<div class="line"><span class="lbl">precision_lb</span>  <span class="cmt"># lower bound: treat every UNLABELED user in top-K as a false positive</span></div>
+<div class="line"><span class="lbl">precision_ub</span>  <span class="cmt"># upper bound: drop unlabeled users, measure on labeled ones only</span></div>
+<div class="line"></div>
+<div class="line"><span class="cmt"># truth is between them. For auto-labeling, act on the LOWER bound —</span></div>
+<div class="line"><span class="cmt"># an unlabeled user auto-labeled as fraud is exactly the contamination risk.</span></div>
+</div>
+<p style="margin-top:6px">Every result in this project reports both. This is the pattern to quote when an interviewer asks "how do you evaluate with incomplete labels?" — <span class="key">bracket the truth, act on the conservative end.</span></p>
+</div>
+
+<details class="more">
+<summary>Refresher: the concrete tables, for when you need to sound specific</summary>
+<p style="margin-top:6px;font-size:.92em">Feature store: <code>fraudml_user_signal_fraud_offline_dataset</code> (Snowflake mirror in ML_LAKE). Events: fraud <code>SIGNAL_STORE</code> with <code>user_ari / decider_ari / date / decider_name</code> (LOAN_TERMS_FRAUD, CHECKOUT_*_TERMS_FRAUD…). Orders: <code>dbt_analytics.order_mart</code>. Investigations: <code>prod__us.investigations.userlabel + labeltype</code>. Devices: iovation <code>device_alias</code>. Addresses: <code>users.address.normalized_addr</code> (for_shipping). Instruments: <code>users.instrument</code> filtered to types (1, 2, 18) with non-null hash.</p>
+</details>
+<button class="nx" onclick="go(2)">Next: the model ladder &#x2192;</button>
+</div>
+
+<!-- ============================ PAGE 2 ============================ -->
+<div class="page" data-t="2. The Model Ladder">
+<h2>The Model Ladder — Six Rungs, Each Taught Something</h2>
+
+<div class="card blue">
+<h3>What was tried, in order</h3>
+<table>
+<tr><th>#</th><th>model</th><th>the idea</th><th>what happened</th></tr>
+<tr><td>1</td><td><code>baseline_v1</code> — XGBoost, 392 features</td><td>the starting point (3000 trees, depth 8)</td><td>decent AUC (~0.92), poor top-K precision</td></tr>
+<tr><td>2</td><td><code>baseline_v1_retrained</code></td><td>same recipe, more data</td><td>modest lift everywhere, best on hard fraud (AP 0.177 → 0.234)</td></tr>
+<tr><td>3</td><td><code>user_level_v3_more_features</code> — 475 features</td><td>richer user-level features, re-tuned</td><td>all-fraud AP up (0.181 → 0.203), AUC slightly <em>down</em></td></tr>
+<tr><td>4</td><td>+ <strong>label-hierarchy sample weighting</strong></td><td>difficulty buckets: easy explicit clear / implicit clear / hard negative / fraud</td><td>hard-fraud AP up (→ 0.219)… ATO AP destroyed (0.034 → 0.002)</td></tr>
+<tr><td>5</td><td><code>nn_v10</code> — 5-layer transformer over 145 feature tokens</td><td>tabular transformer, 3 output heads</td><td>underperformed the strong XGBoosts — not a win</td></tr>
+<tr><td>6</td><td>GraphSAGE GNN — device+instrument+address graph, 889k nodes</td><td>let the network structure speak</td><td>the famous whiplash (below)</td></tr>
+</table>
+</div>
+
+<div class="card red">
+<h3>The GNN whiplash — the single best story in the project</h3>
+<div class="math">
+<div class="line"><span class="cmt"># same GNN, two evaluation setups:</span></div>
+<div class="line"></div>
+<div class="line"><span class="lbl">order-mart-style labels</span>:   GNN precision_lb &asymp; <span class="val" style="color:#4caf50">0.91</span>  (baseline: 0.37)   <span class="cmt"># "ship it!"</span></div>
+<div class="line"><span class="lbl">strict decider labels  </span>:   GNN precision_lb &asymp; <span class="val" style="color:#ef5350">0.15</span>  (baseline: 0.38)   <span class="cmt"># "kill it!"</span></div>
+</div>
+<p style="margin-top:8px">Same model. The <em>label source and candidate universe</em> changed, and the conclusion flipped from miracle to disaster. Root cause: the flattering setup evaluated the GNN only on users it had graph coverage for, against a friendlier label join. <span class="key">The model didn't change — the measurement did.</span> This is the project's deepest lesson and your best interview artifact: never compare models until label source, time windows, and candidate universe are pinned down and identical.</p>
+</div>
+
+<div class="card orange">
+<h3>The label-hierarchy trade — a real "no free lunch" you can cite</h3>
+<p>Up-weighting hard negatives and down-weighting easy clears (the <a href="../rl_demos/10_difficulty_curriculum.html" style="color:#4fc3f7">chapter-10</a> instinct, in supervised clothes) genuinely helped the target it aimed at — hard-fraud AP 0.175 → 0.219. But it wrecked ATO detection (AP → 0.002), because ATO cases live in a different region of feature space and the reweighting starved them. <span class="key">Sample weighting is aiming, not magic: pointing the gradient at one sub-problem points it away from another.</span> The fix direction: separate heads/models per label family (which the transformer's 3-head design later acknowledged), or per-family weighting.</p>
+</div>
+
+<details class="more">
+<summary>Refresher: the actual numbers table (Dec 2025 comparison, nulls-as-clear)</summary>
+<table>
+<tr><th>model</th><th>all-fraud AP</th><th>all-fraud AUC</th><th>hard-fraud AP</th><th>ATO AP</th></tr>
+<tr><td>baseline_v1</td><td>0.181</td><td>0.920</td><td>0.175</td><td>0.034</td></tr>
+<tr><td>user_level_v3_more_features</td><td>0.203</td><td>0.909</td><td>0.159</td><td>0.052</td></tr>
+<tr><td>label_hierarchy_tuned</td><td>0.098</td><td>0.835</td><td>0.219</td><td>0.002</td></tr>
+</table>
+<p style="font-size:.88em">Note the shape: no rung dominated. Every "improvement" traded one metric for another — which is exactly why the evaluation definition mattered more than the architecture.</p>
+</details>
+<button class="nx" onclick="go(3)">Next: everything that went wrong &#x2192;</button>
+</div>
+
+<!-- ============================ PAGE 3 ============================ -->
+<div class="page" data-t="3. What Went Wrong">
+<h2>Everything That Went Wrong — the Six Failure Modes</h2>
+
+<div class="card blue">
+<h3>The catalog (this page is the "I forgot what I did" antidote)</h3>
+<table>
+<tr><th>#</th><th>failure mode</th><th>what actually happened</th><th>the universal lesson</th></tr>
+<tr><td>1</td><td><strong>label-source mismatch</strong></td><td>same user = fraud in one system, clear in another; every model comparison shifted with the join</td><td>pin the label definition BEFORE modeling; report which source every number uses</td></tr>
+<tr><td>2</td><td><strong>candidate-universe mismatch</strong></td><td>graph-score tables only covered users with graph data → GNN silently evaluated on an easier population</td><td>a model can "win" by being absent on hard cases; force identical candidate sets</td></tr>
+<tr><td>3</td><td><strong>date-alignment mismatch</strong></td><td><code>SIGNAL_STORE.date</code> vs feature-store snapshot timestamps disagreed; joins on (user, date) dropped candidates or shifted them a day</td><td>time is a join key like any other — misalign it and you train on the wrong day's world</td></tr>
+<tr><td>4</td><td><strong>coverage gaps</strong></td><td>~12% of users had no 30d device data; missing graph users got zero-features or no score</td><td>decide explicitly what "no data" means (missing ≠ safe), or the model decides for you</td></tr>
+<tr><td>5</td><td><strong>graph label leakage</strong></td><td>features like <code>max_fraud_users_per_device</code> are only legal if built from labels <em>known before the scoring date</em> — investigation labels arrive weeks later</td><td>point-in-time correctness: a feature pipeline that peeks at future labels produces a model that cannot exist in production</td></tr>
+<tr><td>6</td><td><strong>AUC ≠ top-K</strong></td><td>models with great global AUC still failed at top-50/day precision</td><td>optimize and report the metric the business actually acts on — here: daily precision@K, user-deduplicated, lower-bound</td></tr>
+</table>
+</div>
+
+<div class="card purple">
+<h3>Notice what five of the six have in common</h3>
+<p>Only #6 is a modeling insight. <strong>#1-#5 are all data-definition problems</strong>: which labels, which users, which dates, which features are legal. The project's honest summary is: <span class="key">auto-labeling is a data-definition problem wearing a modeling costume.</span> Architecture changes (NN, GNN) couldn't outrun definition bugs; fixing definitions (decider labels + fixed candidate set + point-in-time features) changed conclusions more than any model swap.</p>
+</div>
+
+<div class="card green">
+<h3>The same lesson, in the LLM world you now know</h3>
+<p>This "the pipeline lies before the model does" pattern is exactly what Part 2 of the RL course documents at LLM scale: GRPO's dead groups (ch. 10) are a <em>data-selection</em> failure, and the MoE serving gap (ch. 12) is a <em>measurement-path</em> failure — in both, teams first suspected the algorithm, and the real bug was in what fed it or how it was measured. Seeing the same failure class in tabular fraud and in LLM RL is the deepest thing this project taught — and it transfers everywhere.</p>
+</div>
+<button class="nx" onclick="go(4)">Next: how you'd build it in 2026 &#x2192;</button>
+</div>
+
+<!-- ============================ PAGE 4 ============================ -->
+<div class="page" data-t="4. The 2026 Redesign">
+<h2>The 2026 Redesign — Same Problem, State-of-the-Art Pitch</h2>
+
+<div class="card blue">
+<h3>The architecture you'd propose today</h3>
+<div class="math">
+<div class="line">feature store + point-in-time graph features</div>
+<div class="line">   &darr;</div>
+<div class="line"><span class="lbl">base rankers</span>: calibrated XGBoost/LightGBM ensemble (+ GNN where coverage allows)</div>
+<div class="line">   &darr;</div>
+<div class="line"><span class="lbl">daily candidate pool</span>: top ~500-1000, ONE fixed universe, decider-level labels</div>
+<div class="line">   &darr;</div>
+<div class="line"><span class="lbl">LLM evidence layer</span>: per-candidate dossier — features &rarr; readable rationale, missing-evidence flags</div>
+<div class="line">   &darr;</div>
+<div class="line"><span class="lbl">decision policy</span>: auto-label / send to review / abstain, under a daily budget K</div>
+<div class="line">   &darr;</div>
+<div class="line"><span class="lbl">active-learning loop</span>: uncertain cases &rarr; human review &rarr; fresh labels &rarr; retrain</div>
+</div>
+<p style="margin-top:6px">The load-bearing choice: <strong>LLMs wrap the model, they don't replace it.</strong> Millions of daily rows &times; 400 structured features &times; strict calibration &times; PII/audit constraints is exactly where tabular models still win in 2026. The LLM earns its keep on the small candidate set — evidence summarization for reviewers, and triage reasoning — where language actually helps.</p>
+</div>
+
+<div class="card orange">
+<h3>Where GRPO fits</h3>
+<p>The last stage is a policy over a <em>group</em> of daily candidates — literally GRPO's shape (ch. 7-8):</p>
+<div class="math">
+<div class="line"><span class="lbl">group  </span>: the day's top candidates (scores + graph features + evidence)</div>
+<div class="line"><span class="lbl">actions</span>: auto-label fraud &middot; auto-label ATO &middot; send to review &middot; abstain</div>
+<div class="line"><span class="lbl">reward </span>: + correct auto-label</div>
+<div class="line">         <span style="color:#ef5350">&minus;&minus; auto-labeling a clear user</span>       <span class="cmt"># the contamination risk, priced in</span></div>
+<div class="line">         &minus; small cost per review   &minus; budget overrun past K   &minus; missed precision target</div>
+</div>
+<p style="margin-top:6px">The precondition: a trustworthy <strong>offline simulator</strong> — mature labels, point-in-time features, production-identical candidate groups, strict time splits. Without it, the policy learns the page-3 failure modes instead of fraud judgment. And the reward inherits the label zoo: computed from the wrong label source, it's reward hacking you built yourself.</p>
+</div>
+
+<div class="card purple">
+<h3>What actually changed between the original design and 2026</h3>
+<table>
+<tr><th>then</th><th>now</th><th>why</th></tr>
+<tr><td>precision_lb/ub bracketing</td><td>same idea, formalized: conformal / selective prediction ("predict or abstain" with coverage guarantees)</td><td>the abstain option now has a literature and a guarantee</td></tr>
+<tr><td>hand-tuned sample weights per label bucket</td><td>separate heads / multi-task with per-family losses</td><td>avoids the ATO-destruction trade from page 2</td></tr>
+<tr><td>human writes review notes</td><td>LLM drafts the dossier, human decides</td><td>review throughput was the budget bottleneck</td></tr>
+<tr><td>fixed top-K threshold</td><td>learned decision policy under budget (GRPO-shaped, or simpler constrained optimization first)</td><td>the decision layer is where the remaining precision lives</td></tr>
+</table>
+</div>
+<button class="nx" onclick="go(5)">Next: the follow-up questions &#x2192;</button>
+</div>
+
+<!-- ============================ PAGE 5 ============================ -->
+<div class="page" data-t="5. Follow-up Q&A">
+<h2>The Questions You'll Actually Get</h2>
+
+<div class="card green">
+<h3>Each question, and the core of its answer</h3>
+<table>
+<tr><th>question</th><th>your answer's core</th></tr>
+<tr><td>"Why not just improve AUC?"</td><td>the action is "auto-label top-50/day"; a model can gain AUC in regions that never reach top-50. Optimize precision@K, lower-bounded.</td></tr>
+<tr><td>"How do you evaluate with unlabeled users?"</td><td>bracket: lb treats unlabeled as FP, ub drops them; act on lb because unlabeled-auto-labeled IS the contamination risk.</td></tr>
+<tr><td>"Why did the GNN look good then bad?"</td><td>evaluation setup, not architecture: friendlier label join + coverage-restricted candidate set. Fix the measurement before judging the model.</td></tr>
+<tr><td>"How do you prevent label leakage in graph features?"</td><td>fraud-neighbor features may only use labels with timestamps before the scoring date; rebuild historical features as-of each day (backfill), never from today's label table.</td></tr>
+<tr><td>"Where would an LLM / RL fit?"</td><td>not as the primary scorer (volume, calibration, audit); as an evidence summarizer + a budgeted decision policy over the daily top-500 — GRPO-shaped, but only on top of a point-in-time-correct offline simulator.</td></tr>
+<tr><td>"What would you do differently?"</td><td>write the evaluation contract FIRST (labels, universe, time semantics), per-family heads instead of global sample weights, and invest in the review-routing policy earlier — that's where the precision actually lived.</td></tr>
+</table>
+</div>
+
+<div class="card purple">
+<h3>One-line bridges to the rest of your prep</h3>
+<ul style="margin-left:18px;line-height:2">
+<li>Signal-starvation economics → <a href="../rl_demos/10_difficulty_curriculum.html" style="color:#4fc3f7">RL ch. 10</a> ("obvious cases teach nothing" — same law, two worlds).</li>
+<li>Measurement-path bugs beat algorithm bugs → <a href="../rl_demos/12_moe_train_serve_gap.html" style="color:#4fc3f7">RL ch. 12</a>.</li>
+<li>Policy-over-a-group with budgeted actions → <a href="../rl_demos/7_grpo.html" style="color:#4fc3f7">RL ch. 7-8</a> (GRPO mechanics).</li>
+</ul>
+</div>
+</div>
+
+<script>
+const pages=document.querySelectorAll('.page');const nav=document.getElementById('nav');
+pages.forEach((p,i)=>{const b=document.createElement('button');b.textContent=p.dataset.t;b.onclick=()=>go(i);if(i===0)b.classList.add('on');nav.appendChild(b);});
+function go(n){pages.forEach((p,i)=>p.classList.toggle('on',i===n));nav.querySelectorAll('button').forEach((b,i)=>{b.classList.remove('on');if(i<n)b.classList.add('done');else b.classList.remove('done');if(i===n)b.classList.add('on');});window.scrollTo({top:0,behavior:'smooth'});}
+</script>
+</body>
+</html>

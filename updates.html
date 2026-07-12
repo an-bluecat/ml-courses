@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>What's New — ML Courses</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0a0a1a;color:#e0e0e0;padding:32px 24px 80px;line-height:1.7}
+h1{text-align:center;color:#fff;font-size:1.5em;margin-bottom:6px}
+.tagline{text-align:center;color:#555;font-size:.88em;margin-bottom:36px}
+.wrap{max-width:860px;margin:0 auto}
+.entry{background:#12122a;border:1px solid #2a2a4a;border-radius:12px;padding:20px;margin-bottom:20px}
+.entry-head{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:6px}
+.date{font-family:monospace;font-size:.8em;color:#000;background:#4fc3f7;border-radius:4px;padding:2px 8px;font-weight:700}
+.entry-title{color:#fff;font-weight:600;font-size:1.05em}
+.entry h4{color:#ffb74d;font-size:.92em;margin:14px 0 4px}
+table{width:100%;border-collapse:collapse;margin:10px 0}
+th,td{padding:7px 10px;border:1px solid #333;text-align:left;font-size:.85em;vertical-align:top}
+th{background:#1a1a3a;color:#4fc3f7}
+a{color:#4fc3f7;text-decoration:none}
+a:hover{text-decoration:underline}
+.tag{display:inline-block;font-size:.68em;font-weight:700;padding:1px 7px;border-radius:3px;text-transform:uppercase;letter-spacing:.04em;margin-right:4px;vertical-align:middle}
+.t-new{background:rgba(76,175,80,.15);color:#4caf50;border:1px solid rgba(76,175,80,.3)}
+.t-upd{background:rgba(255,152,0,.15);color:#ff9800;border:1px solid rgba(255,152,0,.3)}
+.t-fix{background:rgba(239,83,80,.15);color:#ef5350;border:1px solid rgba(239,83,80,.3)}
+.note{background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:12px 14px;font-size:.85em;color:#aaa;margin-bottom:28px}
+.why{color:#888;font-size:.92em}
+</style>
+</head>
+<body>
+<a href="index.html" style="position:fixed;top:10px;left:14px;font-size:.75em;color:#555;text-decoration:none;z-index:999;padding:4px 8px;background:#0a0a1a;border:1px solid #333;border-radius:6px;">&larr; index</a>
+
+<h1>What's New</h1>
+<p class="tagline">Every content change lands here, newest first — so you always know where to look after an update</p>
+
+<div class="wrap">
+
+<div class="note">
+<strong style="color:#4fc3f7">How this page works:</strong> each entry lists what was added (<span class="tag t-new">new</span>), improved (<span class="tag t-upd">updated</span>), or corrected (<span class="tag t-fix">fixed</span>), with a link and one line on why it's worth your time. Skim the newest entry after any session; the "start here" pointer tells you the best reading order.
+</div>
+
+<!-- ============ 2026-07-12 ============ -->
+<div class="entry">
+<div class="entry-head">
+  <span class="date">2026-07-12</span>
+  <span class="entry-title">Your fraud project, reconstructed + the GRPO failure-mode atlas</span>
+</div>
+<p class="why">Two follow-ups from the GRPO push. (1) You asked "how do I know the MoE interview question is legit, and what else is like it?" — answer: it belongs to a documented family of ~10 production failure modes that recur across lab reports (DAPO, ScaleRL, Kimi, MiniMax, Magistral) and ship as framework config flags; now mapped in one chapter with sources. (2) Your fraud auto-labeling project is now a standalone case study so you can re-learn your own work before interviews.</p>
+
+<h4>Start here</h4>
+<p style="font-size:.92em">Re-learn your project: <a href="case_studies/1_fraud_auto_labeling.html">the fraud case study</a> (page 3 is "everything that went wrong", page 5 the likely follow-up questions). Then skim <a href="rl_demos/13_production_atlas.html">chapter 13</a> page 0 for the four-gap frame.</p>
+
+<h4>New</h4>
+<table>
+<tr><th style="width:36%">what</th><th>why you'd read it</th></tr>
+<tr><td><span class="tag t-new">new</span><a href="case_studies/1_fraud_auto_labeling.html">Case study — fraud auto-labeling (full story)</a></td><td>Your project end to end: the 32%→90% precision goal, the label zoo, the six-rung model ladder (incl. the GNN 0.91→0.15 whiplash), all six failure modes, a 2026 redesign pitch, and the follow-up questions to be ready for.</td></tr>
+<tr><td><span class="tag t-new">new</span><a href="rl_demos/13_production_atlas.html">RL ch. 13 — production failure-mode atlas</a></td><td>The whole family the MoE question belongs to: length bias, truncation noise, /std bias, entropy collapse, KL pathologies, reward hacking/spurious rewards, staleness, stragglers, nondeterminism — each with mechanism, fix, and primary sources, plus the lab-report evidence table.</td></tr>
+<tr><td><span class="tag t-upd">updated</span><a href="rl_demos/3_reinforce.html">RL ch. 3 — REINFORCE</a></td><td>New Refresher foldable where &#x03C0; is first named: why the rulebook is called a "policy" (Bellman's word), why the letter is &#x03C0; (Greek p, since p was taken), and the LLM translation (state = prompt so far, action = next token, &#x03C0; = the softmax).</td></tr>
+</table>
+
+<h4>Updated / fixed</h4>
+<table>
+<tr><th style="width:36%">what</th><th>change</th></tr>
+<tr><td><span class="tag t-upd">updated</span><a href="rl_demos/10_difficulty_curriculum.html">RL ch. 10</a></td><td>Fraud-parallel page now links to the full case study.</td></tr>
+<tr><td><span class="tag t-fix">fixed</span><a href="rl_demos/12_moe_train_serve_gap.html">RL ch. 12</a></td><td>Softened an over-claim: "became a standard interview question" → what the evidence supports (natural probing question; member of a documented family → ch. 13).</td></tr>
+<tr><td><span class="tag t-fix">fixed</span>chapters 8-13 + case study</td><td>Removed all "Say it back / N-second interview version" recitation paragraphs — dense script blocks are out; understanding-oriented structure (traps tables, fix maps, follow-up Q&amp;A) stays.</td></tr>
+</table>
+</div>
+
+<!-- ============ 2026-07-11 ============ -->
+<div class="entry">
+<div class="entry-head">
+  <span class="date">2026-07-11</span>
+  <span class="entry-title">GRPO goes production-depth: 5 new chapters + a runnable notebook</span>
+</div>
+<p class="why">Motivated by a conversation with a friend doing frontier-lab post-training: GRPO is the workhorse now, and the interview questions are about how it breaks in production — the difficulty curriculum, on-policy distillation, and the MoE training-vs-serving gap. Everything below checks out against published work (DAPO, Kimi k1.5, Thinking Machines, the R3 paper); the notebook makes it runnable.</p>
+
+<h4>Start here</h4>
+<p style="font-size:.92em">Open the <a href="notebooks/grpo_from_scratch.ipynb">GRPO notebook</a> side by side with <a href="rl_demos/8_grpo_end_to_end.html">chapter 8</a>, then read 9 → 10 → 11 → 12 in order — each leans on the previous one.</p>
+
+<h4>New</h4>
+<table>
+<tr><th style="width:36%">what</th><th>why you'd read it</th></tr>
+<tr><td><span class="tag t-new">new</span><a href="notebooks/grpo_from_scratch.ipynb">notebooks/grpo_from_scratch.ipynb</a></td><td>Full GRPO on a 58k-param GPT, CPU, ~5 min: noisy pretrain (48%) → verifier RL (95%). Every chapter number comes from this run. Includes the zero-signal diagnostic and an on-policy-distillation bonus.</td></tr>
+<tr><td><span class="tag t-new">new</span><a href="rl_demos/8_grpo_end_to_end.html">RL ch. 8 — GRPO end to end</a></td><td>The "after the reward, then what?" chapter: advantage → per-token broadcast → the 11 loss lines → backward/step, all real tensors.</td></tr>
+<tr><td><span class="tag t-new">new</span><a href="rl_demos/9_on_off_policy.html">RL ch. 9 — on-policy vs off-policy</a></td><td>The definition, the compounding-error argument, importance sampling from coin flips up, and why "on-policy" GRPO isn't quite.</td></tr>
+<tr><td><span class="tag t-new">new</span><a href="rl_demos/10_difficulty_curriculum.html">RL ch. 10 — the difficulty curriculum</a></td><td>All-right/all-wrong groups give zero gradient (verified: it's DAPO's dynamic sampling, Kimi's pass-rate probe, POLARIS, Skywork). Includes the fraud-project parallel (label hierarchy, active learning).</td></tr>
+<tr><td><span class="tag t-new">new</span><a href="rl_demos/11_on_policy_distillation.html">RL ch. 11 — post-training factory &amp; on-policy distillation</a></td><td>Mid-training, specialist teams, the old generate-and-SFT merge, and Thinking Machines' student-samples/teacher-grades-every-token method (~10× cheaper when a teacher exists).</td></tr>
+<tr><td><span class="tag t-new">new</span><a href="rl_demos/12_moe_train_serve_gap.html">RL ch. 12 — the MoE training-vs-serving gap</a></td><td>The interview question decoded: vLLM and the trainer disagree, MoE routers amplify the disagreement into different subnetworks, runs collapse; fixes = TIS, Routing Replay (R3), GSPO, FP16.</td></tr>
+</table>
+
+<h4>Updated / fixed</h4>
+<table>
+<tr><th style="width:36%">what</th><th>change</th></tr>
+<tr><td><span class="tag t-upd">updated</span><a href="rl_demos/5_ppo.html">RL ch. 5 — PPO</a></td><td>Added the canonical clip-objective picture (both advantage signs, flat = zero-gradient zones) on the "Clip" page.</td></tr>
+<tr><td><span class="tag t-upd">updated</span><a href="rl_demos/6_dpo.html">RL ch. 6 — DPO</a></td><td>Added a four-numbers-to-one-loss flow diagram on the "One Step" page, and a closing card placing DPO on the on/off-policy map.</td></tr>
+<tr><td><span class="tag t-fix">fixed</span><a href="rl_demos/7_grpo.html">RL ch. 7 — GRPO</a></td><td>Removed the last fabricated reward numbers ([1.0, 1.0, 0.6, −0.2] and the +0.9/+0.2 table) — all examples now use the binary verifier consistently. Added Part 2 links at the end.</td></tr>
+</table>
+</div>
+
+</div>
+</body>
+</html>

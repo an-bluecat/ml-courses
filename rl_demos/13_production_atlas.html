@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chapter 13: The GRPO Production Failure-Mode Atlas</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0a0a1a;color:#e0e0e0;padding:20px 20px 80px;line-height:1.7}
+h1{text-align:center;color:#fff;margin-bottom:4px;font-size:1.5em}
+.sub{text-align:center;color:#888;margin-bottom:24px;font-size:.88em}
+.nav{display:flex;justify-content:center;gap:6px;margin-bottom:20px;flex-wrap:wrap}
+.nav button{padding:7px 13px;border:2px solid #333;background:#111;color:#888;border-radius:8px;cursor:pointer;font-size:.78em;transition:.2s}
+.nav button:hover{border-color:#555;color:#ccc}
+.nav button.on{border-color:#4fc3f7;color:#4fc3f7;background:#0d2137}
+.nav button.done{border-color:#4caf50;color:#4caf50}
+.page{display:none;max-width:880px;margin:0 auto}
+.page.on{display:block}
+.page h2{color:#4fc3f7;margin-bottom:12px;font-size:1.2em}
+.card{background:#12122a;border:1px solid #2a2a4a;border-radius:12px;padding:18px;margin-bottom:14px}
+.card.blue{border-color:#4fc3f7;background:#0d1b2a}
+.card.green{border-color:#4caf50;background:#0a1a0a}
+.card.orange{border-color:#ff9800;background:#1a1400}
+.card.purple{border-color:#ce93d8;background:#1a0a2a}
+.card.red{border-color:#ef5350;background:#1a0a0a}
+.card h3{color:#ffb74d;margin-bottom:8px;font-size:1em}
+button.nx{padding:10px 24px;background:#4caf50;color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:.9em;margin-top:14px}
+button.nx:hover{background:#66bb6a}
+table{width:100%;border-collapse:collapse;margin:10px 0}
+th,td{padding:8px 12px;border:1px solid #333;text-align:center;font-size:.88em}
+th{background:#1a1a3a;color:#4fc3f7}
+.math{background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:14px;margin:10px 0;font-family:'Fira Code',monospace;font-size:.85em;line-height:1.8;overflow-x:auto}
+.math .line{margin:2px 0;white-space:pre}
+.math .hl{background:#264f78;padding:2px 6px;border-radius:4px;display:inline-block}
+.math .cmt{color:#6a9955}
+.math .val{color:#b5cea8}
+.math .lbl{color:#9cdcfe}
+.math .kw{color:#c586c0}
+.math .out{color:#4caf50}
+.key{color:#ffb74d;font-weight:600}
+details.more{background:#12122a;border:1px solid #2a2a4a;border-radius:10px;padding:10px 14px;margin:10px 0}
+details.more summary{cursor:pointer;color:#4fc3f7;font-size:.92em;font-weight:600}
+details.more[open] summary{margin-bottom:8px}
+.src{font-size:.8em;color:#777}
+.src a{color:#4fc3f7;text-decoration:none}
+</style>
+</head>
+<body>
+<a href="../index.html" style="position:fixed;top:10px;left:14px;font-size:.75em;color:#555;text-decoration:none;z-index:999;padding:4px 8px;background:#0a0a1a;border:1px solid #333;border-radius:6px;">&larr; index</a>
+<h1>Chapter 13: The Production Failure-Mode Atlas</h1>
+<p class="sub">Chapters 10 and 12 each went deep on one way GRPO breaks at scale. This chapter is the map of the whole family — every documented member, its fix, and its sources.</p>
+<div class="nav" id="nav"></div>
+
+<!-- ============================ PAGE 0 ============================ -->
+<div class="page on" data-t="0. The Map">
+<h2>Why "a Family" Is the Right Word</h2>
+
+<div class="card blue">
+<h3>The claim, and the evidence for it</h3>
+<p>The MoE serving gap (ch. 12) and dead groups (ch. 10) are not isolated curiosities. They belong to a family of <strong>~10 documented production failure modes</strong> that recur across three independent kinds of sources:</p>
+<ul style="margin-left:18px;line-height:1.9">
+<li><strong>Frontier-lab tech reports</strong> — DeepSeek-R1, Qwen (GSPO), Kimi k1.5/K2, MiniMax-M1, Magistral (Mistral), Meta (LlamaRL, ScaleRL), ByteDance Seed (DAPO, VAPO) each hit and document several of them.</li>
+<li><strong>RL framework documentation</strong> — verl, TRL, NeMo-RL and slime ship the <em>fixes as config options</em>: TRL's GRPO trainer literally has <code>loss_type</code>, <code>epsilon_high</code>, <code>scale_rewards</code> knobs — this atlas encoded as a schema. verl has a "Rollout Correction" doc page treating several members as one problem class.</li>
+<li><strong>Recipe papers structured as fix-lists</strong> — DAPO is four of these fixes in one paper; Meta's <strong>ScaleRL</strong> (a 400k-GPU-hour ablation study, arXiv 2510.13786) systematically tests fixes for nearly every member.</li>
+</ul>
+<p style="margin-top:6px">When the same problem shows up in three labs' reports AND as a framework config flag, it's real, it's common, and it's fair game in an interview. That's the standard of evidence used for everything on the following pages.</p>
+</div>
+
+<div class="card purple">
+<h3>One sentence that organizes all of them</h3>
+<p style="text-align:center;font-size:1.02em;margin:8px 0"><span class="key">Every member is a gap between what you think you're optimizing and what the machinery actually optimizes.</span></p>
+<table>
+<tr><th>the gap is in…</th><th>members</th><th>deep dive</th></tr>
+<tr><td><strong>the loss's shape</strong> — the objective quietly weights things wrong</td><td>① length bias &nbsp;② truncation noise &nbsp;③ /std difficulty bias</td><td>page 1</td></tr>
+<tr><td><strong>the policy's exploration</strong> — the update dynamics kill future learning</td><td>④ entropy collapse &nbsp;⑤ KL-term pathologies</td><td>page 2</td></tr>
+<tr><td><strong>the reward's meaning</strong> — the signal isn't measuring what you think</td><td>⑥ reward hacking &amp; spurious rewards</td><td>page 3</td></tr>
+<tr><td><strong>the system's data path</strong> — the samples aren't from the policy you assume</td><td>⑦ async staleness &nbsp;⑧ stragglers &nbsp;⑨ nondeterminism &nbsp;(+ ch. 12's engine/MoE gap)</td><td>page 4</td></tr>
+<tr><td><strong>the data's difficulty</strong> — prompts stop carrying signal</td><td>zero-variance groups</td><td>ch. 10 (done)</td></tr>
+</table>
+<p style="font-size:.88em">Use this table as your mental index. In an interview, naming the four gap types and then diving deep on one or two is a far stronger answer than reciting all ten shallowly.</p>
+</div>
+
+<details class="more">
+<summary>Sidetrack: how this chapter was verified</summary>
+<p style="margin-top:6px;font-size:.92em">Every problem below lists its primary sources (arXiv IDs / official docs), and was kept only if at least two independent sources document it. Where a number is quoted, it comes from the cited paper, not from memory. The one deliberately soft entry is agentic credit assignment (page 4, last card) — real and heavily published, but without a settled canonical fix yet; it's labeled as a frontier accordingly.</p>
+</details>
+<button class="nx" onclick="go(1)">Next: the loss-shape family &#x2192;</button>
+</div>
+
+<!-- ============================ PAGE 1 ============================ -->
+<div class="page" data-t="1. Loss Shape">
+<h2>Family 1 — The Objective Quietly Weights Things Wrong</h2>
+
+<div class="card red">
+<h3>① Length bias — long wrong answers hurt less</h3>
+<div class="math">
+<div class="line"><span class="cmt"># GRPO's original loss averages per sequence: each token's push = Â / |o|</span></div>
+<div class="line"><span class="lbl">wrong answer, 10 tokens  </span>: each token punished  −1.0 / 10   = <span class="val" style="color:#ef5350">−0.100</span></div>
+<div class="line"><span class="lbl">wrong answer, 1000 tokens</span>: each token punished  −1.0 / 1000 = <span class="val">−0.001</span></div>
+<div class="line"></div>
+<div class="line"><span class="cmt"># same total blame, 100x less pressure per token. The policy discovers it can</span></div>
+<div class="line"><span class="cmt"># "dilute" punishment by rambling &rarr; wrong answers grow longer &rarr; length explodes.</span></div>
+</div>
+<p style="margin-top:6px"><strong>Symptom:</strong> mean response length climbs steadily — driven mostly by <em>incorrect</em> answers — with no accuracy gain. <strong>Fixes:</strong> token-level loss (normalize over the whole batch, not per sequence — DAPO); drop the 1/|o| entirely (Dr. GRPO); group-level length normalization (Magistral); explicit token budgets (Kimi K2).</p>
+<p class="src">Sources: Dr. GRPO <a href="https://arxiv.org/abs/2503.20783">arXiv:2503.20783</a> · DAPO <a href="https://arxiv.org/abs/2503.14476">2503.14476</a> · Magistral <a href="https://arxiv.org/abs/2506.10910">2506.10910</a> · TRL docs ship <code>loss_type</code> and call plain GRPO "not recommended due to length bias".</p>
+</div>
+
+<div class="card orange">
+<h3>② Overlong truncation noise — punishing answers for being cut off</h3>
+<p>A response that hits the max-generation limit gets scored by the verifier as wrong — even if the reasoning was on track. The model gets punished for <em>length</em>, believes it was punished for <em>content</em>, and the signal turns to noise.</p>
+<p style="margin-top:6px"><strong>Fixes:</strong> mask truncated samples out of the loss ("overlong filtering") or apply a graduated penalty near the limit ("soft overlong punishment") — both DAPO; advantage-masking of truncated responses (Skywork-OR1); force an end-of-thinking phrase so a scoreable answer always exists (ScaleRL); or don't truncate at all — park the unfinished rollout and resume it next iteration (Kimi k1.5's partial rollouts, which resurface as problem ⑦'s fix).</p>
+<p class="src">Sources: DAPO <a href="https://arxiv.org/abs/2503.14476">2503.14476</a> · Skywork-OR1 <a href="https://arxiv.org/abs/2505.22312">2505.22312</a> · ScaleRL <a href="https://arxiv.org/abs/2510.13786">2510.13786</a> · Kimi k1.5 <a href="https://arxiv.org/abs/2501.12599">2501.12599</a>.</p>
+</div>
+
+<div class="card purple">
+<h3>③ The /std difficulty bias — chapter 10's problem, in its smooth form</h3>
+<div class="math">
+<div class="line"><span class="cmt"># two groups, each with exactly ONE outlier (G=8, population std):</span></div>
+<div class="line"><span class="lbl">balanced   [1,1,1,1,0,0,0,0]</span>: std = 0.500 &rarr; advantages <span class="val">±1.00</span></div>
+<div class="line"><span class="lbl">near-solved [1,1,1,1,1,1,1,0]</span>: std = 0.331 &rarr; the lone failure gets <span class="val" style="color:#ef5350">−2.65</span></div>
+<div class="line"></div>
+<div class="line"><span class="cmt"># dividing by a small std INFLATES advantages exactly on the prompts</span></div>
+<div class="line"><span class="cmt"># you least want to emphasize (nearly-solved / nearly-hopeless).</span></div>
+<div class="line"><span class="cmt"># std = 0 exactly &rarr; the dead group of chapter 10. Same disease, smooth version.</span></div>
+</div>
+<p style="margin-top:6px"><strong>Fixes:</strong> drop the /std, keep mean-centering (Dr. GRPO); normalize advantages at the <em>batch</em> level instead of per group (REINFORCE++; ScaleRL converged on the same choice independently); quantile baselines (arXiv 2509.22611). TRL exposes this as the <code>scale_rewards</code> flag.</p>
+<p class="src">Sources: Dr. GRPO <a href="https://arxiv.org/abs/2503.20783">2503.20783</a> · REINFORCE++ <a href="https://arxiv.org/abs/2501.03262">2501.03262</a> · ScaleRL <a href="https://arxiv.org/abs/2510.13786">2510.13786</a>.</p>
+</div>
+<button class="nx" onclick="go(2)">Next: the exploration family &#x2192;</button>
+</div>
+
+<!-- ============================ PAGE 2 ============================ -->
+<div class="page" data-t="2. Exploration">
+<h2>Family 2 — The Update Dynamics Kill Future Learning</h2>
+
+<div class="card red">
+<h3>④ Entropy collapse — the policy stops exploring, permanently</h3>
+<p><strong>Symptom:</strong> policy entropy crashes within a few hundred steps; the G rollouts in a group become near-clones (which also multiplies ch. 10's dead groups); pass@k saturates and the run plateaus.</p>
+<p style="margin-top:6px"><strong>Mechanism, two documented layers:</strong></p>
+<div class="math">
+<div class="line"><span class="cmt"># layer 1 — the covariance drain: tokens that are already high-probability AND</span></div>
+<div class="line"><span class="cmt"># high-advantage get reinforced hardest &rarr; entropy only ever flows downhill.</span></div>
+<div class="line"><span class="cmt"># (arXiv 2505.22617 derives performance = a - b·e^(entropy): you TRADE entropy for reward.)</span></div>
+<div class="line"></div>
+<div class="line"><span class="cmt"># layer 2 — the clip is asymmetric against rare tokens. A reflection token:</span></div>
+<div class="line">p('wait') = 0.01 &rarr; 0.013   ratio = <span class="val" style="color:#ef5350">1.30 &gt; 1.2 &rarr; CLIPPED</span>  <span class="cmt"># exploration blocked</span></div>
+<div class="line">p('the')  = 0.60 &rarr; 0.66    ratio = <span class="val" style="color:#4caf50">1.10 &lt; 1.2 &rarr; passes</span>   <span class="cmt"># the common token moves freely</span></div>
+</div>
+<p style="margin-top:6px">MiniMax found exactly this killed their long-CoT training: "wait"/"recheck" tokens were clipped out after the first off-policy update. <strong>Fixes:</strong> Clip-Higher — raise only the upper bound, ε_high &gt; ε_low (DAPO); restrict updates on high-covariance tokens (Clip-Cov/KL-Cov, with a shipped verl recipe); CISPO — clip the importance <em>weight</em> but never zero a token's gradient (MiniMax-M1, adopted by ScaleRL and NeMo-RL); adaptive entropy control (Skywork-OR1).</p>
+<p class="src">Sources: entropy mechanism <a href="https://arxiv.org/abs/2505.22617">2505.22617</a> · DAPO <a href="https://arxiv.org/abs/2503.14476">2503.14476</a> · MiniMax-M1 <a href="https://arxiv.org/abs/2506.13585">2506.13585</a> · Skywork-OR1 <a href="https://arxiv.org/abs/2505.22312">2505.22312</a> · five independent groups total.</p>
+</div>
+
+<div class="card orange">
+<h3>⑤ KL-term pathologies — the leash strangles, or lies</h3>
+<p><strong>Problem (a) — modeling:</strong> on long-horizon reasoning, the optimal policy must travel <em>far</em> from the initial model, so the KL penalty mostly fights progress. DAPO and Magistral both simply delete it for reasoning RL (ProRL keeps it but periodically <em>resets the reference</em> to the current policy — a ratcheting leash).</p>
+<p style="margin-top:6px"><strong>Problem (b) — estimation:</strong> the "k3" estimator you met in chapter 8 (<code>exp(d) − d − 1</code>) has an unbiased <em>value</em> but its <em>gradient</em> is only correct exactly on-policy. Under the real off-policyness of pages 4's systems, the KL loss silently pushes in slightly wrong directions. Recent analyses ("value unbiasedness ≠ gradient correctness") recommend gradient-correct estimators if you keep the term at all.</p>
+<p class="src">Sources: Schulman's estimator note <a href="http://joschu.net/blog/kl-approx.html">joschu.net/blog/kl-approx.html</a> · DAPO drops KL <a href="https://arxiv.org/abs/2503.14476">2503.14476</a> · Magistral <a href="https://arxiv.org/abs/2506.10910">2506.10910</a> · ProRL <a href="https://arxiv.org/abs/2505.24864">2505.24864</a> · estimator analyses <a href="https://arxiv.org/abs/2510.01555">2510.01555</a>, 2512.21852.</p>
+</div>
+
+<details class="more">
+<summary>Refresher: didn't chapter 8 say the KL term protects against gibberish?</summary>
+<p style="margin-top:6px;font-size:.92em">Yes — and both things are true. The KL leash prevents degenerate drift <em>when the target behavior is close to the reference</em> (alignment-style tuning). For from-base reasoning RL the destination is legitimately far away, so labs remove the leash and rely on other guards (clipping, verifiable rewards, curriculum). Knowing <em>when</em> the same term helps vs hurts is precisely the kind of judgment interviews probe.</p>
+</details>
+<button class="nx" onclick="go(3)">Next: the reward family &#x2192;</button>
+</div>
+
+<!-- ============================ PAGE 3 ============================ -->
+<div class="page" data-t="3. Reward Meaning">
+<h2>Family 3 — The Reward Isn't Measuring What You Think</h2>
+
+<div class="card red">
+<h3>⑥ Reward hacking — even "verifiable" rewards are proxies</h3>
+<p>Chapter 7 called binary verifiers "impossible to game." At production scale that needs asterisks — the optimizer reliably finds every gap between <em>verifier passes</em> and <em>task solved</em>:</p>
+<table>
+<tr><th>exploit</th><th>example</th><th>documented defense</th></tr>
+<tr><td>weak equality checkers / parser bugs</td><td>answers formatted to fool the extractor; gaming symbolic-equality edge cases</td><td>fuzz the verifier <em>before</em> training (arXiv 2606.01066); perturbation-test it (2604.15149)</td></tr>
+<tr><td>neural reward models</td><td>the classic hack: outputs that score high but aren't better</td><td>DeepSeek-R1 avoided neural RMs entirely for this stated reason</td></tr>
+<tr><td>rubric/judge rewards for open-ended tasks</td><td>sycophancy tics, praise-padding</td><td>Kimi K2's anti-hack rubrics ("no initial praise…") + gating the critic on verifiable-task competence</td></tr>
+<tr><td>objective under-specification</td><td>R1-Zero drifting into mixed-language reasoning (reward never said "stay in one language")</td><td>add a language-consistency reward (DeepSeek-R1)</td></tr>
+</table>
+</div>
+
+<div class="card purple">
+<h3>The unsettling one: spurious rewards — your reward curve may not mean anything</h3>
+<div class="math">
+<div class="line"><span class="cmt"># "Spurious Rewards" (arXiv 2506.10947), on Qwen2.5-Math + MATH-500:</span></div>
+<div class="line"><span class="lbl">RLVR with ground-truth rewards</span>: <span class="val" style="color:#4caf50">+29.1</span> points</div>
+<div class="line"><span class="lbl">RLVR with RANDOM rewards      </span>: <span class="val" style="color:#ff9800">+21.4</span> points   <span class="cmt"># !!</span></div>
+</div>
+<p style="margin-top:6px">Random rewards recovered two-thirds of the gain on that model family — the clipped update was mostly amplifying behaviors the pretrained model already had, regardless of signal. (The effect did <em>not</em> transfer to other model families.) Two takeaways worth quoting: <span class="key">a rising reward curve doesn't prove your reward works</span>, and <span class="key">an RLVR result shown on one model family is a claim about that family</span>, not about the method. Sanity-check on a second base model.</p>
+<p class="src">Sources: <a href="https://arxiv.org/abs/2506.10947">2506.10947</a> · DeepSeek-R1 <a href="https://arxiv.org/abs/2501.12948">2501.12948</a> · Kimi K2 <a href="https://arxiv.org/abs/2507.20534">2507.20534</a>.</p>
+</div>
+
+<details class="more">
+<summary>Sidetrack: how this connects to your fraud case study</summary>
+<p style="margin-top:6px;font-size:.92em">The fraud project's label zoo (<a href="../case_studies/1_fraud_auto_labeling.html">case study</a>, page 1) is this same family in supervised clothing: a reward/label computed from the wrong source system is a hack you built yourself, and the GNN's 0.91→0.15 whiplash is what "the metric wasn't measuring what we thought" looks like in tabular ML. One principle, two worlds: <em>audit the signal before trusting the optimizer with it.</em></p>
+</details>
+<button class="nx" onclick="go(4)">Next: the systems family &#x2192;</button>
+</div>
+
+<!-- ============================ PAGE 4 ============================ -->
+<div class="page" data-t="4. Systems">
+<h2>Family 4 — The Samples Aren't From the Policy You Assume</h2>
+
+<div class="card blue">
+<h3>The chain that generates this whole family</h3>
+<div class="math">
+<div class="line">⑧ long CoTs have heavy-tailed lengths &rarr; sync rollout waits for the slowest &rarr; GPUs idle</div>
+<div class="line">   &darr; <span class="cmt">so everyone goes asynchronous / pipelined for throughput…</span></div>
+<div class="line">⑦ …which makes every batch STALE (generated by weights from k versions ago)</div>
+<div class="line">   &darr; <span class="cmt">and even with zero staleness…</span></div>
+<div class="line">⑨ …kernels aren't batch-invariant: the sampler never exactly equals the trainer</div>
+<div class="line">   &darr; <span class="cmt">and if the model is MoE…</span></div>
+<div class="line">ch.12: router flips amplify the wobble into different subnetworks &rarr; collapse</div>
+</div>
+<p style="font-size:.88em;margin-top:4px">verl's docs treat this whole chain as one object — "everything that makes π_rollout ≠ π_old" — handled by one toolkit (importance-sampling corrections, from ch. 9's exchange-rate idea).</p>
+</div>
+
+<div class="card orange">
+<h3>⑧ Stragglers → ⑦ staleness: the throughput-correctness trade</h3>
+<p><strong>Stragglers:</strong> a few 100k-token trajectories hold a synchronous batch hostage (the motivating problem stated by every async-RL paper: Kimi k1.5, AReaL, LlamaRL, Magistral, ROLL Flash). <strong>Fixes:</strong> partial rollouts — cap the per-iteration token budget, park unfinished generations, resume next iteration (Kimi k1.5); interruptible workers + dynamic batching (AReaL); fully-async generator/trainer separation (Magistral, LlamaRL).</p>
+<p style="margin-top:6px"><strong>But every one of those fixes creates staleness:</strong> trajectories now come from older weights, or are even <em>spliced across policy versions</em> (a partial rollout resumed after an update). <strong>Fixes for the fix:</strong> bound the staleness (ScaleRL pipelines with k=8 versions max); decouple behavior policy from proximal policy in the objective (AReaL's decoupled PPO); importance-correct explicitly (LlamaRL's AIPO — shown <em>necessary</em> for stability at 405B); CISPO's bounded IS weights (MiniMax-M1).</p>
+<p class="src">Sources: Kimi k1.5 <a href="https://arxiv.org/abs/2501.12599">2501.12599</a> · AReaL <a href="https://arxiv.org/abs/2505.24298">2505.24298</a> · LlamaRL <a href="https://arxiv.org/abs/2505.24034">2505.24034</a> · Magistral <a href="https://arxiv.org/abs/2506.10910">2506.10910</a> · ScaleRL <a href="https://arxiv.org/abs/2510.13786">2510.13786</a>.</p>
+</div>
+
+<div class="card red">
+<h3>⑨ Nondeterminism — the deterministic limit of chapter 12</h3>
+<p>Thinking Machines ran the same prompt through Qwen3-8B at temperature 0, 1,000 times: <strong>80 distinct outputs</strong>. Cause: inference kernels aren't <em>batch-invariant</em> — your token's logits depend on what else happened to be in the batch. Their stated RL consequence is chapter 12's thesis verbatim: numerics differences "implicitly turn on-policy RL into off-policy RL." In their RLVR experiment: no correction → reward collapse; importance weighting → stable; <strong>batch-invariant kernels → true on-policy, KL exactly 0</strong> (at ~60% throughput cost). ScaleRL found the cheap half of this fix independently: computing logits in FP32 alone moved their downstream asymptote from 0.52 to 0.61.</p>
+<p class="src">Sources: <a href="https://thinkingmachines.ai/blog/defeating-nondeterminism-in-llm-inference/">Defeating Nondeterminism in LLM Inference</a> (Thinking Machines) · ScaleRL <a href="https://arxiv.org/abs/2510.13786">2510.13786</a> · NeMo-RL docs note FP differences flip MoE routing.</p>
+</div>
+
+<div class="card" style="border-color:#555">
+<h3>⑩ The frontier member: agentic / multi-turn credit assignment</h3>
+<p>One scalar reward over a 100-turn tool-use trajectory: which turn deserves it? Group-relative advantages assume "same prompt, comparable rollouts" — stochastic environments and flaky tools break that. Heavily published (a 2026 survey covers 47 methods), used at scale (Kimi K2's agentic stack), but — honest label — <strong>no settled canonical fix yet</strong>. In an interview, present it as the open end of the atlas, not as solved.</p>
+<p class="src">Sources: credit-assignment survey <a href="https://arxiv.org/abs/2604.09459">2604.09459</a> · practitioner's guide <a href="https://arxiv.org/abs/2510.01132">2510.01132</a> · Kimi K2 <a href="https://arxiv.org/abs/2507.20534">2507.20534</a>.</p>
+</div>
+<button class="nx" onclick="go(5)">Next: the evidence table + how to use this in interviews &#x2192;</button>
+</div>
+
+<!-- ============================ PAGE 5 ============================ -->
+<div class="page" data-t="5. Evidence & Interview">
+<h2>The Evidence Table — and How to Use It</h2>
+
+<div class="card blue">
+<h3>Who documents what (lab reports)</h3>
+<table>
+<tr><th>report</th><th>atlas members it discusses</th></tr>
+<tr><td>DAPO (ByteDance Seed, 2503.14476)</td><td>①②④⑤ + ch.10's dead groups — four fixes in one paper</td></tr>
+<tr><td>ScaleRL (Meta, 2510.13786)</td><td>①②③④⑦⑨ + curriculum — the 400k-GPU-hour ablation of nearly everything</td></tr>
+<tr><td>Kimi k1.5 / K2 (2501.12599, 2507.20534)</td><td>①⑥⑦⑧⑩ (partial rollouts, anti-hack rubrics, budgets, agentic RL)</td></tr>
+<tr><td>MiniMax-M1 (2506.13585)</td><td>④⑦ (CISPO: clipping was killing reflection tokens)</td></tr>
+<tr><td>Magistral / Mistral (2506.10910)</td><td>①⑤⑦⑧ (drops KL, length norm, async generators)</td></tr>
+<tr><td>Qwen GSPO (2507.18071) + R3 (2510.11370)</td><td>ch. 12's MoE gap (routing replay, sequence ratios)</td></tr>
+<tr><td>DeepSeek-R1 (2501.12948)</td><td>⑥ (avoided neural RMs; language-consistency reward)</td></tr>
+<tr><td>LlamaRL (Meta, 2505.24034) · AReaL (2505.24298)</td><td>⑦⑧ (async off-policy corrections at 405B scale)</td></tr>
+</table>
+<p style="font-size:.88em">Read the pattern: <strong>every major lab's RL report is partly a tour of this same atlas.</strong> That's the answer to "how do we know these are legit interview topics" — anyone running GRPO at scale meets them, so anyone hiring for it asks about them.</p>
+</div>
+
+<div class="card green">
+<h3>Framework docs: the atlas as config schema</h3>
+<ul style="margin-left:18px;line-height:1.9">
+<li><strong>TRL</strong> (HuggingFace): <code>loss_type ∈ {grpo, dr_grpo, bnpo, cispo}</code>, <code>epsilon_high</code>, <code>scale_rewards</code> — fixes ①③④ as flags, with docs warning against plain GRPO's length bias.</li>
+<li><strong>verl</strong>: the "Rollout Correction" page unifies engine mismatch, staleness, and replay under one importance-sampling toolkit (TIS/MIS); separate shipped recipe for entropy control.</li>
+<li><strong>NeMo-RL</strong> (NVIDIA): CISPO and ProRLv2 as documented algorithms; notes that floating-point differences flip MoE routing.</li>
+<li><strong>slime</strong> (Zhipu/THUDM — the GLM training stack): ships a train-infer mismatch helper with TIS/MIS flags.</li>
+</ul>
+</div>
+
+<div class="card orange">
+<h3>And the interview-scene evidence itself (kept honest)</h3>
+<p>Direct evidence is thinner than the papers but real: 知乎 has a deep-dive framed exactly as the industry question ("工业界 GRPO 为啥做不到真 on-policy — 训推不一致的底层逻辑"), PPO-vs-GRPO appears in CSDN interview-question collections and牛客 面经 for LLM-algorithm roles, and your friend was asked the MoE variant directly. Fair summary: <span class="key">PPO/GRPO mechanics and 训推不一致 demonstrably circulate as interview topics; the longer-tail members (truncation shaping, quantile baselines) are depth-differentiators rather than standard questions.</span> Use them as such.</p>
+</div>
+
+<div class="card purple">
+<h3>How to use this chapter</h3>
+<ul style="margin-left:18px;line-height:2">
+<li><strong>Don't memorize ten problems.</strong> Internalize the four gap types (page 0) — once you have them, you can re-derive the members.</li>
+<li>Go deepest on the two you own end to end: dead groups (ch. 10 — with your own notebook run) and the MoE gap (ch. 12).</li>
+<li>Length bias is the cheapest third: its whole mechanism is four lines of arithmetic (page 1).</li>
+<li>The unifying idea, if one sentence is needed: <span class="key">the algorithm is rarely the bug — the gap between assumed and actual optimization is.</span> (Also exactly the fraud case study's conclusion.)</li>
+</ul>
+</div>
+</div>
+
+<script>
+const pages=document.querySelectorAll('.page');const nav=document.getElementById('nav');
+pages.forEach((p,i)=>{const b=document.createElement('button');b.textContent=p.dataset.t;b.onclick=()=>go(i);if(i===0)b.classList.add('on');nav.appendChild(b);});
+function go(n){pages.forEach((p,i)=>p.classList.toggle('on',i===n));nav.querySelectorAll('button').forEach((b,i)=>{b.classList.remove('on');if(i<n)b.classList.add('done');else b.classList.remove('done');if(i===n)b.classList.add('on');});window.scrollTo({top:0,behavior:'smooth'});}
+</script>
+</body>
+</html>

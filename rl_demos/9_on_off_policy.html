@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chapter 9: On-Policy vs Off-Policy</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0a0a1a;color:#e0e0e0;padding:20px 20px 80px;line-height:1.7}
+h1{text-align:center;color:#fff;margin-bottom:4px;font-size:1.5em}
+.sub{text-align:center;color:#888;margin-bottom:24px;font-size:.88em}
+.nav{display:flex;justify-content:center;gap:6px;margin-bottom:20px;flex-wrap:wrap}
+.nav button{padding:7px 13px;border:2px solid #333;background:#111;color:#888;border-radius:8px;cursor:pointer;font-size:.78em;transition:.2s}
+.nav button:hover{border-color:#555;color:#ccc}
+.nav button.on{border-color:#4fc3f7;color:#4fc3f7;background:#0d2137}
+.nav button.done{border-color:#4caf50;color:#4caf50}
+.page{display:none;max-width:880px;margin:0 auto}
+.page.on{display:block}
+.page h2{color:#4fc3f7;margin-bottom:12px;font-size:1.2em}
+.card{background:#12122a;border:1px solid #2a2a4a;border-radius:12px;padding:18px;margin-bottom:14px}
+.card.blue{border-color:#4fc3f7;background:#0d1b2a}
+.card.green{border-color:#4caf50;background:#0a1a0a}
+.card.orange{border-color:#ff9800;background:#1a1400}
+.card.purple{border-color:#ce93d8;background:#1a0a2a}
+.card.red{border-color:#ef5350;background:#1a0a0a}
+.card h3{color:#ffb74d;margin-bottom:8px;font-size:1em}
+button.nx{padding:10px 24px;background:#4caf50;color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:.9em;margin-top:14px}
+button.nx:hover{background:#66bb6a}
+table{width:100%;border-collapse:collapse;margin:10px 0}
+th,td{padding:8px 12px;border:1px solid #333;text-align:center;font-size:.88em}
+th{background:#1a1a3a;color:#4fc3f7}
+.math{background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:14px;margin:10px 0;font-family:'Fira Code',monospace;font-size:.85em;line-height:1.8;overflow-x:auto}
+.math .line{margin:2px 0;white-space:pre}
+.math .hl{background:#264f78;padding:2px 6px;border-radius:4px;display:inline-block}
+.math .cmt{color:#6a9955}
+.math .val{color:#b5cea8}
+.math .lbl{color:#9cdcfe}
+.math .kw{color:#c586c0}
+.math .out{color:#4caf50}
+.key{color:#ffb74d;font-weight:600}
+details.more{background:#12122a;border:1px solid #2a2a4a;border-radius:10px;padding:10px 14px;margin:10px 0}
+details.more summary{cursor:pointer;color:#4fc3f7;font-size:.92em;font-weight:600}
+details.more[open] summary{margin-bottom:8px}
+svg text{font-family:'Segoe UI',system-ui,sans-serif}
+</style>
+</head>
+<body>
+<a href="../index.html" style="position:fixed;top:10px;left:14px;font-size:.75em;color:#555;text-decoration:none;z-index:999;padding:4px 8px;background:#0a0a1a;border:1px solid #333;border-radius:6px;">&larr; index</a>
+<h1>Chapter 9: On-Policy vs Off-Policy</h1>
+<p class="sub">One question decides everything: who generated the data you're training on?</p>
+<div class="nav" id="nav"></div>
+
+<!-- ============================ PAGE 0 ============================ -->
+<div class="page on" data-t="0. The Definition">
+<h2>One Question, Two Words</h2>
+
+<div class="card blue">
+<h3>The definition (LLM post-training version)</h3>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:10px 0">
+  <div style="background:#0a1a0a;border:2px solid #4caf50;border-radius:10px;padding:14px">
+    <div style="color:#4caf50;font-weight:700;margin-bottom:6px">ON-policy</div>
+    <p style="font-size:.9em">The training tokens were sampled from <strong>the current version of the model being trained</strong>. The model learns from what <em>it</em> just did.</p>
+  </div>
+  <div style="background:#1a0a0a;border:2px solid #ef5350;border-radius:10px;padding:14px">
+    <div style="color:#ef5350;font-weight:700;margin-bottom:6px">OFF-policy</div>
+    <p style="font-size:.9em">The training tokens came from <strong>anything else</strong> — humans, another model, or an <em>older snapshot of the same model</em>. The model learns from someone else's behavior.</p>
+  </div>
+</div>
+<p>That's the whole definition. Everything else in this chapter is consequences.</p>
+</div>
+
+<div class="card">
+<h3>Place every method you know on one axis</h3>
+<svg viewBox="0 0 760 300" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="p9a" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6" fill="none" stroke="#888" stroke-width="1.4"/></marker>
+  </defs>
+  <!-- axis -->
+  <line x1="60" y1="200" x2="700" y2="200" stroke="#555" stroke-width="2"/>
+  <path d="M700,200 L692,195 M700,200 L692,205" stroke="#555" stroke-width="2" fill="none"/>
+  <text x="60" y="232" fill="#ef5350" font-size="13" font-weight="600">fully OFF-policy</text>
+  <text x="700" y="232" fill="#4caf50" font-size="13" font-weight="600" text-anchor="end">fully ON-policy</text>
+  <text x="380" y="258" fill="#666" font-size="11" text-anchor="middle">"how fresh is the data, relative to the weights being updated?"</text>
+
+  <!-- SFT -->
+  <line x1="100" y1="200" x2="100" y2="120" stroke="#333" stroke-width="1"/>
+  <rect x="48" y="76" width="104" height="46" rx="8" fill="#1a0a0a" stroke="#ef5350"/>
+  <text x="100" y="95" fill="#ef5350" font-size="12" text-anchor="middle" font-weight="600">SFT</text>
+  <text x="100" y="112" fill="#aaa" font-size="10" text-anchor="middle">human / teacher data</text>
+
+  <!-- DPO -->
+  <line x1="230" y1="200" x2="230" y2="150" stroke="#333" stroke-width="1"/>
+  <rect x="172" y="106" width="116" height="46" rx="8" fill="#1a0a0a" stroke="#ef5350"/>
+  <text x="230" y="125" fill="#ef5350" font-size="12" text-anchor="middle" font-weight="600">DPO (ch. 6)</text>
+  <text x="230" y="142" fill="#aaa" font-size="10" text-anchor="middle">fixed preference pairs</text>
+
+  <!-- rejection sampling -->
+  <line x1="390" y1="200" x2="390" y2="120" stroke="#333" stroke-width="1"/>
+  <rect x="308" y="76" width="164" height="46" rx="8" fill="#1a1400" stroke="#ff9800"/>
+  <text x="390" y="95" fill="#ff9800" font-size="11" text-anchor="middle" font-weight="600">rejection sampling + SFT</text>
+  <text x="390" y="112" fill="#aaa" font-size="10" text-anchor="middle">own outputs, 1 round stale</text>
+
+  <!-- PPO/GRPO -->
+  <line x1="560" y1="200" x2="560" y2="172" stroke="#333" stroke-width="1"/>
+  <rect x="496" y="126" width="128" height="46" rx="8" fill="#0a1a0a" stroke="#4caf50"/>
+  <text x="560" y="145" fill="#4caf50" font-size="12" text-anchor="middle" font-weight="600">PPO / GRPO</text>
+  <text x="560" y="162" fill="#aaa" font-size="10" text-anchor="middle">fresh each batch</text>
+
+  <!-- on-policy distillation -->
+  <line x1="668" y1="200" x2="668" y2="120" stroke="#333" stroke-width="1"/>
+  <rect x="588" y="76" width="164" height="46" rx="8" fill="#0a1a0a" stroke="#4caf50"/>
+  <text x="670" y="95" fill="#4caf50" font-size="11" text-anchor="middle" font-weight="600">on-policy distillation</text>
+  <text x="670" y="112" fill="#aaa" font-size="10" text-anchor="middle">fresh every step (ch. 11)</text>
+
+  <!-- annotation below axis: importance ratio -->
+  <path d="M560,275 C480,262 320,262 240,275" stroke="#4fc3f7" stroke-width="1.3" fill="none" marker-end="url(#p9a)"/>
+  <text x="400" y="292" fill="#4fc3f7" font-size="11" text-anchor="middle">the importance ratio (page 2) is the exchange rate that lets you move left and still learn correctly</text>
+</svg>
+<p style="font-size:.85em;color:#888;margin-top:4px">It's a spectrum, not a switch. "Slightly stale" (rejection sampling, PPO's inner epochs) sits in the middle — and even PPO/GRPO aren't at the far right, as page 3 shows.</p>
+</div>
+
+<div class="card purple">
+<h3>Wait — "an older snapshot of the same model" counts as off-policy?</h3>
+<p>Yes, and this is the point people miss. You saw it in chapter 8, page 4: after one optimizer step, the weights have moved, so the batch you generated a moment ago was generated by a <em>different policy</em>. Data goes stale the instant you update. "Off-policy" isn't about whose model it is — it's about whether the generator and the learner are <em>the same weights</em>.</p>
+</div>
+
+<details class="more">
+<summary>Sidetrack: where the terms come from (classic RL)</summary>
+<p style="margin-top:6px;font-size:.92em">In textbook RL (Sutton &amp; Barto), a method is <em>on-policy</em> if it improves the same policy that collects the experience (SARSA), and <em>off-policy</em> if it learns a target policy from data collected by a different <em>behavior</em> policy (Q-learning: behaves ε-greedily, learns the greedy policy; DQN's replay buffer is off-policy by construction — it replays years-old transitions). The LLM community uses the same words with the same meaning; the "behavior policy" is whoever wrote the training text.</p>
+</details>
+<button class="nx" onclick="go(1)">Next: why freshness matters &#x2192;</button>
+</div>
+
+<!-- ============================ PAGE 1 ============================ -->
+<div class="page" data-t="1. Why It Matters">
+<h2>Why Fresh Data Beats Better Data</h2>
+
+<div class="card blue">
+<h3>The driving-lesson argument</h3>
+<p>Two ways to learn to drive:</p>
+<p style="margin-top:6px"><strong>Off-policy:</strong> watch 10,000 hours of a chauffeur's dashcam. The chauffeur never drifts out of lane — so the footage contains <em>zero examples of recovering from a drift</em>. The first time <em>you</em> drift, you're in a state the training data never visited. You improvise. Badly.</p>
+<p style="margin-top:6px"><strong>On-policy:</strong> drive yourself with an instructor beside you. Every mistake you actually make becomes a lesson about that exact mistake. The data distribution is, by construction, the distribution of situations <em>you</em> get into.</p>
+</div>
+
+<div class="card">
+<h3>The LLM version: one early wrong token, then what?</h3>
+<div class="math">
+<div class="line"><span class="cmt"># teacher data (off-policy SFT) only contains perfect solutions:</span></div>
+<div class="line">"23&times;47: 23&times;40=920, 23&times;7=161, 920+161=<span class="out">1081</span>."</div>
+<div class="line"></div>
+<div class="line"><span class="cmt"># at inference the student writes 23&times;40=<span style="color:#ef5350">820</span> (its own typical slip).</span></div>
+<div class="line"><span class="cmt"># every following token is now conditioned on a prefix containing "820" —</span></div>
+<div class="line"><span class="cmt"># a prefix that appears NOWHERE in the teacher data.</span></div>
+<div class="line"><span class="cmt"># the model is off the training manifold; errors compound token by token.</span></div>
+</div>
+<p style="margin-top:6px">This is called <span class="key">compounding error</span> (in imitation learning: the DAgger problem; in seq2seq: exposure bias). The longer the generation, the worse it bites — which is exactly why it matters for reasoning models writing 10,000-token chains of thought.</p>
+<p style="margin-top:6px">On-policy training dissolves it: the model trains on prefixes <em>it</em> produces, including the ones containing its own "820"s — and the gradient pushes those continuations toward recovery or avoidance.</p>
+</div>
+
+<div class="card green">
+<h3>You already proved this to yourself in chapter 7</h3>
+<p>Chapter 7, page 5 ("Why not just SFT?"): rejection sampling throws away wrong answers and SFTs on the good ones — and hits a ceiling, because model v2 never learns what v2's mistakes look like, and nothing ever pushes the wrong tokens <em>down</em>. GRPO's negative advantages are on-policy criticism: aimed at the mistakes the current model actually makes.</p>
+</div>
+
+<details class="more">
+<summary>Sidetrack: measured evidence, if an interviewer pushes</summary>
+<p style="margin-top:6px;font-size:.92em">This isn't just a story: Tajwar et al. 2024 ("Preference Fine-Tuning of LLMs Should Leverage Suboptimal, On-Policy Data") and DeepMind's online-vs-offline study (arXiv 2405.08448) both find on-policy/online variants beat offline ones at equal data budgets; the RLHF literature consistently reports online methods outperforming plain DPO. There's even a memorable negative result from Thinking Machines (chapter 11's source): SFT on a model's <em>own</em> temperature-1 samples still degrades its behavior over time — finite-batch gradient noise drifts the weights, the dataset silently becomes stale, and "training on your own old outputs" turns off-policy. Freshness is a property you must actively maintain, not a one-time label.</p>
+</details>
+
+<div class="card orange">
+<h3>So why does off-policy training exist at all? Because it's cheap.</h3>
+<table>
+<tr><th></th><th>off-policy (SFT/DPO)</th><th>on-policy (PPO/GRPO)</th></tr>
+<tr><td>generation cost during training</td><td style="color:#4caf50">zero — data already exists</td><td style="color:#ef5350">huge — roughly half+ of an RLHF run's compute is spent <em>sampling</em></td></tr>
+<tr><td>infrastructure</td><td style="color:#4caf50">a dataloader</td><td style="color:#ef5350">an inference engine + a trainer, kept in sync (ch. 12)</td></tr>
+<tr><td>learns from own mistakes</td><td style="color:#ef5350">no</td><td style="color:#4caf50">yes</td></tr>
+<tr><td>can exceed the data's quality</td><td style="color:#ef5350">no — imitation has a ceiling</td><td style="color:#4caf50">yes — the notebook went 48% &rarr; 95% on 50%-wrong data</td></tr>
+</table>
+<p style="font-size:.88em">Every post-training pipeline is a negotiation between these two columns. DPO trades freshness for cost; GRPO pays the cost; on-policy distillation (ch. 11) tries to get both columns' good cells at once.</p>
+</div>
+<button class="nx" onclick="go(2)">Next: the exchange rate between policies &#x2192;</button>
+</div>
+
+<!-- ============================ PAGE 2 ============================ -->
+<div class="page" data-t="2. The Importance Ratio">
+<h2>The Importance Ratio — Trading With Stale Data, Correctly</h2>
+
+<div class="card blue">
+<h3>The problem in one line</h3>
+<p>Policy-gradient math says: the gradient is an average over samples <strong>from the current policy</strong>. If your samples came from an older policy, the average is simply wrong — unless you reweight. The reweighting factor is the <span class="key">importance ratio</span>.</p>
+</div>
+
+<div class="card">
+<h3>Feel it with coins first — no LLMs</h3>
+<p>You want the average payout of a <strong>biased</strong> coin T: P(heads)=0.8, P(tails)=0.2. Heads pays $10, tails pays $0. True answer: 0.8&times;10 = <strong>$8</strong>.</p>
+<p style="margin-top:6px">But your samples come from a <strong>fair</strong> coin B: P(heads)=0.5. Say B gives you 10 flips: 5 heads, 5 tails. Naive average: 5&times;$10/10 = $5. Wrong — that's B's answer, not T's.</p>
+<div class="math">
+<div class="line"><span class="cmt"># fix: weight each sample by  ratio = P_target / P_behavior</span></div>
+<div class="line"><span class="lbl">heads</span>: ratio = 0.8 / 0.5 = <span class="val">1.6</span>    <span class="cmt"># T produces heads MORE often than B did</span></div>
+<div class="line"><span class="lbl">tails</span>: ratio = 0.2 / 0.5 = <span class="val">0.4</span>    <span class="cmt"># T produces tails LESS often than B did</span></div>
+<div class="line"></div>
+<div class="line">estimate = (5 flips &times; 1.6 &times; $10  +  5 flips &times; 0.4 &times; $0) / 10</div>
+<div class="line">         = 80 / 10 = <span class="out">$8</span>   <span class="cmt"># exactly right, from the "wrong" coin's data</span></div>
+</div>
+<p style="margin-top:6px">That's importance sampling: <strong>count each sample as many times as the target policy would have produced it, relative to who actually produced it.</strong></p>
+</div>
+
+<div class="card purple">
+<h3>Same trick, per token — you've been using it since chapter 5</h3>
+<div class="math">
+<div class="line"><span class="hl">ratio_t = &pi;_&theta;(token_t | prefix) / &pi;_old(token_t | prefix)</span></div>
+<div class="line"></div>
+<div class="line"><span class="cmt"># chapter 8's loss line:   unclipped = ratio * advantage</span></div>
+<div class="line"><span class="cmt"># that ratio IS the coin correction: it converts "samples from &pi;_old"</span></div>
+<div class="line"><span class="cmt"># into a valid gradient for &pi;_&theta;. PPO/GRPO are importance-corrected</span></div>
+<div class="line"><span class="cmt"># policy gradients — that's the exchange rate that buys them the right</span></div>
+<div class="line"><span class="cmt"># to reuse each rollout batch for several updates.</span></div>
+</div>
+</div>
+
+<div class="card red">
+<h3>Why not correct your way through ANY staleness, then? Variance.</h3>
+<p>The correction is exact on average but noisy sample by sample. The further apart the two policies, the wilder the ratios:</p>
+<div class="math">
+<div class="line"><span class="cmt"># policies close:  ratios like 0.9, 1.1, 0.95      — calm, low noise</span></div>
+<div class="line"><span class="cmt"># policies far:    ratios like 0.001, 0.02, 47.0   — one sample with ratio 47</span></div>
+<div class="line"><span class="cmt">#                  dominates the whole batch; the gradient is garbage</span></div>
+</div>
+<p style="margin-top:6px">And per-token ratios <em>multiply</em> across a sequence — a 1,000-token response with slightly-off tokens compounds to an astronomically off sequence ratio. Hence every practical guard you've met or will meet:</p>
+<ul style="margin-left:18px;line-height:1.9">
+<li><strong>PPO/GRPO clip</strong> (ch. 5, 8): cap the ratio at [0.8, 1.2] — refuse trades at extreme exchange rates.</li>
+<li><strong>Fresh batches</strong>: throw data away after a few epochs rather than correct forever.</li>
+<li><strong>TIS &amp; friends</strong> (ch. 12): truncate ratios when even your "on-policy" data turns out slightly off-policy.</li>
+</ul>
+</div>
+
+<details class="more">
+<summary>Refresher: is the clip "correct" math? No — it's a deliberate bias.</summary>
+<p style="margin-top:6px;font-size:.92em">Truncating ratios biases the estimate (you're under-counting samples the target policy likes a lot). PPO accepts a small bias to kill a huge variance — a classic bias-variance trade. That's why the honest description of PPO/GRPO is "<em>approximately</em> on-policy with a variance-controlled correction," not "exactly on-policy."</p>
+</details>
+<button class="nx" onclick="go(3)">Next: how on-policy is GRPO really? &#x2192;</button>
+</div>
+
+<!-- ============================ PAGE 3 ============================ -->
+<div class="page" data-t="3. The Fine Print">
+<h2>The Fine Print: "On-Policy" Methods Mostly Aren't, Quite</h2>
+
+<div class="card blue">
+<h3>Three leaks, in increasing order of surprise</h3>
+<table>
+<tr><th>#</th><th>leak</th><th>who generated the data?</th><th>the guard</th></tr>
+<tr><td>1</td><td><strong>inner epochs</strong> — reusing a rollout batch for several optimizer steps</td><td>the weights from a few steps ago</td><td>ratio + clip (ch. 8 p. 4: by pass 5, half the tokens were frozen out)</td></tr>
+<tr><td>2</td><td><strong>async rollouts</strong> — at scale, generation GPUs and training GPUs run concurrently; rollouts arrive a version or two late</td><td>the weights from a few <em>batches</em> ago</td><td>same ratio machinery, larger corrections; some systems cap staleness</td></tr>
+<tr><td>3</td><td><strong>engine mismatch</strong> — the inference engine (vLLM/SGLang) and the trainer compute <em>different probabilities for the same weights</em>: different kernels, different rounding</td><td style="color:#ef5350">a policy that exists nowhere — π_vllm ≠ π_train even at identical weights</td><td>this one is chapter 12's whole story (TIS, and for MoE: routing replay)</td></tr>
+</table>
+<p style="font-size:.88em;margin-top:6px">Leak 3 is the sleeper: your GRPO run can be "secretly off-policy" with <em>no correction term at all</em>, because the ratio in the loss uses π_θ/π_old — both computed by the trainer — and the actual sampler π_vllm never appears in the math. For dense models the gap is tiny; for MoE it can kill the run.</p>
+</div>
+
+<div class="card green">
+<h3>The one-sentence summary to carry into every later chapter</h3>
+<p style="font-size:1.05em;text-align:center;margin:8px 0"><span class="key">On-policy is a spectrum, not a bit.</span></p>
+<p>SFT and DPO sit at the far off-policy end; PPO, GRPO and on-policy distillation sit near — but not at — the on-policy end; the importance ratio is the exchange rate between positions, and it gets noisier the further you stretch it.</p>
+</div>
+
+<div class="card">
+<h3>Where each chapter of this course sits</h3>
+<table>
+<tr><th>method</th><th>data source</th><th>verdict</th></tr>
+<tr><td>SFT / instruction tuning</td><td>humans or another model</td><td style="color:#ef5350">off-policy</td></tr>
+<tr><td>distillation on teacher outputs (ch. 11's "before")</td><td>teacher model</td><td style="color:#ef5350">off-policy</td></tr>
+<tr><td>DPO (ch. 6)</td><td>static preference pairs</td><td style="color:#ef5350">off-policy by default (online-DPO variants re-sample)</td></tr>
+<tr><td>rejection sampling + SFT (ch. 7 p. 5)</td><td>own outputs, one round old</td><td style="color:#ff9800">quasi on-policy — stale by one iteration</td></tr>
+<tr><td>PPO (ch. 5) / GRPO (ch. 7-8)</td><td>own fresh rollouts</td><td style="color:#4caf50">approximately on-policy (the three leaks above)</td></tr>
+<tr><td>on-policy distillation (ch. 11)</td><td>own fresh rollouts, teacher grades them</td><td style="color:#4caf50">on-policy, dense signal</td></tr>
+</table>
+</div>
+
+</div>
+
+<script>
+const pages=document.querySelectorAll('.page');const nav=document.getElementById('nav');
+pages.forEach((p,i)=>{const b=document.createElement('button');b.textContent=p.dataset.t;b.onclick=()=>go(i);if(i===0)b.classList.add('on');nav.appendChild(b);});
+function go(n){pages.forEach((p,i)=>p.classList.toggle('on',i===n));nav.querySelectorAll('button').forEach((b,i)=>{b.classList.remove('on');if(i<n)b.classList.add('done');else b.classList.remove('done');if(i===n)b.classList.add('on');});window.scrollTo({top:0,behavior:'smooth'});}
+</script>
+</body>
+</html>

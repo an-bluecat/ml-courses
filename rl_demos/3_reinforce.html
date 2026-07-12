@@ -23,6 +23,9 @@
   .card.warn{border-color:#ff9800;background:#1a1400}
   .card.ok{border-color:#4caf50;background:#0a1a0a}
   .card.red{border-color:#ef5350;background:#1a0a0a}
+  details.more{background:#12122a;border:1px solid #2a2a4a;border-radius:12px;padding:12px 18px;margin-bottom:14px}
+  details.more summary{cursor:pointer;color:#4fc3f7;font-weight:600}
+  details.more p{margin-top:10px}
   pre{background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:14px;overflow-x:auto;margin:10px 0;font-size:.88em;line-height:1.5}
   code{font-family:'Fira Code',Consolas,monospace}
   .cmt{color:#6a9955}.kw{color:#c586c0}.num{color:#b5cea8}.str{color:#ce9178}.var{color:#9cdcfe}.fn{color:#dcdcaa}.hl{background:#264f78;display:inline-block;width:100%;padding:0 4px;margin:0 -4px;border-radius:3px}
@@ -95,6 +98,12 @@
     </div>
     <p>This network IS the policy. It directly outputs "what to do." We call it <strong>&#x03C0;</strong> (pi).</p>
   </div>
+  <details class="more"><summary>Refresher: why is it called a "policy" — and why the letter &#x03C0;?</summary>
+    <p><strong>"Policy" is the everyday word, used literally.</strong> A store's return policy, an insurance policy: a standing <em>if-this-situation-then-do-that</em> rulebook, written down before any customer walks in. Not one decision — the complete map from situations to actions. That is exactly this object: ask it about <em>any</em> state, it answers with what to do. The word came into RL from Bellman's 1950s dynamic programming (his algorithm for improving the rulebook is still called <em>policy iteration</em>); game theory calls the same object a "strategy."</p>
+    <p><strong>The green box above IS the policy at one state.</strong> Feed the network a different state, get a different table of probabilities. The network's weights are the whole rulebook compressed: any state in &#x2192; a distribution over actions out.</p>
+    <p><strong>Why &#x03C0;?</strong> The rulebook's answer is a probability distribution — but the letter <em>p</em> already means "probability." So we take the Greek p: &#x03C0; for <strong>p</strong>olicy. Read &#x03C0;(a|s) out loud as "the probability that the rulebook picks action <em>a</em> when the situation is <em>s</em>." Nothing to do with 3.14159.</p>
+    <p><strong>LLM translation</strong> (the vocabulary of PPO/DPO/GRPO in chapters 5&#8211;9): the policy IS the language model. State s = the prompt plus the tokens generated so far; action a = the next token; &#x03C0;(a|s) = the softmax over the vocabulary. And &#x03C0;_old vs &#x03C0;_new later just means two versions of the same rulebook — the frozen copy that generated the samples vs the weights you are currently updating.</p>
+  </details>
   <button class="nx" onclick="go(1)">Next: What does the network actually look like? &#x2192;</button>
 </div>
 

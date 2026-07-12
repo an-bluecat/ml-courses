@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chapter 10: The Difficulty Curriculum — Feeding GRPO Problems It Can Learn From</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0a0a1a;color:#e0e0e0;padding:20px 20px 80px;line-height:1.7}
+h1{text-align:center;color:#fff;margin-bottom:4px;font-size:1.5em}
+.sub{text-align:center;color:#888;margin-bottom:24px;font-size:.88em}
+.nav{display:flex;justify-content:center;gap:6px;margin-bottom:20px;flex-wrap:wrap}
+.nav button{padding:7px 13px;border:2px solid #333;background:#111;color:#888;border-radius:8px;cursor:pointer;font-size:.78em;transition:.2s}
+.nav button:hover{border-color:#555;color:#ccc}
+.nav button.on{border-color:#4fc3f7;color:#4fc3f7;background:#0d2137}
+.nav button.done{border-color:#4caf50;color:#4caf50}
+.page{display:none;max-width:880px;margin:0 auto}
+.page.on{display:block}
+.page h2{color:#4fc3f7;margin-bottom:12px;font-size:1.2em}
+.card{background:#12122a;border:1px solid #2a2a4a;border-radius:12px;padding:18px;margin-bottom:14px}
+.card.blue{border-color:#4fc3f7;background:#0d1b2a}
+.card.green{border-color:#4caf50;background:#0a1a0a}
+.card.orange{border-color:#ff9800;background:#1a1400}
+.card.purple{border-color:#ce93d8;background:#1a0a2a}
+.card.red{border-color:#ef5350;background:#1a0a0a}
+.card h3{color:#ffb74d;margin-bottom:8px;font-size:1em}
+button.nx{padding:10px 24px;background:#4caf50;color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:.9em;margin-top:14px}
+button.nx:hover{background:#66bb6a}
+table{width:100%;border-collapse:collapse;margin:10px 0}
+th,td{padding:8px 12px;border:1px solid #333;text-align:center;font-size:.88em}
+th{background:#1a1a3a;color:#4fc3f7}
+.math{background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:14px;margin:10px 0;font-family:'Fira Code',monospace;font-size:.85em;line-height:1.8;overflow-x:auto}
+.math .line{margin:2px 0;white-space:pre}
+.math .hl{background:#264f78;padding:2px 6px;border-radius:4px;display:inline-block}
+.math .cmt{color:#6a9955}
+.math .val{color:#b5cea8}
+.math .lbl{color:#9cdcfe}
+.math .kw{color:#c586c0}
+.math .out{color:#4caf50}
+.key{color:#ffb74d;font-weight:600}
+details.more{background:#12122a;border:1px solid #2a2a4a;border-radius:10px;padding:10px 14px;margin:10px 0}
+details.more summary{cursor:pointer;color:#4fc3f7;font-size:.92em;font-weight:600}
+details.more[open] summary{margin-bottom:8px}
+.nb{display:inline-block;background:rgba(255,152,0,.12);color:#ff9800;border:1px solid rgba(255,152,0,.3);border-radius:4px;font-size:.72em;font-weight:700;padding:1px 7px;vertical-align:middle;margin-left:6px}
+svg text{font-family:'Segoe UI',system-ui,sans-serif}
+</style>
+</head>
+<body>
+<a href="../index.html" style="position:fixed;top:10px;left:14px;font-size:.75em;color:#555;text-decoration:none;z-index:999;padding:4px 8px;background:#0a0a1a;border:1px solid #333;border-radius:6px;">&larr; index</a>
+<h1>Chapter 10: The Difficulty Curriculum</h1>
+<p class="sub">Too hard → all wrong → no signal. Too easy → all right → no signal. GRPO only learns in the middle — and staying in the middle is a real engineering discipline.</p>
+<div class="nav" id="nav"></div>
+
+<!-- ============================ PAGE 0 ============================ -->
+<div class="page on" data-t="0. The Dead Group">
+<h2>The Dead Group — Where the Gradient Goes to Zero</h2>
+
+<div class="card blue">
+<h3>Run the chapter-8 arithmetic on three groups</h3>
+<div class="math">
+<div class="line"><span class="cmt"># A MIXED group (medium problem) — the healthy case from ch. 8:</span></div>
+<div class="line"><span class="lbl">rewards</span> = [0, 0, 1, 0]   mean = 0.25</div>
+<div class="line"><span class="lbl">&Acirc;</span> = [<span style="color:#ef5350">-0.58</span>, <span style="color:#ef5350">-0.58</span>, <span style="color:#4caf50">+1.73</span>, <span style="color:#ef5350">-0.58</span>]   <span class="cmt"># signal! push up, push down</span></div>
+<div class="line"></div>
+<div class="line"><span class="cmt"># problem TOO EASY — every attempt correct:</span></div>
+<div class="line"><span class="lbl">rewards</span> = [1, 1, 1, 1]   mean = 1.0</div>
+<div class="line"><span class="lbl">&Acirc;</span> = [(1-1)/std, ...] = [<span class="val">0, 0, 0, 0</span>]      <span class="cmt"># numerator is 0 for every response</span></div>
+<div class="line"></div>
+<div class="line"><span class="cmt"># problem TOO HARD — every attempt wrong:</span></div>
+<div class="line"><span class="lbl">rewards</span> = [0, 0, 0, 0]   mean = 0.0</div>
+<div class="line"><span class="lbl">&Acirc;</span> = [<span class="val">0, 0, 0, 0</span>]                        <span class="cmt"># same: nothing to compare against</span></div>
+</div>
+<p style="margin-top:6px">The advantage is <em>relative to the group</em>. If the whole group did equally well, no response is above or below average — so GRPO has literally nothing to say. Every token of all G responses gets advantage 0, the per-token loss term is 0 &times; ratio = 0, and <strong>the entire group contributes zero gradient</strong>. (The std in the denominator is also 0 — implementations add an epsilon precisely so this prints 0 instead of crashing.)</p>
+</div>
+
+<div class="card red">
+<h3>What it cost you</h3>
+<p>Those G generations were the <em>expensive</em> part — for a reasoning model, G &times; thousands of chain-of-thought tokens on inference GPUs. All of it bought <strong>nothing</strong>. A dead group isn't a wrong update (0 is a "correct" gradient); it's <em>wasted compute and a smaller effective batch</em>: if half your groups are dead, your real batch size is half what you configured, and gradient noise doubles accordingly.</p>
+</div>
+
+<div class="card purple">
+<h3>Note what the signal depends on: not the problem — the <em>matchup</em></h3>
+<p>"Too easy" and "too hard" aren't properties of the problem. They're properties of <strong>problem &times; current model</strong>. <code>3+4=</code> was a perfect training problem for our 48%-accurate toy model and is a dead problem for the finished 95% one. The same AIME problem is dead-hard for a 1B model and dead-easy for a frontier model. This is why no fixed dataset stays good: <span class="key">the model moves, so the difficulty of everything moves with it.</span></p>
+</div>
+<button class="nx" onclick="go(1)">Next: watch it happen in a real run &#x2192;</button>
+</div>
+
+<!-- ============================ PAGE 1 ============================ -->
+<div class="page" data-t="1. Live Evidence">
+<h2>Watch the Signal Dry Up — Our Own Run</h2>
+
+<div class="card blue">
+<h3>The notebook's bookkeeping column <span class="nb">real run</span></h3>
+<p>The training loop in the notebook (<a href="../notebooks/grpo_from_scratch.ipynb" style="color:#4fc3f7">grpo_from_scratch.ipynb</a>, §10-11) counts, at every step, the fraction of groups whose G=8 rewards came back all-equal:</p>
+<div class="math">
+<div class="line"><span class="lbl">step   0</span>   pass rate 0.55   <span style="color:#ef5350">zero-signal groups 0.00</span>   eval acc 0.48</div>
+<div class="line"><span class="lbl">step 100</span>   pass rate 0.77   <span style="color:#ef5350">zero-signal groups 0.12</span>   eval acc 0.83</div>
+<div class="line"><span class="lbl">step 250</span>   pass rate 0.91   <span style="color:#ef5350">zero-signal groups 0.50</span>   eval acc 0.91</div>
+<div class="line"><span class="lbl">step 300</span>   pass rate 0.91   <span style="color:#ef5350">zero-signal groups 0.62</span>   eval acc 0.91</div>
+<div class="line"><span class="lbl">step 400</span>   pass rate 0.94   <span style="color:#ef5350">zero-signal groups 0.50</span>   eval acc 0.94</div>
+</div>
+<p style="margin-top:6px">At the start, the ~50% model made every group mixed — 100% of compute produced gradient. By step 300, <strong>62% of groups came back all-correct: nearly two-thirds of generation compute bought zero learning.</strong> The better the model got, the more it wasted — on a dataset that never changed.</p>
+</div>
+
+<div class="card">
+<h3>Why the window is so sharp — derive it</h3>
+<p>Suppose the current model solves a given problem with probability p (its <em>pass rate</em> on that problem). A group of G=8 samples produces signal only if it's mixed — not all 8 right, not all 8 wrong:</p>
+<div class="math">
+<div class="line">P(group gives signal) = 1 &minus; p&#8312; &minus; (1&minus;p)&#8312;</div>
+<div class="line"></div>
+<div class="line">p = 0.50:  1 &minus; 0.0039 &minus; 0.0039 = <span class="out">0.992</span>   <span class="cmt"># nearly every group teaches</span></div>
+<div class="line">p = 0.90:  1 &minus; 0.430 &minus; 0.000  = <span class="out">0.570</span>   <span class="cmt"># almost half the groups dead</span></div>
+<div class="line">p = 0.99:  1 &minus; 0.923 &minus; 0.000  = <span class="out">0.077</span>   <span class="cmt"># 92% of compute wasted</span></div>
+<div class="line">p = 0.05:  1 &minus; 0.000 &minus; 0.663  = <span class="out">0.337</span>   <span class="cmt"># too-hard side is just as bad</span></div>
+</div>
+</div>
+
+<div class="card green">
+<h3>The learning window</h3>
+<svg viewBox="0 0 760 300" xmlns="http://www.w3.org/2000/svg">
+  <!-- axes -->
+  <line x1="60" y1="240" x2="700" y2="240" stroke="#555" stroke-width="1.5"/>
+  <line x1="60" y1="240" x2="60" y2="50" stroke="#555" stroke-width="1.5"/>
+  <text x="380" y="272" fill="#888" font-size="12" text-anchor="middle">pass rate p of the problem under the CURRENT model</text>
+  <text x="60" y="288" fill="#666" font-size="11" text-anchor="middle">0</text>
+  <text x="380" y="288" fill="#666" font-size="11" text-anchor="middle">0.5</text>
+  <text x="700" y="288" fill="#666" font-size="11" text-anchor="middle">1</text>
+  <!-- rotated y label -->
+  <text x="22" y="145" fill="#888" font-size="11" text-anchor="middle" transform="rotate(-90 22 145)">P(group of 8 gives gradient)</text>
+  <text x="48" y="64" fill="#666" font-size="11" text-anchor="end">1.0</text>
+  <text x="48" y="244" fill="#666" font-size="11" text-anchor="end">0</text>
+  <!-- danger zones -->
+  <rect x="60" y="50" width="64" height="190" fill="rgba(239,83,80,.08)"/>
+  <rect x="636" y="50" width="64" height="190" fill="rgba(239,83,80,.08)"/>
+  <!-- curve 1 - p^8 - (1-p)^8, sampled every 0.05 -->
+  <polyline points="60,240 92,179 124,137 156,109 188,90 220,79 252,70 284,66 316,63 348,62 380,61 412,62 444,63 476,66 508,70 540,79 572,90 604,109 636,137 668,179 700,240" fill="none" stroke="#4caf50" stroke-width="2.5"/>
+  <!-- labels -->
+  <text x="92" y="130" fill="#ef5350" font-size="12" text-anchor="middle">too hard</text>
+  <text x="92" y="146" fill="#ef5350" font-size="10" text-anchor="middle">all wrong</text>
+  <text x="668" y="130" fill="#ef5350" font-size="12" text-anchor="middle">too easy</text>
+  <text x="668" y="146" fill="#ef5350" font-size="10" text-anchor="middle">all right</text>
+  <text x="380" y="46" fill="#4caf50" font-size="13" text-anchor="middle" font-weight="600">the learning zone</text>
+</svg>
+<p style="font-size:.85em;color:#888;margin-top:4px">The curve is exactly 1 &minus; p&#8312; &minus; (1&minus;p)&#8312; from the box above. The top is broad and forgiving (p between 0.2 and 0.8 is all fine) — but the cliffs at both ends are where trained models actually live: a capable model's pass rate on most of a fixed dataset drifts toward 1, sliding the whole dataset off the right cliff.</p>
+</div>
+
+<details class="more">
+<summary>Sidetrack: the theory version — why p = 0.5 is provably the most informative</summary>
+<p style="margin-top:6px;font-size:.92em">"Online Difficulty Filtering for Reasoning Oriented RL" (Bae et al., 2025, arXiv 2504.03380) proves the expected policy improvement of a GRPO step is lower-bounded by the <em>variance of the success probability</em>, p(1&minus;p) — maximized at p = 0.5. It's the RL formalization of the education concept they explicitly borrow: the <em>zone of proximal development</em> — you learn fastest at tasks you can <em>almost</em> do. Their balanced-window filter (keep prompts with pass rate near 0.5) reached up to +12% over plain GRPO in fewer than half the steps.</p>
+</details>
+<button class="nx" onclick="go(2)">Next: the fixes real labs use &#x2192;</button>
+</div>
+
+<!-- ============================ PAGE 2 ============================ -->
+<div class="page" data-t="2. The Fixes">
+<h2>The Fixes — Probe With the Model You're Training</h2>
+
+<div class="card blue">
+<h3>The shared recipe</h3>
+<p>Every production fix is a variation of one move: <span class="key">run the current model on candidate problems a few times; keep only problems it sometimes solves.</span> The pass rate from the probe <em>is</em> the difficulty score — no human labeling of "easy/medium/hard" needed, and it's automatically calibrated to today's model, not last month's.</p>
+<div class="math">
+<div class="line"><span class="cmt"># the whole idea, as code:</span></div>
+<div class="line"><span class="kw">def</span> <span class="lbl">worth_training_on</span>(problem, model, n=8):</div>
+<div class="line">    wins = sum(verify(problem, model.sample(problem)) <span class="kw">for</span> _ <span class="kw">in</span> range(n))</div>
+<div class="line">    <span class="kw">return</span> 0 &lt; wins &lt; n        <span class="cmt"># mixed results = the model is mid-learning it</span></div>
+</div>
+</div>
+
+<div class="card">
+<h3>The documented versions — real systems, real rules</h3>
+<table>
+<tr><th>system</th><th>probe</th><th>rule</th></tr>
+<tr><td><strong>DAPO</strong> (ByteDance, 2025) — <em>online</em></td><td>the G rollouts you were generating anyway</td><td>"dynamic sampling": discard groups with 0 or G correct, <strong>keep sampling new prompts until the batch is full of live groups</strong></td></tr>
+<tr><td><strong>Kimi k1.5</strong> (Moonshot, 2025) — <em>offline probe</em></td><td>10 samples from the SFT model, high temperature</td><td>pass rate = difficulty proxy; drop trivial &amp; guessable ones; later sample problems &prop; (1 &minus; success so far)</td></tr>
+<tr><td><strong>POLARIS</strong> (HKU, 2025) — <em>offline + per-stage</em></td><td>8 rollouts at T = 0.6 with the target model</td><td>delete everything solved 8/8; <strong>re-filter between stages</strong>: drop anything the improved model now solves &gt; 90%</td></tr>
+<tr><td><strong>Skywork-OR1</strong> (2025) — <em>offline per model size</em></td><td>16 rollouts per problem</td><td>difficulty score 0-16; exclude 0 and 16 — separately for each model variant</td></tr>
+</table>
+<p style="font-size:.88em">Notice your friend's heuristic is literally row 1 and row 3: "先试几个 current model — 全打错太难，全打对太简单，换一批难度适中的." This is not folklore; it's published, named machinery.</p>
+</div>
+
+<div class="card orange">
+<h3>Dynamic sampling up close — DAPO's rule and its price</h3>
+<div class="math">
+<div class="line"><span class="cmt"># DAPO keeps a group only if:</span></div>
+<div class="line"><span class="hl">0 &lt; #correct(group) &lt; G</span></div>
+<div class="line"><span class="cmt"># and generates EXTRA prompts until the batch contains</span></div>
+<div class="line"><span class="cmt"># batch_size live groups. Dead groups are thrown away.</span></div>
+</div>
+<p style="margin-top:6px">The price: as the model improves, more candidate groups come back dead, so filling a batch takes <strong>several times more generation</strong> late in training (reproductions report 3&ndash;9&times; oversampling). DAPO's bet — which paid off — is that a full batch of live gradients beats a nominal batch that's half zeros: they hit 50 points on AIME 2024 with <strong>half the training steps</strong> of the previous recipe. You spend more on generation to waste none of your optimization.</p>
+</div>
+
+<div class="card purple">
+<h3>Offline vs online filtering — the actual trade-off</h3>
+<table>
+<tr><th></th><th>offline (probe once, filter, train)</th><th>online (filter during training)</th></tr>
+<tr><td>cost</td><td style="color:#4caf50">one probing pass, cheap</td><td style="color:#ef5350">continuous oversampling</td></tr>
+<tr><td>freshness</td><td style="color:#ef5350">goes stale — the model outgrows the filter mid-run</td><td style="color:#4caf50">always matched to today's model</td></tr>
+<tr><td>who uses it</td><td>Kimi k1.5, Skywork-OR1</td><td>DAPO</td></tr>
+<tr><td>the hybrid</td><td colspan="2">POLARIS: offline filter + re-probe and re-filter at every stage boundary — most of the freshness at a fraction of the cost</td></tr>
+</table>
+</div>
+
+<details class="more">
+<summary>Sidetrack: easy→hard ordering (curriculum in the schoolbook sense)</summary>
+<p style="margin-top:6px;font-size:.92em">Filtering keeps the window; some labs additionally <em>order</em> what's inside it. Kimi k1.5 does "curriculum sampling" (easy problems early, hard later) — early wins bootstrap the behaviors needed for hard problems, exactly like a syllabus. But note the passive version happens anyway: as the model improves, problems that were "too hard" (dead) enter the window from the left while mastered ones exit right. The window <em>is</em> a self-paced curriculum; explicit ordering just smooths it.</p>
+</details>
+<button class="nx" onclick="go(3)">Next: you've seen this before — your fraud project &#x2192;</button>
+</div>
+
+<!-- ============================ PAGE 3 ============================ -->
+<div class="page" data-t="3. The Fraud Parallel">
+<h2>You've Seen This Before — The Fraud Auto-Labeling Project</h2>
+
+<div class="card blue">
+<h3>Same principle, different costume</h3>
+<p>Your fraud project (full reconstruction: <a href="../case_studies/1_fraud_auto_labeling.html" style="color:#4fc3f7">the fraud auto-labeling case study</a>) never says "curriculum" — but three of its mechanisms are this chapter's idea wearing risk-ops clothes. The shared principle: <span class="key">obvious cases teach (and pay) nothing; all value is concentrated in the uncertain middle.</span></p>
+</div>
+
+<div class="card">
+<h3>Parallel 1 — the label hierarchy (§6.4): difficulty buckets as sample weights</h3>
+<p>The XGBoost iteration <code>user_level_v3_..._label_hierarchy_tuned</code> weights training samples by explicit difficulty buckets:</p>
+<div class="math">
+<div class="line"><span class="lbl">easy explicit clear</span>   <span class="cmt"># obviously legitimate  = the p&asymp;1 prompts</span></div>
+<div class="line"><span class="lbl">implicit clear</span>        <span class="cmt"># probably legitimate</span></div>
+<div class="line"><span class="lbl">hard negative</span>         <span class="cmt"># LOOKS like fraud, isn't = the learning zone</span></div>
+<div class="line"><span class="lbl">fraud</span>                 <span class="cmt"># the positives</span></div>
+<div class="line"><span class="lbl">other labeled negative</span></div>
+</div>
+<p style="margin-top:6px">Down-weighting "easy explicit clear" and up-weighting "hard negative" is the supervised-learning translation of dropping p&asymp;1 groups and oversampling the middle. (Observed effect in the project docs: better hard-fraud average precision.) A gradient dominated by millions of trivially-clear users is a gradient near zero — the fraud model's version of the dead group.</p>
+</div>
+
+<div class="card">
+<h3>Parallel 2 — active learning (§11.2): probe, then label the boundary</h3>
+<p>The project's LLM-assist wishlist includes, verbatim: <em>"Active learning: select uncertain or high-value cases for human review"</em> and <em>"triage borderline cases."</em> Map the pieces:</p>
+<table>
+<tr><th>GRPO curriculum</th><th>fraud auto-labeling</th></tr>
+<tr><td>probe: sample the current model 8&times; per problem</td><td>score all users with the current model daily</td></tr>
+<tr><td>pass rate &asymp; 0 or 1 &rarr; skip the prompt</td><td>score &asymp; 0 (clear) or &asymp; 1 (obvious fraud) &rarr; no review needed</td></tr>
+<tr><td>mixed group &rarr; train on it</td><td>uncertain score &rarr; <strong>send to human review</strong>, label it, retrain on it</td></tr>
+<tr><td>generation budget</td><td>daily review budget (top-K cases/day)</td></tr>
+</table>
+<p style="font-size:.88em;margin-top:4px">Both systems spend a scarce resource (GPU generation / human reviewers) and both discovered the same allocation rule: <strong>spend it where the current model is unsure.</strong></p>
+</div>
+
+<div class="card">
+<h3>Parallel 3 — the reward that punishes acting on the obvious (§11.3)</h3>
+<p>The project's own GRPO sketch for an auto-label policy shapes its reward with a <em>"large penalty for auto-labeling clear users"</em> — pushing the policy's attention away from cases where the answer is obvious and toward the contested middle where a decision has value. Reward shaping and data curation turn out to be two levers on the same variable: <em>where does the learning signal come from?</em></p>
+</div>
+
+<div class="card green">
+<h3>The transferable insight</h3>
+<p>One principle, two worlds: <span class="key">learning signal lives at the boundary of current competence.</span> In GRPO the scarce resource is generation compute and the boundary-finder is the pass-rate probe; in the fraud system the scarce resource was human review and the boundary-finder was model-score uncertainty. Once that shared shape is yours, either project can answer questions about the other.</p>
+</div>
+<button class="nx" onclick="go(4)">Next: the traps &#x2192;</button>
+</div>
+
+<!-- ============================ PAGE 4 ============================ -->
+<div class="page" data-t="4. Traps">
+<h2>Traps to Avoid</h2>
+
+<div class="card red">
+<h3>Four ways people get this wrong</h3>
+<ul style="margin-left:18px;line-height:2">
+<li><strong>"Dead groups corrupt the gradient."</strong> No — zero is a <em>correct</em> gradient. The damage is wasted generation compute and a shrunken effective batch (noisier updates). Say "sample efficiency," not "bias."</li>
+<li><strong>"Just lower the difficulty."</strong> Backwards half the time — a too-easy dataset is equally dead. The target is <em>mixed groups</em>, i.e. medium difficulty <em>relative to the current model</em>.</li>
+<li><strong>"Filter once at the start."</strong> Goes stale mid-run; the model outgrows the filter. Either re-probe (POLARIS) or filter online (DAPO).</li>
+<li><strong>"Increase G to revive dead prompts."</strong> Helps marginally near the cliffs (1 &minus; p&#71; &minus; (1&minus;p)&#71; grows with G) but costs proportionally more generation — filtering is almost always the cheaper lever.</li>
+</ul>
+</div>
+
+<div class="card blue">
+<h3>Where this thread continues</h3>
+<p>The dead-group problem is one of GRPO's two great production headaches. The other — the training-vs-inference engine mismatch that quietly turns "on-policy" into off-policy, and gets 10&times; worse with MoE models — is <a href="12_moe_train_serve_gap.html" style="color:#4fc3f7">chapter 12</a>. Between them sits <a href="11_on_policy_distillation.html" style="color:#4fc3f7">chapter 11</a>: a method that sidesteps sparse rewards entirely by making every token carry signal.</p>
+</div>
+</div>
+
+<script>
+const pages=document.querySelectorAll('.page');const nav=document.getElementById('nav');
+pages.forEach((p,i)=>{const b=document.createElement('button');b.textContent=p.dataset.t;b.onclick=()=>go(i);if(i===0)b.classList.add('on');nav.appendChild(b);});
+function go(n){pages.forEach((p,i)=>p.classList.toggle('on',i===n));nav.querySelectorAll('button').forEach((b,i)=>{b.classList.remove('on');if(i<n)b.classList.add('done');else b.classList.remove('done');if(i===n)b.classList.add('on');});window.scrollTo({top:0,behavior:'smooth'});}
+</script>
+</body>
+</html>

@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chapter 11: The Post-Training Factory & On-Policy Distillation</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0a0a1a;color:#e0e0e0;padding:20px 20px 80px;line-height:1.7}
+h1{text-align:center;color:#fff;margin-bottom:4px;font-size:1.5em}
+.sub{text-align:center;color:#888;margin-bottom:24px;font-size:.88em}
+.nav{display:flex;justify-content:center;gap:6px;margin-bottom:20px;flex-wrap:wrap}
+.nav button{padding:7px 13px;border:2px solid #333;background:#111;color:#888;border-radius:8px;cursor:pointer;font-size:.78em;transition:.2s}
+.nav button:hover{border-color:#555;color:#ccc}
+.nav button.on{border-color:#4fc3f7;color:#4fc3f7;background:#0d2137}
+.nav button.done{border-color:#4caf50;color:#4caf50}
+.page{display:none;max-width:880px;margin:0 auto}
+.page.on{display:block}
+.page h2{color:#4fc3f7;margin-bottom:12px;font-size:1.2em}
+.card{background:#12122a;border:1px solid #2a2a4a;border-radius:12px;padding:18px;margin-bottom:14px}
+.card.blue{border-color:#4fc3f7;background:#0d1b2a}
+.card.green{border-color:#4caf50;background:#0a1a0a}
+.card.orange{border-color:#ff9800;background:#1a1400}
+.card.purple{border-color:#ce93d8;background:#1a0a2a}
+.card.red{border-color:#ef5350;background:#1a0a0a}
+.card h3{color:#ffb74d;margin-bottom:8px;font-size:1em}
+button.nx{padding:10px 24px;background:#4caf50;color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:.9em;margin-top:14px}
+button.nx:hover{background:#66bb6a}
+table{width:100%;border-collapse:collapse;margin:10px 0}
+th,td{padding:8px 12px;border:1px solid #333;text-align:center;font-size:.88em}
+th{background:#1a1a3a;color:#4fc3f7}
+.math{background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:14px;margin:10px 0;font-family:'Fira Code',monospace;font-size:.85em;line-height:1.8;overflow-x:auto}
+.math .line{margin:2px 0;white-space:pre}
+.math .hl{background:#264f78;padding:2px 6px;border-radius:4px;display:inline-block}
+.math .cmt{color:#6a9955}
+.math .val{color:#b5cea8}
+.math .lbl{color:#9cdcfe}
+.math .kw{color:#c586c0}
+.math .out{color:#4caf50}
+.key{color:#ffb74d;font-weight:600}
+details.more{background:#12122a;border:1px solid #2a2a4a;border-radius:10px;padding:10px 14px;margin:10px 0}
+details.more summary{cursor:pointer;color:#4fc3f7;font-size:.92em;font-weight:600}
+details.more[open] summary{margin-bottom:8px}
+.nb{display:inline-block;background:rgba(255,152,0,.12);color:#ff9800;border:1px solid rgba(255,152,0,.3);border-radius:4px;font-size:.72em;font-weight:700;padding:1px 7px;vertical-align:middle;margin-left:6px}
+svg text{font-family:'Segoe UI',system-ui,sans-serif}
+</style>
+</head>
+<body>
+<a href="../index.html" style="position:fixed;top:10px;left:14px;font-size:.75em;color:#555;text-decoration:none;z-index:999;padding:4px 8px;background:#0a0a1a;border:1px solid #333;border-radius:6px;">&larr; index</a>
+<h1>Chapter 11: The Post-Training Factory &amp; On-Policy Distillation</h1>
+<p class="sub">How labs actually assemble a frontier model from many teams' work — and the 2025 technique that changed the assembly step</p>
+<div class="nav" id="nav"></div>
+
+<!-- ============================ PAGE 0 ============================ -->
+<div class="page on" data-t="0. The Factory">
+<h2>How a Frontier Model Is Actually Assembled</h2>
+
+<div class="card blue">
+<h3>Three stages — and where all your chapters live</h3>
+<svg viewBox="0 0 760 330" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="f11a" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6" fill="none" stroke="#888" stroke-width="1.4"/></marker>
+  </defs>
+  <!-- pretrain -->
+  <rect x="20" y="110" width="170" height="90" rx="10" fill="#0d1b2a" stroke="#4fc3f7" stroke-width="1.5"/>
+  <text x="105" y="136" fill="#4fc3f7" font-size="13" text-anchor="middle" font-weight="600">PRE-TRAINING</text>
+  <text x="105" y="156" fill="#e0e0e0" font-size="11" text-anchor="middle">next-token on the internet</text>
+  <text x="105" y="172" fill="#888" font-size="10" text-anchor="middle">language, world knowledge,</text>
+  <text x="105" y="186" fill="#888" font-size="10" text-anchor="middle">broad reasoning</text>
+  <!-- midtrain -->
+  <rect x="240" y="110" width="180" height="90" rx="10" fill="#1a1400" stroke="#ff9800" stroke-width="1.5"/>
+  <text x="330" y="136" fill="#ff9800" font-size="13" text-anchor="middle" font-weight="600">MID-TRAINING</text>
+  <text x="330" y="156" fill="#e0e0e0" font-size="11" text-anchor="middle">curated domain data: code,</text>
+  <text x="330" y="172" fill="#e0e0e0" font-size="11" text-anchor="middle">medical, internal docs +</text>
+  <text x="330" y="186" fill="#e0e0e0" font-size="11" text-anchor="middle">light instruction following</text>
+  <!-- post-train teams -->
+  <rect x="470" y="20" width="130" height="52" rx="8" fill="#1a0a2a" stroke="#ce93d8"/>
+  <text x="535" y="42" fill="#ce93d8" font-size="11" text-anchor="middle" font-weight="600">instruction team</text>
+  <text x="535" y="58" fill="#888" font-size="10" text-anchor="middle">RLHF / DPO (ch. 5-6)</text>
+  <rect x="470" y="90" width="130" height="52" rx="8" fill="#1a0a2a" stroke="#ce93d8"/>
+  <text x="535" y="112" fill="#ce93d8" font-size="11" text-anchor="middle" font-weight="600">math team</text>
+  <text x="535" y="128" fill="#888" font-size="10" text-anchor="middle">GRPO + verifiers (ch. 7-8)</text>
+  <rect x="470" y="160" width="130" height="52" rx="8" fill="#1a0a2a" stroke="#ce93d8"/>
+  <text x="535" y="182" fill="#ce93d8" font-size="11" text-anchor="middle" font-weight="600">coding team</text>
+  <text x="535" y="198" fill="#888" font-size="10" text-anchor="middle">GRPO + unit tests</text>
+  <rect x="470" y="230" width="130" height="52" rx="8" fill="#1a0a2a" stroke="#ce93d8"/>
+  <text x="535" y="252" fill="#ce93d8" font-size="11" text-anchor="middle" font-weight="600">agent / search team</text>
+  <text x="535" y="268" fill="#888" font-size="10" text-anchor="middle">tool-use RL</text>
+  <!-- merge -->
+  <rect x="650" y="120" width="96" height="70" rx="10" fill="#0a1a0a" stroke="#4caf50" stroke-width="1.5"/>
+  <text x="698" y="146" fill="#4caf50" font-size="12" text-anchor="middle" font-weight="600">ONE model</text>
+  <text x="698" y="164" fill="#e0e0e0" font-size="11" text-anchor="middle">shipped to</text>
+  <text x="698" y="180" fill="#e0e0e0" font-size="11" text-anchor="middle">users</text>
+  <!-- arrows -->
+  <path d="M190,155 L236,155" stroke="#888" stroke-width="1.4" fill="none" marker-end="url(#f11a)"/>
+  <path d="M420,140 L466,52" stroke="#888" stroke-width="1.4" fill="none" marker-end="url(#f11a)"/>
+  <path d="M420,150 L466,118" stroke="#888" stroke-width="1.4" fill="none" marker-end="url(#f11a)"/>
+  <path d="M420,165 L466,184" stroke="#888" stroke-width="1.4" fill="none" marker-end="url(#f11a)"/>
+  <path d="M420,180 L466,252" stroke="#888" stroke-width="1.4" fill="none" marker-end="url(#f11a)"/>
+  <path d="M600,46 L646,132" stroke="#ef5350" stroke-width="1.4" fill="none" stroke-dasharray="5,4" marker-end="url(#f11a)"/>
+  <path d="M600,116 L646,145" stroke="#ef5350" stroke-width="1.4" fill="none" stroke-dasharray="5,4" marker-end="url(#f11a)"/>
+  <path d="M600,186 L646,165" stroke="#ef5350" stroke-width="1.4" fill="none" stroke-dasharray="5,4" marker-end="url(#f11a)"/>
+  <path d="M600,256 L646,178" stroke="#ef5350" stroke-width="1.4" fill="none" stroke-dasharray="5,4" marker-end="url(#f11a)"/>
+  <text x="628" y="310" fill="#ef5350" font-size="12" text-anchor="middle">the hard part: 4 specialist</text>
+  <text x="628" y="326" fill="#ef5350" font-size="12" text-anchor="middle">checkpoints &rarr; 1 model. How?</text>
+</svg>
+<p style="font-size:.88em;color:#888;margin-top:4px">Each post-training team branches off the same mid-trained checkpoint and pushes <em>its</em> specialty as far as it can — the math team doesn't worry about chat tone, the coding team doesn't worry about math. Specialists beat generalists in their own domain. Then someone has to fold them back together (red dashed arrows).</p>
+</div>
+
+<details class="more">
+<summary>Refresher: "mid-training"? First time this course has said that word.</summary>
+<p style="margin-top:6px;font-size:.92em">A stage that grew between pre-training and post-training in the last couple of years: keep doing next-token prediction, but on <em>curated</em> data — domain corpora (code, medical, a company's internal docs) usually mixed with a light dose of instruction-style data, so the model comes out of it already "slightly instruction-following." Think of it as: pre-training buys the brain, mid-training buys the domain library, post-training shapes the behavior. (Framing per Thinking Machines Lab, 2025: pre-training teaches "general capacities," mid-training "imparts domain knowledge," post-training "elicits targeted behavior.")</p>
+</details>
+
+<div class="card orange">
+<h3>This chapter's two questions</h3>
+<p><strong>1.</strong> How do you merge the specialist checkpoints into one model? (page 1 — the classic way and its ceiling)</p>
+<p><strong>2.</strong> What is "on-policy distillation," the 2025 technique that upgraded this step — and why does everyone quote a ~10&times; cost drop? (pages 2-3)</p>
+</div>
+<button class="nx" onclick="go(1)">Next: the classic merge, and where it caps &#x2192;</button>
+</div>
+
+<!-- ============================ PAGE 1 ============================ -->
+<div class="page" data-t="1. The Old Way">
+<h2>The Classic Merge: Every Specialist Writes a Textbook</h2>
+
+<div class="card blue">
+<h3>The procedure (real, documented — e.g. DeepSeek-V3.2's six specialists)</h3>
+<div class="math">
+<div class="line"><span class="cmt"># 1. from one base checkpoint, RL-train N specialists:</span></div>
+<div class="line">math_expert   = GRPO(base, math_verifier)      <span class="cmt"># ch. 7-8 machinery</span></div>
+<div class="line">code_expert   = GRPO(base, unit_tests)</div>
+<div class="line">agent_expert  = GRPO(base, tool_env)  ...</div>
+<div class="line"></div>
+<div class="line"><span class="cmt"># 2. each specialist GENERATES its best work:</span></div>
+<div class="line">math_data  = math_expert.generate(math_prompts)     <span class="cmt"># filtered for quality</span></div>
+<div class="line">code_data  = code_expert.generate(code_prompts)  ...</div>
+<div class="line"></div>
+<div class="line"><span class="cmt"># 3. one student SFTs on the union:</span></div>
+<div class="line"><span class="hl">final = SFT(base_checkpoint, math_data + code_data + agent_data + ...)</span></div>
+<div class="line"><span class="cmt"># (often + one more round of RL on top)</span></div>
+</div>
+<p style="margin-top:6px">Each expert writes a textbook of worked examples; the student reads all the textbooks. DeepSeek-V3.2 did exactly this with six RL-trained specialists (math, coding, logic, agentic tasks, agentic coding, search); Qwen3 used the same move to make its small models. It works — this <em>is</em> how capabilities get spread.</p>
+</div>
+
+<div class="card red">
+<h3>But you already know its ceiling — chapter 9 in one sentence</h3>
+<p>Step 3 is <strong>off-policy distillation</strong>: the student trains on <em>teacher-visited states</em>. The moment the student makes its own first mistake, it's in a prefix the textbooks never covered — compounding error. And imitation copies surface style more easily than competence (a student can learn to <em>sound</em> like the math expert while being wrong). The result caps below the teacher, and the gap widens with sequence length — exactly where reasoning models live.</p>
+</div>
+
+<div class="card purple">
+<h3>What you'd want instead — say it before seeing it</h3>
+<p>From chapter 9: the student should <em>generate its own attempts</em> (on-policy, learns in its own states). From chapter 8's weakness: the feedback should be <em>per-token</em>, not one bit per response (GRPO smeared ±1 across every token — remember '.', punished for a mistake it didn't make). So the wish list is: <span class="key">student samples, teacher grades every single token.</span> That exact combination is on-policy distillation.</p>
+</div>
+<button class="nx" onclick="go(2)">Next: the mechanism, with our own real numbers &#x2192;</button>
+</div>
+
+<!-- ============================ PAGE 2 ============================ -->
+<div class="page" data-t="2. The Mechanism">
+<h2>On-Policy Distillation: Student Rolls, Teacher Grades Every Token</h2>
+
+<div class="card blue">
+<h3>The whole algorithm</h3>
+<div class="math">
+<div class="line"><span class="cmt"># 1. STUDENT samples trajectories (on-policy — its own states, its own mistakes)</span></div>
+<div class="line">trajectories = student.sample(prompts)</div>
+<div class="line"></div>
+<div class="line"><span class="cmt"># 2. TEACHER computes log-probs of the student's tokens (one forward pass)</span></div>
+<div class="line">teacher_lp = teacher.compute_logprobs(trajectories)</div>
+<div class="line"></div>
+<div class="line"><span class="cmt"># 3. per-token reverse KL becomes a per-token ADVANTAGE:</span></div>
+<div class="line">reverse_kl = student_lp - teacher_lp        <span class="cmt"># &ge;0-ish where they disagree</span></div>
+<div class="line"><span class="hl">advantages = -reverse_kl</span>                    <span class="cmt"># disagree &rarr; negative push, per token</span></div>
+<div class="line"></div>
+<div class="line"><span class="cmt"># 4. feed to the SAME RL trainer as chapter 8 (importance-sampling loss).</span></div>
+<div class="line"><span class="cmt">#    discount = 0: each token optimizes only itself. No verifier anywhere.</span></div>
+</div>
+<p style="font-size:.88em;margin-top:6px">This is faithfully the Thinking Machines Lab recipe (Oct 2025) — their pseudocode's key line is literally <code>advantages = -reverse_kl</code>. Note what replaced chapter 8's group: no groups, no verifier, no zero-signal problem (ch. 10) — <em>every token always carries signal</em>.</p>
+</div>
+
+<div class="card green">
+<h3>Watch it grade our toy model <span class="nb">real run — notebook §12</span></h3>
+<p>From the notebook: student = the 48% pre-RL snapshot, teacher = the finished 95% model, responses = the ones the student actually sampled in chapter 8:</p>
+<div class="math">
+<div class="line">response 2: '7.'   <span class="cmt">(GRPO gave EVERY token adv +1.73)</span></div>
+<div class="line">   '7':  student p=0.58   teacher p=0.97   per-token advantage <span class="out">+0.50</span></div>
+<div class="line">   '.':  student p=1.00   teacher p=1.00   per-token advantage <span class="val">+0.00</span></div>
+<div class="line"></div>
+<div class="line">response 0: '10.'  <span class="cmt">(GRPO gave EVERY token adv -0.58)</span></div>
+<div class="line">   '1':  student p=0.26   teacher p=0.01   per-token advantage <span style="color:#ef5350;font-weight:700">-3.44</span></div>
+<div class="line">   '0':  student p=0.09   teacher p=0.23   per-token advantage <span class="out">+0.92</span></div>
+<div class="line">   '.':  student p=1.00   teacher p=1.00   per-token advantage <span class="val">-0.00</span></div>
+</div>
+<p style="margin-top:8px">Three things GRPO could never do, visible in five lines:</p>
+<ul style="margin-left:18px;line-height:1.9">
+<li><strong>The punishment lands on the crime.</strong> In '10.', the mistake was the very first token — and that's where the −3.44 goes. GRPO fined all three tokens equally.</li>
+<li><strong>Innocent tokens walk free.</strong> '.' gets ~0 in both responses (teacher and student fully agree). No more punishing the end-of-answer token for the digits before it.</li>
+<li><strong>The teacher coaches even inside a mistake.</strong> Look at '0' getting <em>+0.92 in a wrong answer</em>: given the student had already written '1', the teacher considers '0' a relatively good continuation — it grades each move <em>in the state the student is actually in</em>, including states the teacher itself would never enter. That is the on-policy part doing its job (the driving instructor in <em>your</em> car, ch. 9).</li>
+</ul>
+</div>
+
+<div class="card">
+<h3>The 2&times;2 that organizes this whole course</h3>
+<table>
+<tr><th></th><th>sampling</th><th>reward signal</th></tr>
+<tr><td>SFT / off-policy distillation (page 1)</td><td style="color:#ef5350">off-policy</td><td style="color:#4caf50">dense (every token has a target)</td></tr>
+<tr><td>RL — PPO/GRPO (ch. 5-8)</td><td style="color:#4caf50">on-policy</td><td style="color:#ef5350">sparse (one bit per response)</td></tr>
+<tr><td><strong>on-policy distillation</strong></td><td style="color:#4caf50;font-weight:700">on-policy</td><td style="color:#4caf50;font-weight:700">dense</td></tr>
+</table>
+<p style="font-size:.88em">The chess version (Thinking Machines' own metaphor): RL = playing full games and only hearing "won/lost" at the end; off-policy distillation = watching grandmaster games (positions you'll never reach); on-policy distillation = <strong>a coach grading every one of <em>your</em> moves from "blunder" to "brilliant."</strong></p>
+</div>
+
+<details class="more">
+<summary>Sidetrack: why REVERSE KL and not forward KL? (and what stops reward hacking?)</summary>
+<p style="margin-top:6px;font-size:.92em">Reverse KL = expectation under the <em>student's</em> samples of log(student/teacher). Minimizing it is <strong>mode-seeking</strong>: the student commits to the teacher's behavior rather than smearing probability over everything the teacher might do (forward KL's failure mode — the info-theory course, ch. 4, is exactly this asymmetry). Two bonuses: it's evaluated on student samples, which is what makes the whole thing on-policy; and it's <strong>hard to hack</strong> — a low reverse KL <em>means</em> the teacher assigns high probability to what the student does; there's no proxy gap to exploit like with a learned reward model.</p>
+</details>
+<button class="nx" onclick="go(3)">Next: the numbers that made everyone switch &#x2192;</button>
+</div>
+
+<!-- ============================ PAGE 3 ============================ -->
+<div class="page" data-t="3. The Numbers">
+<h2>Why It's Cheap: Bits per Episode</h2>
+
+<div class="card blue">
+<h3>The information-theoretic argument</h3>
+<div class="math">
+<div class="line"><span class="lbl">GRPO</span>:  one rollout = thousands of generated tokens &rarr; verifier &rarr; <span class="val">1 bit</span> (right/wrong)</div>
+<div class="line"><span class="lbl">OPD </span>:  one rollout = N tokens &rarr; teacher grades each &rarr; <span class="val">~N numbers</span> of signal</div>
+</div>
+<p style="margin-top:6px">Thinking Machines states it as: RL teaches <strong>O(1) bits per episode</strong>, distillation teaches <strong>O(N)</strong>. Same generation cost, orders of magnitude more feedback per rollout. The teacher's cost is one forward pass (no generation!) — and the expensive <em>sampling</em> is done by the small, cheap student. Dense feedback also means less gradient noise, so smaller batches work, and even <em>partial</em> rollouts are trainable (you don't need to finish a response to grade its first half — no verifier waiting at the end).</p>
+</div>
+
+<div class="card green">
+<h3>The published numbers (kept separate, because they measure different things)</h3>
+<table>
+<tr><th>source</th><th>comparison</th><th>result</th></tr>
+<tr><td><strong>Qwen3 technical report</strong> (their small-model pipeline)</td><td>same student: RL stage vs on-policy distillation stage</td><td>AIME'24 67.6 &rarr; <strong>74.4</strong>, GPU-hours 17,920 &rarr; <strong>1,800 (~1/10)</strong></td></tr>
+<tr><td><strong>Thinking Machines</strong> (Qwen3-8B-Base student)</td><td>SFT on 400k teacher traces (60% AIME) then: extrapolated ~2M-trace SFT vs OPD from the 400k point</td><td>both reach ~70%, OPD needs ~150 steps / 77k prompts — <strong>9-30&times; cheaper</strong> depending on whether you count teacher sampling</td></tr>
+<tr><td><strong>Thinking Machines</strong> (controlled)</td><td>RL-train a model, then distill the RL'd model back into the base</td><td>student recovers the RL policy in <strong>7-10&times; fewer gradient steps ≈ 50-100&times; less compute</strong></td></tr>
+</table>
+<p style="font-size:.85em;color:#888">Careful in interviews: "~1/10 GPU-hours" is Qwen's RL-vs-OPD number; "9-30&times;" is TM's OPD-vs-extrapolated-SFT accounting; "50-100&times;" is TM's controlled RL-vs-OPD replay. Don't blur them into one claim.</p>
+</div>
+
+<div class="card purple">
+<h3>The second killer use case: un-breaking a model after new knowledge</h3>
+<p>The factory's recurring accident: mid-train an assistant on new documents (your company's wiki, this quarter's data) and its <em>behavior</em> regresses — instruction following collapses. Thinking Machines' experiment on Qwen3-8B:</p>
+<table>
+<tr><th>stage</th><th>internal-docs QA</th><th>instruction following (IF-eval)</th></tr>
+<tr><td>original assistant</td><td>18%</td><td>85%</td></tr>
+<tr><td>+ mid-train on internal docs</td><td style="color:#4caf50">43%</td><td style="color:#ef5350">45% — behavior collapsed</td></tr>
+<tr><td>+ on-policy distillation, <strong>teacher = the model's own earlier self</strong></td><td>41%</td><td style="color:#4caf50">83% — behavior restored, knowledge kept</td></tr>
+</table>
+<p style="font-size:.88em;margin-top:4px">No new labels, no reward model — the old checkpoint grades the new one's tokens. This turns "knowledge update then behavior repair" into a repeatable cycle: learn (mid-train) → restore (distill against your former self). For continual-learning questions, this is a great card to play.</p>
+</div>
+
+<details class="more">
+<summary>Sidetrack: the spooky negative result — SFT on your own samples still drifts</summary>
+<p style="margin-top:6px;font-size:.92em">TM also tried the "obvious" cheap trick: instead of distilling, just SFT the model on its own temperature-1 samples (a dataset with zero KL to itself — should be a no-op, right?). It still degraded behavior at any practical learning rate: each finite-batch gradient step moves the weights a bit; after a few steps the dataset is no longer "your own samples," it's a <em>stale snapshot's</em> samples — silently off-policy, compounding again (ch. 9's lesson that freshness decays). On-policy distillation doesn't drift because the student <em>re-samples every step</em> and the fixed teacher always pulls toward the same target.</p>
+</details>
+<button class="nx" onclick="go(4)">Next: so when do you still need GRPO? &#x2192;</button>
+</div>
+
+<!-- ============================ PAGE 4 ============================ -->
+<div class="page" data-t="4. RL vs OPD">
+<h2>So When Do You Still Need RL?</h2>
+
+<div class="card blue">
+<h3>The division of labor</h3>
+<table>
+<tr><th></th><th>GRPO / RL (ch. 7-8)</th><th>on-policy distillation</th></tr>
+<tr><td>requires</td><td>a <strong>verifier</strong> (or reward model)</td><td>a <strong>teacher that can already do it</strong></td></tr>
+<tr><td>can discover NEW capability</td><td style="color:#4caf50">yes — searches beyond any teacher</td><td style="color:#ef5350">no — ceiling is the teacher</td></tr>
+<tr><td>signal</td><td>1 bit / response, zero-signal groups (ch. 10)</td><td>every token, always</td></tr>
+<tr><td>compute</td><td>the expensive one</td><td>~10&times; cheaper when a teacher exists</td></tr>
+<tr><td>typical job</td><td>push the frontier on math/code/agents</td><td>spread, shrink, merge, restore capabilities</td></tr>
+</table>
+<p style="margin-top:6px">So the modern factory uses <strong>both, in sequence</strong>: RL where no teacher exists (that's how the specialist checkpoints on page 0 got good — and NOTHING else creates new capability from a verifier), then on-policy distillation to fold the specialists into the shipped model, to build the small/cheap variants, and to repair behavior after knowledge updates. It upgraded page 1's "generate textbooks + SFT" step, not the RL step.</p>
+</div>
+
+<div class="card green">
+<h3>Where this leaves the course</h3>
+<p>You now hold the full post-training toolbox: PPO (ch. 5) → DPO (ch. 6) → GRPO (ch. 7-8) with its two production diseases — dead groups (ch. 10) and the MoE serving gap (ch. 12) — plus the on/off-policy compass (ch. 9) and the factory view with on-policy distillation (this chapter). The runnable machine behind chapters 8-11 is the <a href="../notebooks/grpo_from_scratch.ipynb" style="color:#4fc3f7">notebook</a>: 48% → 95% on a verifier, dead groups rising, and a real per-token teacher grading — all in five minutes on your laptop.</p>
+</div>
+</div>
+
+<script>
+const pages=document.querySelectorAll('.page');const nav=document.getElementById('nav');
+pages.forEach((p,i)=>{const b=document.createElement('button');b.textContent=p.dataset.t;b.onclick=()=>go(i);if(i===0)b.classList.add('on');nav.appendChild(b);});
+function go(n){pages.forEach((p,i)=>p.classList.toggle('on',i===n));nav.querySelectorAll('button').forEach((b,i)=>{b.classList.remove('on');if(i<n)b.classList.add('done');else b.classList.remove('done');if(i===n)b.classList.add('on');});window.scrollTo({top:0,behavior:'smooth'});}
+</script>
+</body>
+</html>

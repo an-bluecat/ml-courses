@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chapter 8: GRPO End to End — From Reward to Weight Update</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0a0a1a;color:#e0e0e0;padding:20px 20px 80px;line-height:1.7}
+h1{text-align:center;color:#fff;margin-bottom:4px;font-size:1.5em}
+.sub{text-align:center;color:#888;margin-bottom:24px;font-size:.88em}
+.nav{display:flex;justify-content:center;gap:6px;margin-bottom:20px;flex-wrap:wrap}
+.nav button{padding:7px 13px;border:2px solid #333;background:#111;color:#888;border-radius:8px;cursor:pointer;font-size:.78em;transition:.2s}
+.nav button:hover{border-color:#555;color:#ccc}
+.nav button.on{border-color:#4fc3f7;color:#4fc3f7;background:#0d2137}
+.nav button.done{border-color:#4caf50;color:#4caf50}
+.page{display:none;max-width:880px;margin:0 auto}
+.page.on{display:block}
+.page h2{color:#4fc3f7;margin-bottom:12px;font-size:1.2em}
+.card{background:#12122a;border:1px solid #2a2a4a;border-radius:12px;padding:18px;margin-bottom:14px}
+.card.blue{border-color:#4fc3f7;background:#0d1b2a}
+.card.green{border-color:#4caf50;background:#0a1a0a}
+.card.orange{border-color:#ff9800;background:#1a1400}
+.card.purple{border-color:#ce93d8;background:#1a0a2a}
+.card.red{border-color:#ef5350;background:#1a0a0a}
+.card h3{color:#ffb74d;margin-bottom:8px;font-size:1em}
+button.nx{padding:10px 24px;background:#4caf50;color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:.9em;margin-top:14px}
+button.nx:hover{background:#66bb6a}
+table{width:100%;border-collapse:collapse;margin:10px 0}
+th,td{padding:8px 12px;border:1px solid #333;text-align:center;font-size:.88em}
+th{background:#1a1a3a;color:#4fc3f7}
+.math{background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:14px;margin:10px 0;font-family:'Fira Code',monospace;font-size:.85em;line-height:1.8;overflow-x:auto}
+.math .line{margin:2px 0;white-space:pre}
+.math .hl{background:#264f78;padding:2px 6px;border-radius:4px;display:inline-block}
+.math .cmt{color:#6a9955}
+.math .val{color:#b5cea8}
+.math .lbl{color:#9cdcfe}
+.math .kw{color:#c586c0}
+.math .out{color:#4caf50}
+.key{color:#ffb74d;font-weight:600}
+details.more{background:#12122a;border:1px solid #2a2a4a;border-radius:10px;padding:10px 14px;margin:10px 0}
+details.more summary{cursor:pointer;color:#4fc3f7;font-size:.92em;font-weight:600}
+details.more[open] summary{margin-bottom:8px}
+.nb{display:inline-block;background:rgba(255,152,0,.12);color:#ff9800;border:1px solid rgba(255,152,0,.3);border-radius:4px;font-size:.72em;font-weight:700;padding:1px 7px;vertical-align:middle;margin-left:6px}
+svg text{font-family:'Segoe UI',system-ui,sans-serif}
+</style>
+</head>
+<body>
+<a href="../index.html" style="position:fixed;top:10px;left:14px;font-size:.75em;color:#555;text-decoration:none;z-index:999;padding:4px 8px;background:#0a0a1a;border:1px solid #333;border-radius:6px;">&larr; index</a>
+<h1>Chapter 8: GRPO End to End</h1>
+<p class="sub">Chapter 7 gave you the idea. This chapter runs the machine: reward &rarr; advantage &rarr; token gradients &rarr; weight update, every tensor real.</p>
+<div class="nav" id="nav"></div>
+
+<!-- ============================ PAGE 0: THE MAP ============================ -->
+<div class="page on" data-t="0. The Loop">
+<h2>The Question This Chapter Answers</h2>
+
+<div class="card blue">
+<h3>"The model got its reward. Then what, exactly?"</h3>
+<p>Chapter 7 ended at the advantage: response scored 1.0, group mean 0.25, so advantage +1.73 — "push this response up." But a language model has millions of weights and the response is a <em>sequence of tokens</em>. What does "push up" physically mean? Which tensors exist, what shape are they, and what line of code moves the weights?</p>
+<p style="margin-top:8px">This chapter traces one real GRPO update, and every number in it comes from an actual run of the companion notebook<span class="nb">notebook</span> — a 58k-parameter GPT learning addition. Open it side by side: <a href="../notebooks/grpo_from_scratch.ipynb" style="color:#4fc3f7">notebooks/grpo_from_scratch.ipynb</a> (open in VS Code or Jupyter; it runs on CPU in a few minutes).</p>
+</div>
+
+<div class="card">
+<h3>The whole loop in one picture</h3>
+<svg viewBox="0 0 760 400" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="g8a" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6" fill="none" stroke="#888" stroke-width="1.4"/></marker>
+    <marker id="g8g" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6" fill="none" stroke="#4caf50" stroke-width="1.4"/></marker>
+  </defs>
+
+  <!-- Station 1: prompts -->
+  <rect x="20" y="40" width="130" height="64" rx="10" fill="#1a1a2e" stroke="#888"/>
+  <text x="85" y="66" fill="#e0e0e0" font-size="13" text-anchor="middle" font-weight="600">prompts</text>
+  <text x="85" y="86" fill="#888" font-size="11" text-anchor="middle" font-family="monospace">"3+4="</text>
+
+  <!-- Station 2: rollout -->
+  <rect x="210" y="28" width="170" height="88" rx="10" fill="#0d1b2a" stroke="#4fc3f7" stroke-width="1.5"/>
+  <text x="295" y="52" fill="#4fc3f7" font-size="13" text-anchor="middle" font-weight="600">1 &middot; ROLLOUT</text>
+  <text x="295" y="72" fill="#e0e0e0" font-size="11" text-anchor="middle">sample G answers each</text>
+  <text x="295" y="90" fill="#888" font-size="11" text-anchor="middle" font-family="monospace">'10.' '11.' '7.' '18.'</text>
+  <text x="295" y="106" fill="#666" font-size="10" text-anchor="middle">frozen snapshot &pi;_old</text>
+
+  <!-- Station 3: verifier -->
+  <rect x="440" y="28" width="150" height="88" rx="10" fill="#1a1400" stroke="#ff9800" stroke-width="1.5"/>
+  <text x="515" y="52" fill="#ff9800" font-size="13" text-anchor="middle" font-weight="600">2 &middot; VERIFIER</text>
+  <text x="515" y="72" fill="#e0e0e0" font-size="11" text-anchor="middle">grade each answer</text>
+  <text x="515" y="92" fill="#888" font-size="11" text-anchor="middle" font-family="monospace">r = [0, 0, 1, 0]</text>
+
+  <!-- Station 4: advantage -->
+  <rect x="440" y="170" width="150" height="88" rx="10" fill="#1a0a2a" stroke="#ce93d8" stroke-width="1.5"/>
+  <text x="515" y="194" fill="#ce93d8" font-size="13" text-anchor="middle" font-weight="600">3 &middot; ADVANTAGE</text>
+  <text x="515" y="214" fill="#e0e0e0" font-size="11" text-anchor="middle">z-score within group</text>
+  <text x="515" y="234" fill="#888" font-size="11" text-anchor="middle" font-family="monospace">&Acirc; = [-.58 -.58</text>
+  <text x="515" y="248" fill="#888" font-size="11" text-anchor="middle" font-family="monospace">+1.73 -.58]</text>
+
+  <!-- Station 5: trainer -->
+  <rect x="210" y="170" width="170" height="88" rx="10" fill="#0d1b2a" stroke="#4fc3f7" stroke-width="1.5"/>
+  <text x="295" y="194" fill="#4fc3f7" font-size="13" text-anchor="middle" font-weight="600">4 &middot; LOSS</text>
+  <text x="295" y="214" fill="#e0e0e0" font-size="11" text-anchor="middle">per-token log-probs,</text>
+  <text x="295" y="230" fill="#e0e0e0" font-size="11" text-anchor="middle">ratio, clip, KL</text>
+  <text x="295" y="248" fill="#666" font-size="10" text-anchor="middle">trainable weights &pi;_&theta;</text>
+
+  <!-- Station 6: update -->
+  <rect x="20" y="170" width="130" height="88" rx="10" fill="#0a1a0a" stroke="#4caf50" stroke-width="1.5"/>
+  <text x="85" y="194" fill="#4caf50" font-size="13" text-anchor="middle" font-weight="600">5 &middot; UPDATE</text>
+  <text x="85" y="214" fill="#e0e0e0" font-size="11" text-anchor="middle">backward()</text>
+  <text x="85" y="230" fill="#e0e0e0" font-size="11" text-anchor="middle">optimizer.step()</text>
+  <text x="85" y="248" fill="#666" font-size="10" text-anchor="middle">weights move</text>
+
+  <!-- arrows top row -->
+  <path d="M150,72 L206,72" stroke="#888" stroke-width="1.4" fill="none" marker-end="url(#g8a)"/>
+  <path d="M380,72 L436,72" stroke="#888" stroke-width="1.4" fill="none" marker-end="url(#g8a)"/>
+  <!-- down -->
+  <path d="M515,116 L515,166" stroke="#888" stroke-width="1.4" fill="none" marker-end="url(#g8a)"/>
+  <!-- right to left bottom -->
+  <path d="M436,214 L384,214" stroke="#888" stroke-width="1.4" fill="none" marker-end="url(#g8a)"/>
+  <path d="M206,214 L154,214" stroke="#888" stroke-width="1.4" fill="none" marker-end="url(#g8a)"/>
+  <!-- loop back up: update -> (around the right) -> top of ROLLOUT -->
+  <path d="M85,262 L85,330 L680,330 L680,12 L295,12 L295,24" stroke="#4caf50" stroke-width="1.4" fill="none" marker-end="url(#g8g)"/>
+  <text x="380" y="352" fill="#4caf50" font-size="11" text-anchor="middle">updated weights become the next rollout's policy &mdash; that's what keeps GRPO on-policy (chapter 9)</text>
+</svg>
+<p style="font-size:.85em;color:#888;margin-top:6px">Stations 1&ndash;2 you know from chapter 7. This chapter lives in stations 3&ndash;5 — the part after the reward is claimed. The green return edge is the loop: after the update, the <em>new</em> weights generate the next batch.</p>
+</div>
+
+<div class="card purple">
+<h3>The cast — four models? No: one model, three roles + a grader</h3>
+<table>
+<tr><th>Name</th><th>What it is</th><th>Trained?</th><th>Why it exists</th></tr>
+<tr><td>π_θ &nbsp;"policy"</td><td>THE language model being trained</td><td style="color:#4caf50">yes</td><td>the thing we're improving</td></tr>
+<tr><td>π_old</td><td>snapshot of the same model at rollout time</td><td style="color:#ef5350">frozen</td><td>denominator of the ratio — "how far have I moved since I generated this data?"</td></tr>
+<tr><td>π_ref</td><td>snapshot from before RL started</td><td style="color:#ef5350">frozen</td><td>KL leash — "don't drift into gibberish that happens to end in the right digits"</td></tr>
+<tr><td>verifier</td><td>a Python function, not a network</td><td style="color:#ef5350">no</td><td>the reward: <code>1.0 if int(ans) == a+b else 0.0</code></td></tr>
+</table>
+<p style="font-size:.88em;margin-top:6px">π_old and π_ref are <em>copies</em> — no gradients, and in practice you store just log-probs, not the whole model twice. Compare PPO, which needs a fourth network (the critic) with its own optimizer. GRPO's whole pitch is deleting that network.</p>
+</div>
+<button class="nx" onclick="go(1)">Next: the batch as real tensors &#x2192;</button>
+</div>
+
+<!-- ============================ PAGE 1: THE BATCH ============================ -->
+<div class="page" data-t="1. The Batch">
+<h2>Station 3 — What the Data Physically Looks Like</h2>
+
+<div class="card blue">
+<h3>One group, straight from the notebook <span class="nb">real run</span></h3>
+<p>Prompt <code>"3+4="</code>, group size G=4, sampled from the 48%-accurate base model:</p>
+<div class="math">
+<div class="line"><span class="lbl">response 0</span>: '10.'   reward = <span class="val" style="color:#ef5350">0.0</span></div>
+<div class="line"><span class="lbl">response 1</span>: '11.'   reward = <span class="val" style="color:#ef5350">0.0</span></div>
+<div class="line"><span class="lbl">response 2</span>: '7.'    reward = <span class="val" style="color:#4caf50">1.0</span></div>
+<div class="line"><span class="lbl">response 3</span>: '18.'   reward = <span class="val" style="color:#ef5350">0.0</span></div>
+</div>
+<p style="font-size:.88em">(<code>.</code> is the end-of-answer token — the toy model's EOS.)</p>
+</div>
+
+<div class="card purple">
+<h3>Advantage: the z-score, by hand</h3>
+<div class="math">
+<div class="line"><span class="lbl">rewards</span> = [0, 0, 1, 0]</div>
+<div class="line"><span class="lbl">mean</span> = 1/4 = <span class="val">0.25</span></div>
+<div class="line"><span class="lbl">std</span>  = sqrt( ((0-.25)&sup2;&times;3 + (1-.25)&sup2;) / 4 ) = sqrt(0.1875) = <span class="val">0.433</span></div>
+<div class="line"></div>
+<div class="line"><span class="cmt"># advantage_i = (r_i - mean) / std</span></div>
+<div class="line"><span class="lbl">&Acirc;</span> = [(0-.25)/.433, (0-.25)/.433, (1-.25)/.433, (0-.25)/.433]</div>
+<div class="line">  = [<span class="val" style="color:#ef5350">-0.58</span>, <span class="val" style="color:#ef5350">-0.58</span>, <span class="val" style="color:#4caf50">+1.73</span>, <span class="val" style="color:#ef5350">-0.58</span>]</div>
+</div>
+<p>One number <strong>per response</strong>. The correct answer is 1.73 standard deviations above this group's average; each wrong one is 0.58 below. These four numbers are the entire learning signal for this prompt.</p>
+</div>
+
+<div class="card">
+<h3>Pack everything into one tensor</h3>
+<p>Prompt and response are concatenated into one padded matrix — this is the actual input to the training forward pass:</p>
+<div class="math">
+<div class="line"><span class="cmt"># full: shape (4, 7) — 4 sequences, prompt(4 tokens) + response(&le;3)</span></div>
+<div class="line"><span class="cmt">#        &larr;prompt&rarr;   &larr;response&rarr;</span></div>
+<div class="line">full = [[3 + 4 =   1 0 .],     <span class="cmt"># '3+4=' + '10.'</span></div>
+<div class="line">        [3 + 4 =   1 1 .],     <span class="cmt"># '3+4=' + '11.'</span></div>
+<div class="line">        [3 + 4 =   7 . <span style="color:#555">pad</span>],   <span class="cmt"># '3+4=' + '7.'  (shorter &rarr; padded)</span></div>
+<div class="line">        [3 + 4 =   1 8 .]]     <span class="cmt"># '3+4=' + '18.'</span></div>
+</div>
+<p style="font-size:.88em">In DeepSeek-R1 the same tensor is (hundreds of sequences) &times; (up to ~32,000 tokens) — same shape story, bigger numbers.</p>
+</div>
+
+<details class="more">
+<summary>Refresher: why does the response need to be scored as a whole, not token by token?</summary>
+<p style="margin-top:6px;font-size:.92em">Because the verifier can only judge <em>finished</em> answers. There is no function that scores the '1' in '10.' on its own — its rightness depends on what follows. So the reward lands on the whole response, and GRPO's next job (page 2) is to smear that one number across every token that produced it. The bluntness of that smearing is real, and it's the exact weakness that on-policy distillation (chapter 11) fixes with a per-token teacher.</p>
+</details>
+<button class="nx" onclick="go(2)">Next: one advantage &rarr; many tokens &#x2192;</button>
+</div>
+
+<!-- ============================ PAGE 2: TOKENS ============================ -->
+<div class="page" data-t="2. Advantage → Tokens">
+<h2>From One Number per Response to One Number per Token</h2>
+
+<div class="card orange">
+<h3>The blunt rule</h3>
+<p><strong>Every token in a response inherits the entire response's advantage.</strong> Response 2 ('7.') scored +1.73, so producing '7' after <code>3+4=</code> gets +1.73, <em>and</em> producing '.' after <code>3+4=7</code> gets +1.73. No token-level credit assignment at all.</p>
+</div>
+
+<div class="card blue">
+<h3>What the model reports about its own tokens <span class="nb">real run</span></h3>
+<p>One forward pass over <code>full</code>, then <code>log_softmax</code>, then pick out the log-prob of each token that was actually sampled. This is the per-token table the trainer sees (probability in parentheses):</p>
+<div class="math">
+<div class="line"><span class="lbl">resp 0</span> '10.'  &Acirc;=<span style="color:#ef5350">-0.58</span> | '1': -1.336 (p=0.26)  '0': -2.371 (p=0.09)  '.': -0.000 (p=1.00)</div>
+<div class="line"><span class="lbl">resp 1</span> '11.'  &Acirc;=<span style="color:#ef5350">-0.58</span> | '1': -1.336 (p=0.26)  '1': -1.742 (p=0.18)  '.': -0.002 (p=1.00)</div>
+<div class="line"><span class="lbl">resp 2</span> '7.'   &Acirc;=<span style="color:#4caf50">+1.73</span> | '7': -0.538 (p=0.58)  '.': -0.000 (p=1.00)</div>
+<div class="line"><span class="lbl">resp 3</span> '18.'  &Acirc;=<span style="color:#ef5350">-0.58</span> | '1': -1.336 (p=0.26)  '8': -2.599 (p=0.07)  '.': -0.000 (p=1.00)</div>
+</div>
+<p style="margin-top:8px">Three honest observations you can only make on real data:</p>
+<ul style="margin-left:18px;line-height:1.9">
+<li>The first '1' has log-prob <strong>-1.336 in rows 0, 1 and 3 — identical.</strong> Same prefix <code>3+4=</code>, same distribution, same token &rarr; same number. The table is consistent because it's real.</li>
+<li>'.' has p&asymp;1.00 everywhere: the model is already certain answers end after two digits. Tokens the model is sure of contribute almost no gradient — the action is in the uncertain tokens.</li>
+<li>The model puts 26% on starting with '1' (a two-digit answer) but only 58% on the correct '7'. That 0.58 is about to go up.</li>
+</ul>
+</div>
+
+<div class="card">
+<h3>The mask: the prompt is given, not generated</h3>
+<div class="math">
+<div class="line"><span class="cmt"># positions:   3  +  4  =  |  1   0   .</span></div>
+<div class="line"><span class="lbl">mask</span> =        [0, 0, 0,    1,  1,  1]   <span class="cmt"># loss counts response tokens only</span></div>
+</div>
+<p>No gradient flows through prompt positions — the model didn't choose them, so it gets no credit or blame for them. (Padding is masked out the same way.)</p>
+</div>
+
+<div class="card red">
+<h3>Look at what the broadcast does to '.', though</h3>
+<p>The '.' token behaves identically in all four responses — it just ends the answer. But it receives <span style="color:#4caf50">+1.73</span> in response 2 and <span style="color:#ef5350">-0.58</span> in responses 0, 1, 3. GRPO literally cannot tell <em>which token</em> deserved the reward; it pays the whole sequence. Across thousands of groups this noise averages out ('.' gets pushed both ways and stays put; '7'-after-<code>3+4=</code> only ever gets pushed up). But it's why GRPO needs many samples, and why a per-token signal — a teacher that grades every move, chapter 11 — can be ~10&times; cheaper.</p>
+</div>
+<button class="nx" onclick="go(3)">Next: the loss, line by line &#x2192;</button>
+</div>
+
+<!-- ============================ PAGE 3: THE LOSS ============================ -->
+<div class="page" data-t="3. The Loss Code">
+<h2>Station 4 — The Loss, Line by Line</h2>
+
+<div class="card blue">
+<h3>The actual code <span class="nb">verbatim from the notebook</span></h3>
+<div class="math">
+<div class="line"><span class="lbl">CLIP</span>, <span class="lbl">BETA</span> = <span class="val">0.2</span>, <span class="val">0.02</span></div>
+<div class="line"></div>
+<div class="line"><span class="kw">with</span> torch.no_grad():                      <span class="cmt"># snapshot BEFORE updating: this is &pi;_old</span></div>
+<div class="line">    old_lp = token_lp.detach()</div>
+<div class="line">    ref_lp, _ = response_logprobs(ref, full, P, resp_len)</div>
+<div class="line"></div>
+<div class="line">new_lp, _ = response_logprobs(model, full, P, resp_len)   <span class="cmt"># &pi;_&theta;, WITH gradients</span></div>
+<div class="line"></div>
+<div class="line">ratio     = torch.exp(new_lp - old_lp)</div>
+<div class="line">unclipped = ratio * adv.unsqueeze(1)</div>
+<div class="line">clipped   = torch.clamp(ratio, 1 - CLIP, 1 + CLIP) * adv.unsqueeze(1)</div>
+<div class="line">pg_term   = -torch.min(unclipped, clipped)</div>
+<div class="line"></div>
+<div class="line">d  = ref_lp - new_lp</div>
+<div class="line">kl = torch.exp(d) - d - 1                  <span class="cmt"># "k3" KL estimator</span></div>
+<div class="line"></div>
+<div class="line">per_token = pg_term + BETA * kl</div>
+<div class="line"><span class="hl">loss = ((per_token * mask).sum(1) / mask.sum(1)).mean()</span></div>
+</div>
+<p style="font-size:.88em;margin-top:6px">Eleven lines. That's the entire GRPO objective — everything else in a real framework is plumbing around these lines.</p>
+</div>
+
+<div class="card">
+<h3>Now each line with the real numbers behind it</h3>
+<table>
+<tr><th>line</th><th>value in our run</th><th>meaning</th></tr>
+<tr><td><code>ratio</code></td><td>1.0 everywhere (first pass)</td><td>&pi;_θ hasn't moved since generating — we're perfectly on-policy</td></tr>
+<tr><td><code>unclipped</code></td><td>= advantage itself (1.0 &times; &Acirc;)</td><td>push strength per token</td></tr>
+<tr><td><code>clipped</code></td><td>identical (ratio inside [0.8, 1.2])</td><td>the guard rail isn't touched yet</td></tr>
+<tr><td><code>kl</code></td><td>0.0 everywhere</td><td>&pi;_θ still equals &pi;_ref — no drift to punish</td></tr>
+<tr><td><code>loss</code></td><td><strong>0.0</strong></td><td>see the red card below — this is correct!</td></tr>
+</table>
+</div>
+
+<div class="card red">
+<h3>Two numbers that look broken but aren't — interview favorites</h3>
+<p><strong>"The ratio is 1 everywhere, so nothing can happen, right?"</strong> Wrong. The <em>value</em> is 1, but ratio = exp(new_lp − old_lp) is a <em>function of the weights</em> through new_lp. Autograd differentiates the function, not the value:</p>
+<div class="math">
+<div class="line">&nabla;(ratio &times; &Acirc;) = ratio &times; &Acirc; &times; &nabla;new_lp  =  <span class="hl">&Acirc; &times; &nabla;log&pi;_&theta;</span>   <span class="cmt"># at ratio=1</span></div>
+</div>
+<p style="margin-top:6px">— which is exactly the REINFORCE gradient from chapter 3, weighted by the advantage. The ratio machinery only <em>changes</em> anything when data goes stale (page 4).</p>
+<p style="margin-top:10px"><strong>"The loss printed 0.0 — is it learning at all?"</strong> Yes. At ratio=1 the loss value is −mean(&Acirc;), and z-scores sum to zero <em>by construction</em>. GRPO's loss is &asymp;0 every step, forever, while the model improves. The information is in the gradient, not the value — this is why people watch the <span class="key">reward curve</span>, never the loss curve, when monitoring a GRPO run.</p>
+</div>
+
+<details class="more">
+<summary>Refresher: what is the KL term protecting, and why the weird formula exp(d) − d − 1?</summary>
+<p style="margin-top:6px;font-size:.92em">The verifier only reads the final answer. Without a leash, the model can drift into degenerate text that happens to end in the right digits — reward stays perfect while the language collapses. The KL term punishes drifting from π_ref (the pre-RL model). The formula <code>exp(d) − d − 1</code> with d = ref_lp − new_lp is the "k3" estimator from the DeepSeekMath paper: always ≥ 0 (like a true KL), unbiased, and low-variance — the naive estimator (just <code>−d</code>) can go negative on single samples and adds noise. At d=0 it's exactly 0, which is what we printed. Some later recipes (e.g. DAPO) drop the KL term entirely for pure math RL and rely on other guards; DeepSeek-R1 kept it with β small.</p>
+</details>
+
+<details class="more">
+<summary>Sidetrack: sequence-mean vs token-mean (the DAPO length-bias fix)</summary>
+<p style="margin-top:6px;font-size:.92em">Our last line averages per <em>sequence</em>, then over the group — original GRPO. That gives every response equal weight, so each token of a long response counts <em>less</em> than each token of a short one. DAPO showed this under-penalizes long rambling wrong answers and switched to summing over all tokens in the batch before dividing once ("token-level loss"). One line of code, measurable effect at scale. Worth saying in an interview when asked "any known GRPO pitfalls?"</p>
+</details>
+<button class="nx" onclick="go(4)">Next: backward, step, and proof it worked &#x2192;</button>
+</div>
+
+<!-- ============================ PAGE 4: THE UPDATE ============================ -->
+<div class="page" data-t="4. The Update">
+<h2>Station 5 — backward(), step(), and the Receipt</h2>
+
+<div class="card blue">
+<h3>The two lines that move the weights</h3>
+<div class="math">
+<div class="line">opt.zero_grad()</div>
+<div class="line">loss.backward()      <span class="cmt"># advantage flows: loss &rarr; log_softmax &rarr; logits &rarr; every weight</span></div>
+<div class="line">opt.step()           <span class="cmt"># AdamW nudges all 58,189 parameters</span></div>
+</div>
+<p>There's no special RL optimizer. It's the same AdamW from your supervised training, fed a differently-built loss. After chapter 5 of the optimizer course this line holds no mysteries.</p>
+</div>
+
+<div class="card green">
+<h3>The receipt: measure the policy before and after <span class="nb">real run</span></h3>
+<p>P(whole response) = product of its token probabilities. One optimizer step later:</p>
+<div class="math">
+<div class="line">P('7.'  | '3+4=')   &Acirc; = <span style="color:#4caf50">+1.73</span>:   0.5839 &rarr; <span class="out">0.6399</span>   <span class="cmt"># up &#x2714;</span></div>
+<div class="line">P('10.' | '3+4=')   &Acirc; = <span style="color:#ef5350">-0.58</span>:   0.0245 &rarr; <span class="out">0.0195</span>   <span class="cmt"># down &#x2714;</span></div>
+</div>
+<p style="margin-top:6px">That is GRPO, complete: the correct answer gained 5.6 points of probability, a wrong one lost 0.5. Repeat over thousands of groups and the 48% model becomes a 95% model (page 5).</p>
+</div>
+
+<div class="card orange">
+<h3>Now watch the clip earn its keep <span class="nb">real run</span></h3>
+<p>Real frameworks reuse each expensive rollout batch for several optimizer steps (PPO epochs, chapter 5). Keep stepping on this same stale group, always measuring the ratio against the <em>original</em> snapshot:</p>
+<div class="math">
+<div class="line"><span class="lbl">pass 2</span>: ratio range [0.851, 1.096]   clipped tokens: <span class="val">0/11</span></div>
+<div class="line"><span class="lbl">pass 3</span>: ratio range [0.714, 1.185]   clipped tokens: <span class="val" style="color:#ffb74d">3/11</span></div>
+<div class="line"><span class="lbl">pass 4</span>: ratio range [0.605, 1.259]   clipped tokens: <span class="val" style="color:#ffb74d">4/11</span></div>
+<div class="line"><span class="lbl">pass 5</span>: ratio range [0.528, 1.313]   clipped tokens: <span class="val" style="color:#ef5350">5/11</span></div>
+</div>
+<p style="margin-top:6px">Each pass pushes the same tokens further; the ratios drift from 1; one by one they cross [0.8, 1.2] and their gradient becomes exactly <strong>zero</strong> — "you've moved far enough on this old data." By pass 5, half of this group's tokens are frozen out. That's the natural stopping point that makes data reuse safe.</p>
+</div>
+
+<details class="more">
+<summary>Refresher: why does a clipped token get exactly zero gradient?</summary>
+<p style="margin-top:6px;font-size:.92em">Once the ratio leaves the window, <code>min()</code> selects the clipped branch, and the clipped branch is <code>clamp(ratio, 0.8, 1.2) × Â</code> = <code>1.2 × Â</code> — a constant. Constants have zero derivative with respect to the weights. Chapter 5 traced this same mechanism with a gridworld; here you're seeing it in an 11-token tensor.</p>
+</details>
+<button class="nx" onclick="go(5)">Next: the full loop + what's real vs toy &#x2192;</button>
+</div>
+
+<!-- ============================ PAGE 5: FULL LOOP ============================ -->
+<div class="page" data-t="5. Full Loop & Reality">
+<h2>The Full Loop — and the Honest Gap to Production</h2>
+
+<div class="card blue">
+<h3>Everything assembled: the training loop <span class="nb">notebook §10</span></h3>
+<div class="math">
+<div class="line"><span class="kw">def</span> <span class="lbl">grpo_step</span>(model):</div>
+<div class="line">    <span class="cmt"># 1. fresh prompts, G attempts each          (station 1-2)</span></div>
+<div class="line">    resps = generate(model, flat_prompts)</div>
+<div class="line">    <span class="cmt"># 2. verify                                   (station 2)</span></div>
+<div class="line">    rewards = [reward_fn(a, b, r) <span class="kw">for</span> ...]</div>
+<div class="line">    <span class="cmt"># 3. group z-score                            (station 3)</span></div>
+<div class="line">    adv = (r - r.mean(1)) / (r.std(1) + 1e-4)</div>
+<div class="line">    <span class="cmt"># 4. ratio, clip, KL, mask                    (station 4)</span></div>
+<div class="line">    loss = ...   <span class="cmt"># the 11 lines from page 3</span></div>
+<div class="line">    <span class="cmt"># 5. update                                   (station 5)</span></div>
+<div class="line">    opt.zero_grad(); loss.backward(); opt.step()</div>
+</div>
+<p>Result of 400 such steps on the toy model <span class="nb">real run</span>:</p>
+<div class="math">
+<div class="line"><span class="lbl">step   0</span>   pass rate 0.55   zero-signal groups 0.00   eval acc <span class="out">0.48</span></div>
+<div class="line"><span class="lbl">step 200</span>   pass rate 0.86   zero-signal groups 0.25   eval acc <span class="out">0.86</span></div>
+<div class="line"><span class="lbl">step 400</span>   pass rate 0.94   zero-signal groups 0.50   eval acc <span class="out">0.94</span></div>
+<div class="line"></div>
+<div class="line"><span class="lbl">final accuracy</span> (500 fresh problems): <span class="out">0.952</span></div>
+</div>
+<p style="margin-top:6px">The pretraining data was 50% wrong; the model now scores 95%. SFT could never exceed its data's quality (its loss <em>faithfully reproduces the noise</em>) — the verifier broke that ceiling. And note the middle column quietly rising: by the end, <strong>half the groups came back all-correct and produced zero gradient</strong>. That column is chapter 10.</p>
+</div>
+
+<div class="card">
+<h3>Toy &rarr; production: what changes and what doesn't</h3>
+<table>
+<tr><th>here (58k params)</th><th>DeepSeek-R1 / Qwen scale</th><th>where taught</th></tr>
+<tr><td><code>generate()</code> in the same process</td><td>separate inference engine (vLLM/SGLang) on other GPUs — whose probabilities <em>don't exactly match</em> the trainer's</td><td>ch. 12</td></tr>
+<tr><td>1 update per batch, ratio&equiv;1</td><td>multiple epochs / async rollouts — ratio &ne; 1, clip active</td><td>ch. 9</td></tr>
+<tr><td>random prompts every step</td><td>prompts filtered to medium difficulty, or the gradient dies</td><td>ch. 10</td></tr>
+<tr><td>verifier = <code>int(ans) == a+b</code></td><td>math verifiers, unit-test sandboxes, reward models</td><td>ch. 7</td></tr>
+<tr><td>z-score advantage, G=4&ndash;8</td><td>same formula, G=8&ndash;64 (variants: Dr. GRPO drops /std, DAPO drops KL)</td><td>this ch.</td></tr>
+<tr><td>the 11 loss lines</td><td colspan="2" style="color:#4caf50;font-weight:600">unchanged. Not one line.</td></tr>
+</table>
+</div>
+
+</div>
+
+<script>
+const pages=document.querySelectorAll('.page');const nav=document.getElementById('nav');
+pages.forEach((p,i)=>{const b=document.createElement('button');b.textContent=p.dataset.t;b.onclick=()=>go(i);if(i===0)b.classList.add('on');nav.appendChild(b);});
+function go(n){pages.forEach((p,i)=>p.classList.toggle('on',i===n));nav.querySelectorAll('button').forEach((b,i)=>{b.classList.remove('on');if(i<n)b.classList.add('done');else b.classList.remove('done');if(i===n)b.classList.add('on');});window.scrollTo({top:0,behavior:'smooth'});}
+</script>
+</body>
+</html>
