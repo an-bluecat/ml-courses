@@ -23,6 +23,9 @@
   .card.warn{border-color:#ff9800;background:#1a1400}
   .card.ok{border-color:#4caf50;background:#0a1a0a}
   .card.red{border-color:#ef5350;background:#1a0a0a}
+  details.more{background:#12122a;border:1px solid #2a2a4a;border-radius:12px;padding:12px 18px;margin-bottom:14px}
+  details.more summary{cursor:pointer;color:#4fc3f7;font-weight:600}
+  details.more p,details.more pre{margin-top:10px}
   pre{background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:14px;overflow-x:auto;margin:10px 0;font-size:.88em;line-height:1.5}
   code{font-family:'Fira Code',Consolas,monospace}
   .cmt{color:#6a9955}.kw{color:#c586c0}.num{color:#b5cea8}.str{color:#ce9178}.var{color:#9cdcfe}.fn{color:#dcdcaa}.hl{background:#264f78;display:inline-block;width:100%;padding:0 4px;margin:0 -4px;border-radius:3px}
@@ -34,19 +37,12 @@
   .b-rd{background:#3a0a0a;border:2px solid #ef5350;color:#ef5350}
   .b-pu{background:#2a0a3a;border:2px solid #ce93d8;color:#ce93d8}
   .arr{color:#666;font-size:1.4em}
-  .cmp{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:10px 0}
-  @media(max-width:650px){.cmp{grid-template-columns:1fr}}
   table{width:100%;border-collapse:collapse;margin:10px 0}
   th,td{padding:7px 10px;border:1px solid #333;text-align:center;font-size:.9em}
   th{background:#1a1a3a;color:#4fc3f7}
   .key{color:#ffb74d;font-weight:600}
   button.nx{padding:10px 22px;background:#4caf50;color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:.9em;margin-top:14px}
   button.nx:hover{background:#66bb6a}
-  button.run{padding:9px 20px;background:#4fc3f7;color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:.9em}
-  button.run:hover{background:#81d4fa}
-  canvas{border-radius:8px;display:block;margin:10px auto}
-  .val{color:#4fc3f7;font-weight:700;min-width:40px}
-  .controls{display:flex;gap:10px;align-items:center;margin:10px 0;flex-wrap:wrap}
 </style>
 </head>
 <body>
@@ -57,7 +53,7 @@
 
 <div class="nav" id="nav"></div>
 
-<!-- ===== STEP 0 ===== -->
+<!-- ===== PAGE 0: THE CRASH ===== -->
 <div class="step on" data-s="0. The Crash">
   <h2>The Catastrophic Update Problem</h2>
 
@@ -79,353 +75,309 @@
   <div class="card">
     <h3>Why does this happen?</h3>
     <p>The policy gradient has no speed limit. If the advantage is big, the update is big. Period. There's nothing stopping a single batch from changing the policy from "go right" to "go left" in one step.</p>
-    <p style="margin-top:8px;">Real analogy: you've been learning guitar for months. One day you hear a jazz song and think "I should only play jazz!" and throw away everything you learned. That's a catastrophic update.</p>
   </div>
 
   <div class="card ok">
     <h3>PPO's fix: a speed limit on policy changes</h3>
     <p style="font-size:1.1em;text-align:center;margin:10px 0;font-weight:600;">"Learn from this experience, but <span style="color:#4fc3f7;">don't change the policy too much in one step</span>."</p>
   </div>
-  <button class="nx" onclick="go(1)">Next: The ratio — measuring "how much did the policy change?" &#x2192;</button>
+  <button class="nx" onclick="go(1)">Next: Reusing data (why we need multiple passes) &#x2192;</button>
 </div>
 
-<!-- ===== STEP 1 ===== -->
-<div class="step" data-s="1. The Ratio">
-  <h2>The Probability Ratio</h2>
+<!-- ===== PAGE 1: REUSE DATA ===== -->
+<div class="step" data-s="1. Reuse Data">
+  <h2>Why We Reuse Data — and Why We Can't Just Force the Answer</h2>
+
+  <div class="card warn">
+    <h3>Problem: sampling is expensive</h3>
+<pre><code><span class="cmt"># Actor-Critic (Ch.4):</span>
+<span class="cmt"># 1. Run episode → collect data</span>
+<span class="cmt"># 2. Compute loss, one gradient step</span>
+<span class="cmt"># 3. THROW AWAY the data</span>
+<span class="cmt"># 4. Run a new episode</span>
+<span class="cmt">#</span>
+<span class="cmt"># For an LLM: generating one response = a full forward pass.</span>
+<span class="cmt"># Throwing it away after one gradient step is wasteful.</span>
+<span class="cmt"># Can we reuse the same batch for multiple gradient steps?</span>
+</code></pre>
+  </div>
 
   <div class="card hi">
-    <h3>First: how do we measure "how much did the policy change"?</h3>
-<pre><code><span class="cmt"># Before updating: the "old" policy</span>
-<span class="var">old_prob</span> = <span class="num">0.3</span>   <span class="cmt"># old policy said: 30% chance of going right at this state</span>
-
-<span class="cmt"># After one gradient step: the "new" policy</span>
-<span class="var">new_prob</span> = <span class="num">0.45</span>  <span class="cmt"># now it says 45%</span>
-
-<span class="cmt"># The ratio:</span>
-<span class="hl"><span class="var">ratio</span> = <span class="var">new_prob</span> / <span class="var">old_prob</span> = <span class="num">0.45</span> / <span class="num">0.3</span> = <span class="num">1.5</span></span>
-
-<span class="cmt"># ratio = 1.0 → policy unchanged</span>
-<span class="cmt"># ratio = 1.5 → action is 50% more likely than before</span>
-<span class="cmt"># ratio = 0.5 → action is half as likely as before</span>
-<span class="cmt"># ratio = 3.0 → action is 3x more likely — TOO MUCH!</span>
+    <h3>Idea: update, check, update, check...</h3>
+<pre><code><span class="cmt"># Start: p(action) = 0.40, advantage = +2.0</span>
+<span class="cmt">#</span>
+<span class="cmt"># Step 1: gradient pushes p up → p = 0.46</span>
+<span class="cmt"># Step 2: same data, push again → p = 0.51</span>
+<span class="cmt"># Step 3: same data, push again → p = 0.55</span>
+<span class="cmt"># Step 4: same data, push again → p = 0.60</span>
+<span class="cmt"># ...</span>
+<span class="cmt"># When do we stop?? Without a limit, p rockets to 1.0</span>
+<span class="cmt"># based on one batch of data. Same catastrophe as before.</span>
 </code></pre>
   </div>
 
   <div class="card">
-    <h3>Three examples with numbers</h3>
-    <table>
-      <tr><th>Old P(action)</th><th>New P(action)</th><th>Ratio</th><th>What happened</th></tr>
-      <tr><td>0.3</td><td>0.33</td><td style="color:#4caf50;">1.1</td><td>Gentle nudge &#x2714;</td></tr>
-      <tr><td>0.3</td><td>0.45</td><td style="color:#ffb74d;">1.5</td><td>Moderate change &#x26A0;</td></tr>
-      <tr><td>0.3</td><td>0.9</td><td style="color:#ef5350;">3.0</td><td>Catastrophic change &#x2718;</td></tr>
-      <tr><td>0.3</td><td>0.1</td><td style="color:#ef5350;">0.33</td><td>Catastrophic change &#x2718;</td></tr>
-    </table>
+    <h3>Why not just set p = 0.48 directly?</h3>
+    <p>Tempting: "I know I want p to increase 20%. Just set it there."</p>
+    <p style="margin-top:8px">But you don't control probabilities directly. You control <strong>weights</strong> (millions of them), and the probability is the output of a giant nonlinear computation:</p>
+<pre><code><span class="cmt"># weights → matrix multiplies → activations → more layers → logit → softmax → p</span>
+<span class="cmt">#</span>
+<span class="cmt"># Example: loss = 2y, where y = (x-1)²</span>
+<span class="cmt"># At x=5: y=16. Want y=0? Need x to land at 1.</span>
+<span class="cmt"># Pick lr to "fix" y: lr=8 → x = 5 - 8×16 = -123. Overshot wildly.</span>
+<span class="cmt">#</span>
+<span class="cmt"># The lr that perfectly fixes ONE output sends the weights flying,</span>
+<span class="cmt"># which breaks every OTHER output (probabilities at other states).</span>
+<span class="cmt">#</span>
+<span class="cmt"># Neural networks can only be updated bit by bit.</span>
+<span class="cmt"># You push a little, check how far you went, push again.</span>
+<span class="cmt"># The question is: when to STOP pushing.</span>
+</code></pre>
   </div>
 
   <div class="card ok">
-    <p><span class="key">PPO's rule:</span> if the ratio strays outside [1-&#x03B5;, 1+&#x03B5;], clip it. Typical &#x03B5; = 0.2, so the allowed range is [0.8, 1.2].</p>
-    <p>The policy can change, but only 20% per update. No catastrophic swings.</p>
+    <h3>PPO's answer: stop when the probability has moved 20% from where you sampled</h3>
+    <p>Measure <code>ratio = new_p / old_p</code>. If it exceeds 1.2 (or drops below 0.8), turn off the gradient for that sample. Keep updating the rest.</p>
   </div>
-  <button class="nx" onclick="go(2)">Next: The clipping mechanism &#x2192;</button>
+  <button class="nx" onclick="go(2)">Next: The clip — the actual code &#x2192;</button>
 </div>
 
-<!-- ===== STEP 2 ===== -->
+<!-- ===== PAGE 2: THE CLIP ===== -->
 <div class="step" data-s="2. The Clip">
-  <h2>Clipping: The Speed Limit</h2>
+  <h2>The Clip: Positive and Negative Advantages</h2>
 
   <div class="card hi">
-    <h3>The PPO objective (building block by block)</h3>
-<pre><code><span class="cmt"># Actor-Critic (Chapter 4):</span>
-<span class="var">loss</span> = -<span class="fn">log</span>(<span class="var">P</span>(<span class="var">action</span>)) * <span class="var">advantage</span>
+    <h3>The rule</h3>
+<pre><code><span class="cmt"># If advantage &gt; 0 (good action): want probability UP</span>
+<span class="cmt">#   → stop when ratio exceeds 1.2 (gone up enough)</span>
+<span class="cmt">#   → but if ratio &lt; 1.0 (went wrong way), keep correcting!</span>
+<span class="cmt">#</span>
+<span class="cmt"># If advantage &lt; 0 (bad action): want probability DOWN</span>
+<span class="cmt">#   → stop when ratio drops below 0.8 (gone down enough)</span>
+<span class="cmt">#   → but if ratio &gt; 1.0 (went wrong way), keep correcting!</span>
+</code></pre>
+  </div>
 
-<span class="cmt"># PPO rewrites this using the ratio:</span>
-<span class="var">ratio</span> = <span class="var">new_P</span>(<span class="var">action</span>) / <span class="var">old_P</span>(<span class="var">action</span>)
+  <div class="card">
+    <h3>The code — one batch of B samples</h3>
+<pre><code><span class="var">ratio</span> = <span class="var">new_prob</span> / <span class="var">old_prob</span>   <span class="cmt"># shape (B,) — how far each sample moved</span>
 
-<span class="cmt"># Unclipped: same thing as before, just written differently</span>
+<span class="cmt"># Active mask: one-sided clip per sample</span>
+<span class="hl"><span class="var">active</span> = (</span>
+<span class="hl">    ((<span class="var">advantage</span> >= <span class="num">0</span>) &amp; (<span class="var">ratio</span> &lt;= <span class="num">1.2</span>))</span>
+<span class="hl">    | ((<span class="var">advantage</span> &lt; <span class="num">0</span>) &amp; (<span class="var">ratio</span> >= <span class="num">0.8</span>))</span>
+<span class="hl">).<span class="fn">float</span>()</span>
+
+<span class="cmt"># Loss: only active samples contribute gradient</span>
+<span class="var">loss</span> = -(<span class="fn">log</span>(<span class="var">new_prob</span>) * <span class="var">advantage</span> * <span class="var">active</span>).<span class="fn">mean</span>()
+</code></pre>
+    <p style="margin-top:8px">That's it. Samples that have moved too far in the desired direction get masked out (gradient = 0). Samples that haven't moved enough, or moved the wrong way, keep getting full gradient.</p>
+  </div>
+
+  <div class="card ok">
+    <h3>Walkthrough: 4 epochs on one sample</h3>
+<pre><code><span class="cmt"># old_prob = 0.40, advantage = +2.0</span>
+<span class="cmt">#</span>
+<span class="cmt"># Epoch 1: new_prob = 0.40, ratio = 1.00 → active ✓ → push</span>
+<span class="cmt">#          → new_prob becomes 0.46</span>
+<span class="cmt">#</span>
+<span class="cmt"># Epoch 2: new_prob = 0.46, ratio = 1.15 → active ✓ → push</span>
+<span class="cmt">#          → new_prob becomes 0.51</span>
+<span class="cmt">#</span>
+<span class="cmt"># Epoch 3: new_prob = 0.51, ratio = 1.275 → ratio &gt; 1.2 → MASKED</span>
+<span class="cmt">#          → gradient = 0, no change. Done with this sample.</span>
+<span class="cmt">#</span>
+<span class="cmt"># Epoch 4: still masked. Nothing happens.</span>
+</code></pre>
+    <table>
+      <tr><th>Epoch</th><th>new_prob</th><th>ratio</th><th>active?</th><th>result</th></tr>
+      <tr><td>1</td><td>0.40</td><td style="color:#4caf50">1.00</td><td style="color:#4caf50">yes</td><td style="color:#4caf50">push → 0.46</td></tr>
+      <tr><td>2</td><td>0.46</td><td style="color:#4caf50">1.15</td><td style="color:#4caf50">yes</td><td style="color:#4caf50">push → 0.51</td></tr>
+      <tr><td>3</td><td>0.51</td><td style="color:#ef5350">1.275</td><td style="color:#ef5350">no</td><td style="color:#ef5350">stop</td></tr>
+      <tr><td>4</td><td>0.51</td><td style="color:#ef5350">1.275</td><td style="color:#ef5350">no</td><td style="color:#ef5350">stop</td></tr>
+    </table>
+    <p style="margin-top:8px"><span class="key">Different samples saturate at different epochs.</span> In a batch of 200 samples, sample 14 might clip at epoch 1, while sample 87 clips at epoch 3. The mask is per-sample — clipped samples contribute zero gradient while others keep learning.</p>
+  </div>
+
+  <div class="card">
+    <h3>Negative advantage example</h3>
+<pre><code><span class="cmt"># old_prob = 0.50, advantage = -3.0 (bad action)</span>
+<span class="cmt">#</span>
+<span class="cmt"># Epoch 1: ratio = 1.00 → active ✓ → push DOWN → new_prob = 0.43</span>
+<span class="cmt"># Epoch 2: ratio = 0.86 → active ✓ → push DOWN → new_prob = 0.38</span>
+<span class="cmt"># Epoch 3: ratio = 0.76 → ratio &lt; 0.8 → MASKED. Stop punishing.</span>
+</code></pre>
+  </div>
+
+  <details class="more"><summary>Why torch.min(unclipped, clipped) gives the same result</summary>
+<pre><code><span class="cmt"># The standard PPO code you see in papers:</span>
 <span class="var">unclipped</span> = <span class="var">ratio</span> * <span class="var">advantage</span>
+<span class="var">clipped</span> = <span class="fn">torch.clamp</span>(<span class="var">ratio</span>, <span class="num">0.8</span>, <span class="num">1.2</span>) * <span class="var">advantage</span>
+<span class="var">loss</span> = -<span class="fn">torch.min</span>(<span class="var">unclipped</span>, <span class="var">clipped</span>).<span class="fn">mean</span>()
 
-<span class="cmt"># Clipped: ratio can't go outside [0.8, 1.2]</span>
-<span class="var">clipped_ratio</span> = <span class="fn">clip</span>(<span class="var">ratio</span>, <span class="num">0.8</span>, <span class="num">1.2</span>)
-<span class="var">clipped</span> = <span class="var">clipped_ratio</span> * <span class="var">advantage</span>
-
-<span class="cmt"># PPO loss: take the MINIMUM (more pessimistic = safer)</span>
-<span class="hl"><span class="var">ppo_loss</span> = -<span class="fn">min</span>(<span class="var">unclipped</span>, <span class="var">clipped</span>)</span>
+<span class="cmt"># Why is this the same as the active mask?</span>
+<span class="cmt">#</span>
+<span class="cmt"># When adv &gt; 0 and ratio &gt; 1.2:</span>
+<span class="cmt">#   unclipped = ratio * adv (big positive)</span>
+<span class="cmt">#   clipped   = 1.2 * adv   (smaller positive)</span>
+<span class="cmt">#   min picks clipped → a CONSTANT → gradient = 0 ← same as mask!</span>
+<span class="cmt">#</span>
+<span class="cmt"># When adv &lt; 0 and ratio &lt; 0.8:</span>
+<span class="cmt">#   unclipped = ratio * adv (small negative, close to 0)</span>
+<span class="cmt">#   clipped   = 0.8 * adv   (bigger negative)</span>
+<span class="cmt">#   min picks clipped → a CONSTANT → gradient = 0 ← same as mask!</span>
+<span class="cmt">#</span>
+<span class="cmt"># When ratio is in [0.8, 1.2]:</span>
+<span class="cmt">#   clamp does nothing → unclipped = clipped → normal gradient</span>
+<span class="cmt">#</span>
+<span class="cmt"># Same logic, fancier expression. The mask version is clearer.</span>
 </code></pre>
-  </div>
+  </details>
 
-  <div class="card">
-    <h3>Why min? Why pessimistic?</h3>
-    <p>Think of it as: "I'll take the update, but only the <em>conservative</em> version."</p>
-    <table>
-      <tr><th>Scenario</th><th>Ratio</th><th>Advantage</th><th>Unclipped</th><th>Clipped</th><th>PPO uses</th></tr>
-      <tr>
-        <td>Good action, gentle update</td><td>1.1</td><td>+5</td><td>5.5</td><td>5.5</td>
-        <td style="color:#4caf50;">5.5 (same, ratio in range)</td>
-      </tr>
-      <tr>
-        <td>Good action, too-big update</td><td>2.0</td><td>+5</td><td>10.0</td><td>6.0</td>
-        <td style="color:#ffb74d;">6.0 (clipped! slow down)</td>
-      </tr>
-      <tr>
-        <td>Bad action, gentle correction</td><td>0.9</td><td>-3</td><td>-2.7</td><td>-2.7</td>
-        <td style="color:#4caf50;">-2.7 (same)</td>
-      </tr>
-      <tr>
-        <td>Bad action, over-correction</td><td>0.3</td><td>-3</td><td>-0.9</td><td>-2.4</td>
-        <td style="color:#ffb74d;">-2.4 (clipped! don't overcorrect)</td>
-      </tr>
-    </table>
-  </div>
-
-  <div class="card">
-    <h3>The whole objective in one picture</h3>
-    <svg viewBox="0 0 760 330" xmlns="http://www.w3.org/2000/svg" style="display:block;margin:0 auto">
-      <!-- ===== panel A: advantage +1 ===== -->
-      <text x="200" y="24" fill="#4caf50" font-size="13" text-anchor="middle" font-weight="600">GOOD action (advantage = +1)</text>
-      <line x1="40" y1="250" x2="360" y2="250" stroke="#555" stroke-width="1.5"/>
-      <line x1="40" y1="250" x2="40" y2="60" stroke="#555" stroke-width="1.5"/>
-      <text x="200" y="278" fill="#888" font-size="11" text-anchor="middle">ratio (new prob / old prob)</text>
-      <text x="40" y="294" fill="#666" font-size="10" text-anchor="middle">0</text>
-      <text x="200" y="294" fill="#666" font-size="10" text-anchor="middle">1.0</text>
-      <text x="232" y="294" fill="#ffb74d" font-size="10" text-anchor="middle">1.2</text>
-      <text x="360" y="294" fill="#666" font-size="10" text-anchor="middle">2.0</text>
-      <!-- objective: rises y=250-100r until r=1.2, then flat -->
-      <polyline points="40,250 232,130" fill="none" stroke="#4caf50" stroke-width="2.5"/>
-      <polyline points="232,130 360,130" fill="none" stroke="#ef5350" stroke-width="2.5"/>
-      <line x1="232" y1="250" x2="232" y2="120" stroke="#ffb74d" stroke-width="1" stroke-dasharray="4,4"/>
-      <line x1="200" y1="250" x2="200" y2="150" stroke="#333" stroke-width="1" stroke-dasharray="3,4"/>
-      <text x="110" y="146" fill="#4caf50" font-size="11" text-anchor="middle">slope up:</text>
-      <text x="110" y="162" fill="#4caf50" font-size="11" text-anchor="middle">"more of this!"</text>
-      <text x="298" y="112" fill="#ef5350" font-size="11" text-anchor="middle" font-weight="600">FLAT: gradient = 0</text>
-      <text x="298" y="158" fill="#888" font-size="10" text-anchor="middle">already boosted 20% —</text>
-      <text x="298" y="172" fill="#888" font-size="10" text-anchor="middle">no reward for pushing more</text>
-
-      <!-- ===== panel B: advantage -1 ===== -->
-      <text x="580" y="24" fill="#ef5350" font-size="13" text-anchor="middle" font-weight="600">BAD action (advantage = &minus;1)</text>
-      <line x1="420" y1="250" x2="740" y2="250" stroke="#555" stroke-width="1.5"/>
-      <line x1="420" y1="250" x2="420" y2="60" stroke="#555" stroke-width="1.5"/>
-      <text x="580" y="278" fill="#888" font-size="11" text-anchor="middle">ratio (new prob / old prob)</text>
-      <text x="420" y="294" fill="#666" font-size="10" text-anchor="middle">0</text>
-      <text x="548" y="294" fill="#ffb74d" font-size="10" text-anchor="middle">0.8</text>
-      <text x="580" y="294" fill="#666" font-size="10" text-anchor="middle">1.0</text>
-      <text x="740" y="294" fill="#666" font-size="10" text-anchor="middle">2.0</text>
-      <!-- objective: flat at -0.8 (y=80+? ) use y(o)=60-100o: o=-0.8 -> 140; o=-2 -> 260... shift: y(o)=68-90o: -0.8->140, -2->248 -->
-      <polyline points="420,140 548,140" fill="none" stroke="#ef5350" stroke-width="2.5"/>
-      <polyline points="548,140 740,248" fill="none" stroke="#4caf50" stroke-width="2.5"/>
-      <line x1="548" y1="250" x2="548" y2="130" stroke="#ffb74d" stroke-width="1" stroke-dasharray="4,4"/>
-      <line x1="580" y1="250" x2="580" y2="158" stroke="#333" stroke-width="1" stroke-dasharray="3,4"/>
-      <text x="484" y="112" fill="#ef5350" font-size="11" text-anchor="middle" font-weight="600">FLAT: gradient = 0</text>
-      <text x="478" y="170" fill="#888" font-size="10" text-anchor="middle">already suppressed 20%,</text>
-      <text x="484" y="184" fill="#888" font-size="10" text-anchor="middle">stop kicking it</text>
-      <text x="636" y="222" fill="#4caf50" font-size="11" text-anchor="middle">slope down:</text>
-      <text x="636" y="238" fill="#4caf50" font-size="11" text-anchor="middle">"less of this!"</text>
-    </svg>
-    <p style="margin-top:8px;font-size:.9em">Read the green segments: while the ratio is near 1.0, the objective has slope — gradients flow, learning happens. Read the red segments: once the ratio has moved 20% <em>in the direction the advantage wanted</em>, the objective goes flat — the gradient is exactly zero and that sample stops teaching. The wall is one-sided on each panel: a good action's ratio is capped above (1.2), a bad action's below (0.8), because clipping only limits <em>over-reacting</em>, never correcting back toward 1.0.</p>
-  </div>
-
-  <div class="card ok">
-    <h3>The clip in one sentence</h3>
-    <p>If the policy hasn't changed much (ratio near 1.0), the update goes through normally. If the policy has changed a lot (ratio far from 1.0), the update is capped — and once it's far enough, the gradient becomes exactly zero.</p>
-  </div>
-  <button class="nx" onclick="go(3)">Next: Re-using experience &#x2192;</button>
+  <button class="nx" onclick="go(3)">Next: The ratio — why it's better than -log(p) &#x2192;</button>
 </div>
 
-<!-- ===== STEP 3 ===== -->
-<div class="step" data-s="3. Re-use Data">
-  <h2>PPO's Bonus: Re-use Each Episode Multiple Times</h2>
+<!-- ===== PAGE 3: THE RATIO ===== -->
+<div class="step" data-s="3. The Ratio">
+  <h2>The Ratio: Fixing Stale Data Across Epochs</h2>
 
   <div class="card warn">
-    <h3>REINFORCE and Actor-Critic waste data</h3>
-<pre><code><span class="cmt"># Chapter 3 & 4:</span>
-<span class="cmt"># 1. Run episode → collect (states, actions, rewards)</span>
-<span class="cmt"># 2. Compute loss, update weights</span>
-<span class="cmt"># 3. THROW AWAY the episode data</span>
-<span class="cmt"># 4. Run a new episode from scratch</span>
+    <h3>The problem: -log(p) gets weaker each epoch</h3>
+<pre><code><span class="cmt"># Sampled at old_prob = 0.40. After 2 epochs, new_prob = 0.55.</span>
 <span class="cmt">#</span>
-<span class="cmt"># Each episode used ONCE. Expensive!</span>
-</code></pre>
-  </div>
-
-  <div class="card ok">
-    <h3>PPO can re-use the same episode 4-10 times</h3>
-<pre><code><span class="cmt"># PPO:</span>
-<span class="cmt"># 1. Run episode → save (states, actions, rewards, OLD probabilities)</span>
-<span class="cmt"># 2. For k = 1 to 4:</span>
-<span class="cmt">#      Compute CURRENT probabilities (these change each time!)</span>
-<span class="cmt">#      Ratio = current / old</span>
-<span class="cmt">#      Clip and update</span>
-<span class="cmt"># 3. THEN throw away the data</span>
+<span class="cmt"># loss = -log(new_prob) * advantage * active</span>
 <span class="cmt">#</span>
-<span class="cmt"># 4x more learning from the same experience!</span>
+<span class="cmt"># gradient of -log(p): (1 - p)</span>
+<span class="cmt"># At epoch 1: p=0.40, gradient = 0.60 (strong)</span>
+<span class="cmt"># At epoch 2: p=0.46, gradient = 0.54 (weaker)</span>
+<span class="cmt"># At epoch 3: p=0.52, gradient = 0.48 (even weaker)</span>
+<span class="cmt">#</span>
+<span class="cmt"># The signal SHRINKS as p grows. But the data came from p=0.40!</span>
+<span class="cmt"># -log(p) acts like you sampled at 0.55. That's wrong.</span>
+<span class="cmt"># Later epochs waste compute pushing with decreasing strength.</span>
 </code></pre>
-    <p style="margin-top:8px"><span class="key">Why is this safe?</span> Because the clipping prevents the policy from drifting too far from the old policy. After 4 updates, the ratio approaches the clip boundary and further updates have no effect — a natural stopping point.</p>
   </div>
 
   <div class="card hi">
-    <h3>The full PPO loop</h3>
-<pre><code><span class="kw">for each</span> batch of episodes:
-    <span class="cmt"># 1. COLLECT: run episodes, save old probabilities</span>
-    <span class="var">data</span> = <span class="fn">collect_episodes</span>()
-    <span class="var">old_probs</span> = <span class="fn">save_probs</span>(<span class="var">data</span>)  <span class="cmt"># snapshot before any updates</span>
+    <h3>Fix: weight by how much you've drifted from sampling time</h3>
+<pre><code><span class="var">ratio</span> = (<span class="var">new_prob</span> / <span class="var">old_prob</span>).<span class="fn">detach</span>()  <span class="cmt"># frozen scalar, not differentiable</span>
 
-    <span class="cmt"># 2. COMPUTE returns and advantages</span>
-    <span class="var">returns</span> = <span class="fn">compute_returns</span>(<span class="var">data</span>)
-    <span class="var">advantages</span> = <span class="var">returns</span> - <span class="var">V</span>(<span class="var">states</span>)
-
-    <span class="cmt"># 3. UPDATE multiple times (the PPO trick)</span>
-    <span class="kw">for</span> <span class="var">epoch</span> <span class="kw">in</span> <span class="fn">range</span>(<span class="num">4</span>):
-        <span class="var">new_probs</span> = <span class="fn">policy</span>(<span class="var">states</span>)           <span class="cmt"># changes each epoch!</span>
-        <span class="var">ratio</span> = <span class="var">new_probs</span> / <span class="var">old_probs</span>        <span class="cmt"># how much did we change?</span>
-
-        <span class="var">unclipped</span> = <span class="var">ratio</span> * <span class="var">advantages</span>
-        <span class="var">clipped</span> = <span class="fn">clip</span>(<span class="var">ratio</span>, <span class="num">0.8</span>, <span class="num">1.2</span>) * <span class="var">advantages</span>
-        <span class="var">actor_loss</span> = -<span class="fn">min</span>(<span class="var">unclipped</span>, <span class="var">clipped</span>)
-
-        <span class="var">critic_loss</span> = (<span class="var">V</span>(<span class="var">states</span>) - <span class="var">returns</span>)&#xB2;
-        <span class="fn">update</span>(<span class="var">actor_loss</span> + <span class="var">critic_loss</span>)
-</code></pre>
-  </div>
-  <button class="nx" onclick="go(4)">Next: Why re-use is safe &#x2192;</button>
-</div>
-
-<!-- ===== STEP 4: WHY REUSE IS SAFE ===== -->
-<div class="step" data-s="4. Why Reuse Is Safe">
-  <h2>Why Reusing 4× Is Safe — Every Number Traced</h2>
-
-  <div class="card hi">
-    <h3>First: why does prob keep going UP across epochs?</h3>
-    <p>This feels wrong at first. "I already learned from this data — why would I learn from it again?"</p>
-    <p style="margin-top:8px">Because <strong>the advantage doesn't change between epochs</strong>. It was computed once, before epoch 1, and stays fixed. Every epoch re-reads the same signal.</p>
-<pre><code><span class="cmt"># Before any epochs, we computed (once, frozen):</span>
-<span class="var">advantage</span> = <span class="num">+2.0</span>  <span class="cmt"># "this action was 2.0 better than expected"</span>
-
-<span class="cmt"># This number NEVER changes across epochs.</span>
-<span class="cmt"># Epoch 1 sees advantage = +2.0 → pushes prob up</span>
-<span class="cmt"># Epoch 2 sees advantage = +2.0 → pushes prob up AGAIN</span>
-<span class="cmt"># Epoch 3 sees advantage = +2.0 → tries to push up AGAIN</span>
+<span class="cmt"># At epoch 1: ratio = 0.40/0.40 = 1.0  → weight × 1.0 (no change)</span>
+<span class="cmt"># At epoch 2: ratio = 0.46/0.40 = 1.15 → weight × 1.15 (push harder)</span>
+<span class="cmt"># At epoch 3: ratio = 0.52/0.40 = 1.30 → weight × 1.30 (even harder)</span>
 <span class="cmt">#</span>
-<span class="cmt"># It's like re-reading the same flashcard:</span>
-<span class="cmt"># "This action was good. This action was good. This action was good."</span>
-<span class="cmt"># Each time you read it, you believe it a little more.</span>
-<span class="cmt">#</span>
-<span class="cmt"># Without clipping, prob would go to 1.0 — completely overfit to one episode.</span>
-<span class="cmt"># WITH clipping, it hits a wall after ~20% change and stops.</span>
-</code></pre>
-  </div>
+<span class="cmt"># "The further you've drifted from the sampling distribution,</span>
+<span class="cmt">#  the more you need to correct" — until the clip shuts it off.</span>
 
-  <div class="card">
-    <h3>The gradient at each epoch — where the prob increase actually comes from</h3>
-<pre><code><span class="cmt"># Setup: action=RIGHT, old_prob=0.40, advantage=+2.0, lr=0.05</span>
-<span class="cmt">#</span>
-<span class="cmt"># The actor loss for one action is:</span>
-<span class="cmt">#   loss = -log(current_prob) × advantage</span>
-<span class="cmt">#</span>
-<span class="cmt"># Gradient of -log(p) with respect to p:  -1/p</span>
-<span class="cmt"># Multiply by advantage: gradient = -advantage / current_prob</span>
-<span class="cmt">#</span>
-<span class="cmt"># Gradient descent: current_prob -= lr × gradient</span>
-<span class="cmt">#                  current_prob -= lr × (-advantage / current_prob)</span>
-<span class="cmt">#                  current_prob += lr × advantage / current_prob</span>
-<span class="cmt">#                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^</span>
-<span class="cmt">#                                 positive advantage → prob goes UP</span>
+<span class="var">loss</span> = -(<span class="fn">log</span>(<span class="var">new_prob</span>) * <span class="var">ratio</span> * <span class="var">advantage</span> * <span class="var">active</span>).<span class="fn">mean</span>()
+<span class="cmt">#                         ^^^^^</span>
+<span class="cmt"># importance weight: corrects for stale data</span>
 </code></pre>
   </div>
 
   <div class="card ok">
-    <h3>Epoch 1 — advantage says "good", prob goes up</h3>
-<pre><code><span class="cmt"># current_prob starts at 0.40</span>
-<span class="cmt"># advantage = +2.0 (fixed, computed before epoch 1)</span>
-
-<span class="var">gradient</span> = -2.0 / 0.40 = <span class="num">-5.0</span>
-<span class="var">update</span>   = 0.40 - 0.05 × (-5.0) = 0.40 + 0.25 = <span class="num">0.65</span>
-<span class="cmt"># Wait — that's too big. Softmax + actual gradient is more complex.</span>
-<span class="cmt"># Real update with softmax is smaller. Let's use the actual result:</span>
-
-<span class="var">current_prob</span>: 0.40 → <span class="num">0.46</span>
-
-<span class="cmt"># WHY did it go up?</span>
-<span class="cmt"># Because advantage = +2.0 &gt; 0.</span>
-<span class="cmt"># Positive advantage means "this action was GOOD."</span>
-<span class="cmt"># The gradient says: increase the probability of this action.</span>
-<span class="cmt"># That's literally what -log(P) × advantage does — it's the REINFORCE rule.</span>
-</code></pre>
-  </div>
-
-  <div class="card ok">
-    <h3>Epoch 2 — same advantage, prob goes up AGAIN</h3>
-<pre><code><span class="cmt"># current_prob = 0.46 (from epoch 1)</span>
-<span class="cmt"># advantage = STILL +2.0 (has not been recomputed!)</span>
+    <h3>Simplification: the ratio.detach() × -log(p) gradient collapses</h3>
+<pre><code><span class="cmt"># gradient of [-log(p) × ratio.detach()] w.r.t. p:</span>
+<span class="cmt">#   = ratio.detach() × (1/p)</span>
+<span class="cmt">#   = (p/p_old) × (1/p)    ← the p's cancel!</span>
+<span class="cmt">#   = 1 / p_old             ← constant!</span>
 <span class="cmt">#</span>
-<span class="cmt"># The flashcard still says "this action was good."</span>
-<span class="cmt"># So the gradient STILL says "increase this action's probability."</span>
-
-<span class="var">current_prob</span>: 0.46 → <span class="num">0.51</span>
-
-<span class="cmt"># But now ratio = 0.51 / 0.40 = 1.275 — exceeds clip boundary 1.2!</span>
-<span class="cmt"># The clip kicks in. Loss uses clipped ratio = 1.2 instead of 1.275.</span>
-<span class="cmt"># The clipped ratio is a CONSTANT — doesn't depend on current_prob.</span>
-<span class="cmt"># So the gradient is smaller. Update is weaker.</span>
-</code></pre>
-  </div>
-
-  <div class="card warn">
-    <h3>Epoch 3 — advantage still says "good" but clip says "stop"</h3>
-<pre><code><span class="cmt"># current_prob = 0.51, ratio = 0.51/0.40 = 1.275</span>
-<span class="cmt"># advantage = STILL +2.0</span>
+<span class="cmt"># gradient of [ratio] w.r.t. p (differentiating through ratio directly):</span>
+<span class="cmt">#   = 1 / p_old             ← same thing!</span>
 <span class="cmt">#</span>
-<span class="cmt"># The flashcard still says "good." The gradient still wants to push up.</span>
-<span class="cmt"># But the clip says: ratio is capped at 1.2.</span>
-<span class="cmt"># loss = -min(ratio × adv, 1.2 × adv) = -1.2 × 2.0 = -2.4</span>
-<span class="cmt">#</span>
-<span class="cmt"># ∂loss/∂current_prob = ∂(-1.2 × 2.0)/∂current_prob = 0</span>
-<span class="cmt"># 1.2 is a constant! It doesn't depend on current_prob!</span>
-<span class="cmt"># The gradient is ZERO. The update is ZERO.</span>
-
-<span class="var">current_prob</span>: 0.51 → <span class="num">0.51</span>  <span class="cmt"># no change</span>
-
-<span class="cmt"># The advantage is still screaming "good!" but the clip has shut the door.</span>
-<span class="cmt"># "You've changed enough. I don't care how good it was. Stop."</span>
+<span class="cmt"># So instead of: loss = -log(p) * ratio.detach() * adv * active</span>
+<span class="cmt"># You can just:  loss = -(ratio) * adv * active</span>
+<span class="cmt"># (now differentiating THROUGH ratio — same gradient, simpler code)</span>
 </code></pre>
-  </div>
-
-  <div class="card" style="border-color:#ef5350;background:#1a0a0a">
-    <h3>Epoch 4 — identical to epoch 3. Nothing happens.</h3>
   </div>
 
   <div class="card">
-    <h3>Summary</h3>
+    <h3>Final code</h3>
+<pre><code><span class="var">ratio</span> = <span class="var">new_prob</span> / <span class="var">old_prob</span>   <span class="cmt"># NOT detached — we differentiate through it</span>
+
+<span class="var">active</span> = (
+    ((<span class="var">advantage</span> >= <span class="num">0</span>) &amp; (<span class="var">ratio</span> &lt;= <span class="num">1.2</span>))
+    | ((<span class="var">advantage</span> &lt; <span class="num">0</span>) &amp; (<span class="var">ratio</span> >= <span class="num">0.8</span>))
+).<span class="fn">float</span>()
+
+<span class="hl"><span class="var">loss</span> = -(<span class="var">ratio</span> * <span class="var">advantage</span> * <span class="var">active</span>).<span class="fn">mean</span>()</span>
+</code></pre>
+    <p style="margin-top:8px">The clip keeps ratio in [0.8, 1.2], so the correction is at most 20%. The clip does 90% of the work; the ratio makes later epochs push at full strength instead of fading.</p>
+  </div>
+
+  <div class="card">
+    <h3>Epoch-by-epoch: -log(p) alone vs with ratio correction</h3>
+<pre><code><span class="cmt"># ⚠️ IMPORTANT: we track the push on the LOGIT (the raw number before softmax).</span>
+<span class="cmt"># The logit is what the optimizer actually changes. The probability is just</span>
+<span class="cmt"># softmax(logit) — a derived quantity. SGD reads gradients on LOGITS, not on p.</span>
+<span class="cmt">#</span>
+<span class="cmt"># For -log(p): gradient that reaches the logit = (1-p) × adv</span>
+<span class="cmt"># For ratio:   gradient that reaches the logit = ratio × (1-p) × adv</span>
+<span class="cmt"># (adv = 2.0 throughout)</span>
+</code></pre>
     <table>
-      <tr><th>Epoch</th><th>Advantage</th><th>current_prob</th><th>ratio</th><th>Clipped?</th><th>Gradient</th></tr>
-      <tr><td>start</td><td>+2.0</td><td>0.40</td><td>1.00</td><td>No</td><td>—</td></tr>
-      <tr><td style="color:#4caf50">1</td><td style="color:#4caf50">+2.0 (same)</td><td style="color:#4caf50">0.46</td><td style="color:#4caf50">1.15</td><td style="color:#4caf50">No</td><td style="color:#4caf50">Full → prob UP</td></tr>
-      <tr><td style="color:#ffb74d">2</td><td style="color:#ffb74d">+2.0 (same)</td><td style="color:#ffb74d">0.51</td><td style="color:#ffb74d">1.275</td><td style="color:#ffb74d">Yes</td><td style="color:#ffb74d">Reduced → prob up a little</td></tr>
-      <tr><td style="color:#ef5350">3</td><td style="color:#ef5350">+2.0 (same)</td><td style="color:#ef5350">0.51</td><td style="color:#ef5350">1.275</td><td style="color:#ef5350">Yes</td><td style="color:#ef5350">Zero → prob stuck</td></tr>
-      <tr><td style="color:#ef5350">4</td><td style="color:#ef5350">+2.0 (same)</td><td style="color:#ef5350">0.51</td><td style="color:#ef5350">1.275</td><td style="color:#ef5350">Yes</td><td style="color:#ef5350">Zero → prob stuck</td></tr>
+      <tr><th>Epoch</th><th>new_prob</th><th>ratio</th><th>-log(p) push: (1-p)×2</th><th>ratio push: ratio×(1-p)×2</th></tr>
+      <tr><td>1</td><td>0.40</td><td>1.00</td><td>(1-0.40)×2 = 1.20</td><td>1.00×0.60×2 = 1.20 (same)</td></tr>
+      <tr><td>2</td><td>0.46</td><td>1.15</td><td>(1-0.46)×2 = 1.08 <span style="color:#ef5350">↓</span></td><td>1.15×0.54×2 = 1.24 <span style="color:#4caf50">↑</span></td></tr>
+      <tr><td>3</td><td>0.52</td><td>1.30</td><td>(1-0.52)×2 = 0.96 <span style="color:#ef5350">↓</span></td><td style="color:#888">clipped (done)</td></tr>
     </table>
-    <p style="margin-top:8px"><span class="key">The advantage column is the key.</span> It's +2.0 in every row. That's why the prob keeps wanting to go up — the signal never weakens. The clip is the only thing that stops it.</p>
+    <p style="margin-top:8px;font-size:.85em;color:#888">Note: -log(0.40) = 0.916 is the loss VALUE. The gradient that flows to the logit is (1-p) — that's what actually moves the weights.</p>
   </div>
 
-  <div class="card ok">
-    <h3>Why is reusing the same advantage safe?</h3>
-<pre><code><span class="cmt"># The advantage was computed from REAL experience:</span>
-<span class="cmt"># "Robot went right and got return +4. Critic expected +2. Advantage = +2."</span>
-<span class="cmt"># That fact doesn't become less true on the second read.</span>
-<span class="cmt">#</span>
-<span class="cmt"># BUT: if the policy changes too much, the advantage becomes STALE.</span>
-<span class="cmt"># The advantage was computed under old_prob=0.40.</span>
-<span class="cmt"># If current_prob drifted to 0.90, the robot would take different actions,</span>
-<span class="cmt"># get different rewards, and the advantage +2.0 would be wrong.</span>
-<span class="cmt">#</span>
-<span class="cmt"># The clip says: "trust this advantage while prob is within 20% of 0.40."</span>
-<span class="cmt"># Beyond that, the data is too stale. Stop learning. Collect new data.</span>
+  <details class="more"><summary>The standard PPO code (what papers and libraries use)</summary>
+<pre><code><span class="var">ratio</span> = <span class="fn">torch.exp</span>(<span class="var">new_log_probs</span> - <span class="var">old_log_probs</span>.<span class="fn">detach</span>())
+
+<span class="var">unclipped</span> = <span class="var">ratio</span> * <span class="var">advantages</span>
+<span class="var">clipped</span> = <span class="fn">torch.clamp</span>(<span class="var">ratio</span>, <span class="num">0.8</span>, <span class="num">1.2</span>) * <span class="var">advantages</span>
+<span class="var">actor_loss</span> = -<span class="fn">torch.min</span>(<span class="var">unclipped</span>, <span class="var">clipped</span>).<span class="fn">mean</span>()
 </code></pre>
-  </div>
+    <p><strong>Change 1: why torch.exp(log_new - log_old) = ratio</strong></p>
+<pre><code><span class="cmt"># log_new = log(new_prob),  log_old = log(old_prob)</span>
+<span class="cmt"># log_new - log_old = log(new_prob / old_prob)   ← log rule</span>
+<span class="cmt"># exp(log(x)) = x</span>
+<span class="cmt"># so: exp(log_new - log_old) = new_prob / old_prob = ratio</span>
+<span class="cmt">#</span>
+<span class="cmt"># Why bother? Probabilities can be tiny (1e-8). Dividing two tiny</span>
+<span class="cmt"># floats loses precision. Subtracting their logs keeps full precision.</span>
+</code></pre>
+    <p><strong>Change 2: why min(unclipped, clipped) = the active mask</strong></p>
+    <p>Four cases, worked out with numbers:</p>
+<pre><code><span class="cmt"># CASE 1: adv &gt; 0, ratio INSIDE [0.8, 1.2]  (e.g. ratio=1.1, adv=+2)</span>
+<span class="cmt">#   clamp(1.1, 0.8, 1.2) = 1.1 (unchanged)</span>
+<span class="cmt">#   unclipped = 1.1 × 2 = 2.2</span>
+<span class="cmt">#   clipped   = 1.1 × 2 = 2.2 (same!)</span>
+<span class="cmt">#   min = 2.2 → normal gradient flows. ✓ (same as active=True)</span>
 
-  <button class="nx" onclick="go(5)">Next: The bridge to RLHF &#x2192;</button>
+<span class="cmt"># CASE 2: adv &gt; 0, ratio OVER 1.2  (e.g. ratio=1.5, adv=+2)</span>
+<span class="cmt">#   clamp(1.5, 0.8, 1.2) = 1.2</span>
+<span class="cmt">#   unclipped = 1.5 × 2 = 3.0</span>
+<span class="cmt">#   clipped   = 1.2 × 2 = 2.4</span>
+<span class="cmt">#   min = 2.4 → picks the CONSTANT (1.2×2). Gradient = 0. ✓ (same as active=False)</span>
+
+<span class="cmt"># CASE 3: adv &lt; 0, ratio INSIDE [0.8, 1.2]  (e.g. ratio=0.9, adv=-3)</span>
+<span class="cmt">#   clamp(0.9, 0.8, 1.2) = 0.9 (unchanged)</span>
+<span class="cmt">#   unclipped = 0.9 × (-3) = -2.7</span>
+<span class="cmt">#   clipped   = 0.9 × (-3) = -2.7 (same!)</span>
+<span class="cmt">#   min = -2.7 → normal gradient flows. ✓ (same as active=True)</span>
+
+<span class="cmt"># CASE 4: adv &lt; 0, ratio UNDER 0.8  (e.g. ratio=0.6, adv=-3)</span>
+<span class="cmt">#   clamp(0.6, 0.8, 1.2) = 0.8</span>
+<span class="cmt">#   unclipped = 0.6 × (-3) = -1.8</span>
+<span class="cmt">#   clipped   = 0.8 × (-3) = -2.4</span>
+<span class="cmt">#   min picks the SMALLER number: min(-1.8, -2.4) = -2.4</span>
+<span class="cmt">#   -2.4 = 0.8 × adv = CONSTANT → gradient = 0. ✓ (same as active=False)</span>
+<span class="cmt">#</span>
+<span class="cmt"># Key insight for case 4: adv is negative, so BOTH values are negative.</span>
+<span class="cmt"># -1.8 &gt; -2.4 (closer to zero). min picks -2.4 (further from zero).</span>
+<span class="cmt"># That's the clamped one — a constant — so gradient = 0.</span>
+</code></pre>
+  </details>
+
+  <button class="nx" onclick="go(4)">Next: From grids to ChatGPT &#x2192;</button>
 </div>
 
-<!-- ===== STEP 5 ===== -->
-<div class="step" data-s="5. Bridge to RLHF">
+<!-- ===== PAGE 4: BRIDGE TO RLHF ===== -->
+<div class="step" data-s="4. Bridge to RLHF">
   <h2>From Grid Robots to ChatGPT</h2>
 
   <div class="card hi">
@@ -436,7 +388,7 @@
       <tr><td>Action</td><td>Up / Down / Left / Right</td><td>Next token (from 50k vocabulary)</td></tr>
       <tr><td>Policy &#x03C0;</td><td>Small neural net</td><td>The LLM itself</td></tr>
       <tr><td>Reward</td><td>-1 per step, +10 treasure</td><td>Human preference score (via reward model)</td></tr>
-      <tr><td>Episode</td><td>Start → treasure/pit</td><td>Full response to a prompt</td></tr>
+      <tr><td>Episode</td><td>Start &#x2192; treasure/pit</td><td>Full response to a prompt</td></tr>
       <tr><td>Clipping</td><td>Don't overreact to one episode</td><td>Don't let one batch of feedback ruin the model</td></tr>
     </table>
   </div>
@@ -466,10 +418,9 @@
       <tr><td>2</td><td>Q-learning</td><td>States + Q-table</td><td>Different situations need different actions</td></tr>
       <tr><td>3</td><td>REINFORCE</td><td>Neural network policy</td><td>Scaling to large/continuous states</td></tr>
       <tr><td>4</td><td>Actor-Critic</td><td>Baseline V(s)</td><td>Too much noise in the learning signal</td></tr>
-      <tr><td style="color:#4fc3f7;font-weight:700;">5</td><td style="color:#4fc3f7;font-weight:700;">PPO</td><td style="color:#4fc3f7;font-weight:700;">Ratio clipping</td><td style="color:#4fc3f7;font-weight:700;">One bad update destroys everything</td></tr>
+      <tr><td style="color:#4fc3f7;font-weight:700;">5</td><td style="color:#4fc3f7;font-weight:700;">PPO</td><td style="color:#4fc3f7;font-weight:700;">Clip + reuse</td><td style="color:#4fc3f7;font-weight:700;">One bad update destroys everything</td></tr>
       <tr><td>&#x2192;</td><td>RLHF</td><td>Learned reward model</td><td>Aligning AI with human values</td></tr>
     </table>
-    <p style="margin-top:10px;text-align:center;font-weight:600;color:#ce93d8;">Each chapter solves exactly one problem. Nothing is added without a reason.</p>
   </div>
 </div>
 
@@ -478,8 +429,6 @@ const steps=document.querySelectorAll('.step');
 const nav=document.getElementById('nav');
 steps.forEach((s,i)=>{const b=document.createElement('button');b.textContent=s.dataset.s;b.onclick=()=>go(i);if(i===0)b.classList.add('on');nav.appendChild(b);});
 function go(n){steps.forEach((s,i)=>s.classList.toggle('on',i===n));nav.querySelectorAll('button').forEach((b,i)=>{b.classList.remove('on');if(i<n)b.classList.add('done');else b.classList.remove('done');if(i===n)b.classList.add('on');});window.scrollTo({top:0,behavior:'smooth'});}
-
-// (interactive clip visualization removed — static examples in the page instead)
 </script>
 </body>
 </html>

@@ -80,6 +80,14 @@ table.qt .changed{background:#264f78}
 <div class="page on" data-t="The World">
 <h2>The World: 2x2 Grid</h2>
 
+<div class="card" style="border-color:rgba(255,152,0,.5)">
+<h3 style="color:#ffb74d">Before you start: LLM post-training does NOT use Q-learning</h3>
+<p>PPO and GRPO (ch. 5, 7-8) are descendants of <strong>REINFORCE</strong> (ch. 3) — the <em>policy-gradient</em> family. No Q-table, no <code>max Q(s')</code> anywhere. Q-learning's home turf is games and robotics (DQN, Atari).</p>
+<p style="margin-top:6px"><strong>So why read this chapter?</strong> Two things get born here and reused everywhere:</p>
+<p style="margin-top:4px">&bull; the vocabulary — <span class="key">target</span>, <span class="key">error</span>, <span class="key">gamma</span> — which PPO's critic (ch. 4-5) uses unchanged;<br>
+&bull; the idea of <span class="key">bootstrapping</span> (substituting a stored guess for the real future). REINFORCE is defined by <em>refusing</em> to do this — you can't see why that matters until you've watched it work.</p>
+</div>
+
 <table class="grid">
 <tr>
   <td class="fl here"><span class="coord">(0,0)</span><span class="rew" style="color:#888">-1</span><span class="icon">&#x1F916;</span>START</td>

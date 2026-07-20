@@ -40,6 +40,22 @@ a:hover{text-decoration:underline}
 <strong style="color:#4fc3f7">How this page works:</strong> each entry lists what was added (<span class="tag t-new">new</span>), improved (<span class="tag t-upd">updated</span>), or corrected (<span class="tag t-fix">fixed</span>), with a link and one line on why it's worth your time. Skim the newest entry after any session; the "start here" pointer tells you the best reading order.
 </div>
 
+<!-- ============ 2026-07-13 ============ -->
+<div class="entry">
+<div class="entry-head">
+  <span class="date">2026-07-13</span>
+  <span class="entry-title">Q-learning chapter: honest framing added</span>
+</div>
+<p class="why">You asked "we're not using Q-learning much right now, right?" — right: PPO/GRPO are REINFORCE-family (policy gradient), and nothing in LLM post-training bootstraps from a Q-table. The chapter now says so up front.</p>
+<table>
+<tr><th style="width:36%">what</th><th>change</th></tr>
+<tr><td><span class="tag t-upd">updated</span><a href="rl_demos/2_q_learning.html">RL ch. 2 — Q-learning</a></td><td>New card on the first page: LLM post-training does NOT use Q-learning — plus the two reasons the chapter is still worth reading (the target/error/gamma vocabulary PPO's critic reuses, and bootstrapping — the thing REINFORCE is defined by refusing to do).</td></tr>
+<tr><td><span class="tag t-upd">updated</span><a href="rl_demos/3_reinforce.html">RL ch. 3 — REINFORCE</a></td><td>Live demo switched from 4x4 to 3x3 grid (pit center, gold bottom-right) — smaller board makes the learning curve readable and convergence visible within 500 episodes.</td></tr>
+<tr><td><span class="tag t-upd">updated</span><a href="rl_demos/4_actor_critic.html">RL ch. 4 — Actor-Critic</a></td><td>Same 3x3 grid swap for the side-by-side comparison. Actor-Critic now visibly converges ~100 episodes before REINFORCE on the same task.</td></tr>
+<tr><td><span class="tag t-upd">updated</span><a href="rl_demos/5_ppo.html">RL ch. 5 — PPO</a></td><td>Complete rewrite. New flow: crash → reuse data (why you can't force p directly) → the clip as active mask with pos/neg examples → ratio motivation (stale-data correction). Standard min/clamp form moved to foldables.</td></tr>
+</table>
+</div>
+
 <!-- ============ 2026-07-12 ============ -->
 <div class="entry">
 <div class="entry-head">
@@ -65,6 +81,8 @@ a:hover{text-decoration:underline}
 <tr><td><span class="tag t-upd">updated</span><a href="rl_demos/10_difficulty_curriculum.html">RL ch. 10</a></td><td>Fraud-parallel page now links to the full case study.</td></tr>
 <tr><td><span class="tag t-fix">fixed</span><a href="rl_demos/12_moe_train_serve_gap.html">RL ch. 12</a></td><td>Softened an over-claim: "became a standard interview question" → what the evidence supports (natural probing question; member of a documented family → ch. 13).</td></tr>
 <tr><td><span class="tag t-fix">fixed</span>chapters 8-13 + case study</td><td>Removed all "Say it back / N-second interview version" recitation paragraphs — dense script blocks are out; understanding-oriented structure (traps tables, fix maps, follow-up Q&amp;A) stays.</td></tr>
+<tr><td><span class="tag t-upd">updated</span><a href="notebooks/grpo_from_scratch.ipynb">GRPO notebook — rewritten dissection-first</a></td><td>Doubled in cells (~35 → 73): every tensor now introduced with shape+meaning and a real print; PyTorch syntax explained at first use (slicing, gather, unsqueeze, broadcasting, masking); the shift trick, generation loop, and the 11 loss lines each taken apart line-by-line (§3a, §4a, §7a-c, §8a-f) before being assembled into functions. All previously quoted numbers unchanged (same seeds).</td></tr>
+<tr><td><span class="tag t-upd">updated</span><a href="notebooks/grpo_from_scratch.ipynb">GRPO notebook — §4b reward + §8e KL deepened</a></td><td>Two sticking points fixed. §4b now grades a two-digit answer (<code>11.</code> = 3 tokens) line by line — showing the verifier judges the whole decoded string ONCE, one number per response no matter how many tokens, and why per-token credit is §8c's broadcast, not the verifier's. §8e KL rewritten: the k3 penalty demoed on hand numbers first (agree → 0, both directions cost, abandoning a token ref liked explodes: 0.58→0.01 costs 52.9 while 0.58→1.00 costs 0.12), then §9½ re-measures it after 5 real steps so you finally see the leash go taut (nonzero). Quoted numbers unchanged.</td></tr>
 </table>
 </div>
 

@@ -68,7 +68,7 @@
     <h3>Q-tables work great... for tiny worlds</h3>
     <table>
       <tr><th>World</th><th>States</th><th>Actions</th><th>Q-table size</th></tr>
-      <tr><td>4x4 grid</td><td>16</td><td>4</td><td style="color:#4caf50">64 entries</td></tr>
+      <tr><td>3x3 grid</td><td>9</td><td>4</td><td style="color:#4caf50">36 entries</td></tr>
       <tr><td>Chess</td><td>~10<sup>47</sup></td><td>~35</td><td style="color:#ef5350">impossible</td></tr>
       <tr><td>Self-driving car</td><td>continuous</td><td>continuous</td><td style="color:#ef5350">infinite</td></tr>
       <tr><td>LLM (token generation)</td><td>all possible prompts</td><td>50k tokens</td><td style="color:#ef5350">laughably impossible</td></tr>
@@ -384,9 +384,9 @@
   <h2>Watch REINFORCE Train</h2>
 
   <div class="card hi">
-    <p>This runs a simplified REINFORCE in the browser on the same 4x4 grid. The network is tiny (state&#x2192;hidden&#x2192;4 action probs).</p>
+    <p>This runs a simplified REINFORCE in the browser on a 3x3 grid (start top-left, pit center, gold bottom-right). The network is tiny (state&#x2192;hidden&#x2192;4 action probs).</p>
     <div class="controls">
-      <button class="run" onclick="trainR()">Train 300 episodes</button>
+      <button class="run" onclick="trainR()">Train 500 episodes</button>
     </div>
 
     <div style="display:flex;flex-wrap:wrap;gap:20px;justify-content:center;margin-top:10px;">
@@ -423,28 +423,29 @@ const nav=document.getElementById('nav');
 steps.forEach((s,i)=>{const b=document.createElement('button');b.textContent=s.dataset.s;b.onclick=()=>go(i);if(i===0)b.classList.add('on');nav.appendChild(b);});
 function go(n){steps.forEach((s,i)=>s.classList.toggle('on',i===n));nav.querySelectorAll('button').forEach((b,i)=>{b.classList.remove('on');if(i<n)b.classList.add('done');else b.classList.remove('done');if(i===n)b.classList.add('on');});window.scrollTo({top:0,behavior:'smooth'});}
 
-// Minimal neural net in JS for REINFORCE demo
+// Minimal neural net in JS for REINFORCE demo — 3x3 grid
 function trainR(){
-  const GS=4, ACTS=[[-1,0],[1,0],[0,-1],[0,1]], ANAME=['\u2191','\u2193','\u2190','\u2192'];
-  const TREASURE=[3,3],PIT=[1,1],START=[0,0];
-  const gamma=0.99, lr=0.01;
+  const GS=3, ACTS=[[-1,0],[1,0],[0,-1],[0,1]], ANAME=['\u2191','\u2193','\u2190','\u2192'];
+  const TREASURE=[2,2],PIT=[1,1],START=[0,0];
+  const gamma=0.99, lr=0.02;
 
-  // Simple 2-layer net: 16 -> 16 -> 4
+  // Simple 2-layer net: 9 -> 12 -> 4
+  const INP=9,HID=12;
   let W1=[], b1=[], W2=[], b2=[];
-  for(let i=0;i<16;i++){W1[i]=[];for(let j=0;j<16;j++) W1[i][j]=(Math.random()-0.5)*0.3;}
-  for(let i=0;i<16;i++) b1[i]=0;
-  for(let i=0;i<16;i++){W2[i]=[];for(let j=0;j<4;j++) W2[i][j]=(Math.random()-0.5)*0.3;}
+  for(let i=0;i<INP;i++){W1[i]=[];for(let j=0;j<HID;j++) W1[i][j]=(Math.random()-0.5)*0.3;}
+  for(let i=0;i<HID;i++) b1[i]=0;
+  for(let i=0;i<HID;i++){W2[i]=[];for(let j=0;j<4;j++) W2[i][j]=(Math.random()-0.5)*0.3;}
   for(let i=0;i<4;i++) b2[i]=0;
 
   function relu(x){return x>0?x:0;}
   function drelu(x){return x>0?1:0;}
 
   function forward(stateIdx){
-    const inp=new Array(16).fill(0); inp[stateIdx]=1;
-    const h=new Array(16).fill(0);
-    for(let i=0;i<16;i++){let s=b1[i];for(let j=0;j<16;j++) s+=inp[j]*W1[j][i];h[i]=relu(s);}
+    const inp=new Array(INP).fill(0); inp[stateIdx]=1;
+    const h=new Array(HID).fill(0);
+    for(let i=0;i<HID;i++){let s=b1[i];for(let j=0;j<INP;j++) s+=inp[j]*W1[j][i];h[i]=relu(s);}
     const logits=new Array(4).fill(0);
-    for(let i=0;i<4;i++){let s=b2[i];for(let j=0;j<16;j++) s+=h[j]*W2[j][i];logits[i]=s;}
+    for(let i=0;i<4;i++){let s=b2[i];for(let j=0;j<HID;j++) s+=h[j]*W2[j][i];logits[i]=s;}
     const mx=Math.max(...logits);
     const exps=logits.map(l=>Math.exp(l-mx));
     const sm=exps.reduce((a,b)=>a+b);
@@ -460,20 +461,20 @@ function trainR(){
 
   function step(s,a){
     let nr=s[0]+ACTS[a][0],nc=s[1]+ACTS[a][1];
-    nr=Math.max(0,Math.min(3,nr));nc=Math.max(0,Math.min(3,nc));
+    nr=Math.max(0,Math.min(GS-1,nr));nc=Math.max(0,Math.min(GS-1,nc));
     if(nr===TREASURE[0]&&nc===TREASURE[1]) return [[nr,nc],10,true];
     if(nr===PIT[0]&&nc===PIT[1]) return [[nr,nc],-10,true];
     return [[nr,nc],-1,false];
   }
 
   const rewards=[];
-  const episodes=300;
+  const episodes=500;
 
   for(let ep=0;ep<episodes;ep++){
     const traj=[];
     let s=[...START], done=false;
-    for(let t=0;t<50&&!done;t++){
-      const si=s[0]*4+s[1];
+    for(let t=0;t<30&&!done;t++){
+      const si=s[0]*GS+s[1];
       const fwd=forward(si);
       const a=sample(fwd.probs);
       const [ns,r,d]=step(s,a);
@@ -499,48 +500,42 @@ function trainR(){
       const G_t=rets[t];
       const inp=fwd.inp, h=fwd.h, probs=fwd.probs;
 
-      // d(loss)/d(logits): for cross-entropy with sampling
       const dlogits=probs.slice();
-      dlogits[a]-=1; // gradient of -log(p[a]) w.r.t. logits
-      for(let i=0;i<4;i++) dlogits[i]*=G_t; // multiply by return
+      dlogits[a]-=1;
+      for(let i=0;i<4;i++) dlogits[i]*=G_t;
 
-      // Backprop to W2, b2
-      for(let j=0;j<16;j++) for(let i=0;i<4;i++) W2[j][i]-=lr*h[j]*dlogits[i];
+      for(let j=0;j<HID;j++) for(let i=0;i<4;i++) W2[j][i]-=lr*h[j]*dlogits[i];
       for(let i=0;i<4;i++) b2[i]-=lr*dlogits[i];
 
-      // Backprop to hidden
-      const dh=new Array(16).fill(0);
-      for(let j=0;j<16;j++) for(let i=0;i<4;i++) dh[j]+=W2[j][i]*dlogits[i];
-      for(let j=0;j<16;j++) dh[j]*=drelu(h[j]>0?h[j]:0)>0?1:0;
-      // Fix: use pre-relu values
-      const preH=new Array(16).fill(0);
-      for(let i=0;i<16;i++){let s2=b1[i];for(let j=0;j<16;j++) s2+=inp[j]*W1[j][i];preH[i]=s2;}
-      for(let j=0;j<16;j++) dh[j]*=drelu(preH[j]);
+      const dh=new Array(HID).fill(0);
+      for(let j=0;j<HID;j++) for(let i=0;i<4;i++) dh[j]+=W2[j][i]*dlogits[i];
+      const preH=new Array(HID).fill(0);
+      for(let i=0;i<HID;i++){let s2=b1[i];for(let j=0;j<INP;j++) s2+=inp[j]*W1[j][i];preH[i]=s2;}
+      for(let j=0;j<HID;j++) dh[j]*=drelu(preH[j]);
 
-      // Backprop to W1, b1
-      for(let j=0;j<16;j++) for(let i=0;i<16;i++) W1[j][i]-=lr*inp[j]*dh[i];
-      for(let i=0;i<16;i++) b1[i]-=lr*dh[i];
+      for(let j=0;j<INP;j++) for(let i=0;i<HID;i++) W1[j][i]-=lr*inp[j]*dh[i];
+      for(let i=0;i<HID;i++) b1[i]-=lr*dh[i];
     }
 
     rewards.push(traj.reduce((a,b)=>a+b.r,0));
   }
 
-  // Draw policy
+  // Draw policy — 3x3 grid
   const pcv=document.getElementById('r-policy'),pctx=pcv.getContext('2d');
   pctx.clearRect(0,0,280,280);
-  const cs=66,pad=8;
-  for(let r=0;r<4;r++) for(let c=0;c<4;c++){
-    const x=pad+c*(cs+4),y=pad+r*(cs+4),si=r*4+c;
-    if(r===TREASURE[0]&&c===TREASURE[1]){pctx.fillStyle='#3a3a0a';pctx.beginPath();pctx.roundRect(x,y,cs,cs,6);pctx.fill();pctx.fillStyle='#ffd54f';pctx.font='28px serif';pctx.textAlign='center';pctx.fillText('\u{1F3C6}',x+cs/2,y+cs/2+10);}
-    else if(r===PIT[0]&&c===PIT[1]){pctx.fillStyle='#3a0a0a';pctx.beginPath();pctx.roundRect(x,y,cs,cs,6);pctx.fill();pctx.fillStyle='#ef5350';pctx.font='28px serif';pctx.textAlign='center';pctx.fillText('\u{1F573}',x+cs/2,y+cs/2+10);}
+  const cs=84,pad=12;
+  for(let r=0;r<GS;r++) for(let c=0;c<GS;c++){
+    const x=pad+c*(cs+6),y=pad+r*(cs+6),si=r*GS+c;
+    if(r===TREASURE[0]&&c===TREASURE[1]){pctx.fillStyle='#3a3a0a';pctx.beginPath();pctx.roundRect(x,y,cs,cs,6);pctx.fill();pctx.fillStyle='#ffd54f';pctx.font='32px serif';pctx.textAlign='center';pctx.fillText('\u{1F3C6}',x+cs/2,y+cs/2+12);}
+    else if(r===PIT[0]&&c===PIT[1]){pctx.fillStyle='#3a0a0a';pctx.beginPath();pctx.roundRect(x,y,cs,cs,6);pctx.fill();pctx.fillStyle='#ef5350';pctx.font='32px serif';pctx.textAlign='center';pctx.fillText('\u{1F573}',x+cs/2,y+cs/2+12);}
     else{
       pctx.fillStyle='#1a1a3a';pctx.beginPath();pctx.roundRect(x,y,cs,cs,6);pctx.fill();
       const fwd=forward(si);
       let best=0;for(let i=1;i<4;i++) if(fwd.probs[i]>fwd.probs[best]) best=i;
-      pctx.fillStyle='#4fc3f7';pctx.font='bold 28px sans-serif';pctx.textAlign='center';
-      pctx.fillText(ANAME[best],x+cs/2,y+cs/2+10);
-      pctx.fillStyle='#666';pctx.font='9px monospace';
-      pctx.fillText(fwd.probs.map(p=>p.toFixed(2)).join(' '),x+cs/2,y+14);
+      pctx.fillStyle='#4fc3f7';pctx.font='bold 32px sans-serif';pctx.textAlign='center';
+      pctx.fillText(ANAME[best],x+cs/2,y+cs/2+12);
+      pctx.fillStyle='#666';pctx.font='10px monospace';
+      pctx.fillText(fwd.probs.map(p=>p.toFixed(2)).join(' '),x+cs/2,y+16);
     }
   }
 
@@ -548,19 +543,17 @@ function trainR(){
   const rcv=document.getElementById('r-reward'),rctx=rcv.getContext('2d');
   rctx.clearRect(0,0,540,280);rctx.fillStyle='#12122a';rctx.fillRect(0,0,540,280);
   const rp={l:40,r:10,t:20,b:30},rw2=540-rp.l-rp.r,rh2=280-rp.t-rp.b;
-  const rmin=Math.min(...rewards,-15),rmax2=Math.max(...rewards,12),rng2=rmax2-rmin||1;
+  const rmin=Math.min(...rewards,-12),rmax2=Math.max(...rewards,10),rng2=rmax2-rmin||1;
 
   rctx.strokeStyle='#2a2a4a';rctx.lineWidth=1;
   for(let i=0;i<=4;i++){const y=rp.t+rh2*i/4;rctx.beginPath();rctx.moveTo(rp.l,y);rctx.lineTo(rp.l+rw2,y);rctx.stroke();rctx.fillStyle='#666';rctx.font='10px monospace';rctx.textAlign='right';rctx.fillText((rmax2-rng2*i/4).toFixed(0),rp.l-4,y+3);}
 
-  // Dots
   for(let i=0;i<rewards.length;i++){
     const x=rp.l+(i/episodes)*rw2,y=rp.t+rh2*((rmax2-rewards[i])/rng2);
     rctx.fillStyle=rewards[i]>0?'#4caf5066':'#ef535066';
     rctx.beginPath();rctx.arc(x,y,2,0,Math.PI*2);rctx.fill();
   }
 
-  // Moving average
   const avg=[];
   for(let i=0;i<rewards.length;i++){const s=Math.max(0,i-19);let sm=0;for(let j=s;j<=i;j++) sm+=rewards[j];avg.push(sm/(i-s+1));}
   rctx.strokeStyle='#4fc3f7';rctx.lineWidth=2;rctx.beginPath();
@@ -569,11 +562,11 @@ function trainR(){
 
   rctx.fillStyle='#aaa';rctx.font='10px sans-serif';rctx.textAlign='center';
   rctx.fillText('Episode (blue line = moving avg)',rp.l+rw2/2,278);
-  rctx.fillText('Notice how much noisier this is vs Q-learning!',rp.l+rw2/2,262);
+  rctx.fillText('Best possible: +6 (4 steps to gold). Notice the noise!',rp.l+rw2/2,262);
 
   // Log
-  let logText='Training complete.\n';
-  for(let i=0;i<rewards.length;i+=30){
+  let logText='Training complete. 3x3 grid, best possible reward = +6\n';
+  for(let i=0;i<rewards.length;i+=50){
     logText+=`Ep ${String(i+1).padStart(3)}: reward=${rewards[i].toFixed(0).padStart(4)}\n`;
   }
   logText+=`Ep ${episodes}: reward=${rewards[episodes-1].toFixed(0)}\n`;

@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PPO, Rebuilt — From One Update to the Clipped Objective</title>
+<style>
+  :root{
+    --ink:#07111a;
+    --panel:#0d1b26;
+    --panel-2:#122532;
+    --line:#29404e;
+    --text:#eaf2f4;
+    --muted:#91a5af;
+    --cyan:#38d6c7;
+    --cyan-dim:#143d3d;
+    --amber:#f6b44b;
+    --amber-dim:#3d2c12;
+    --coral:#ff6b6b;
+    --coral-dim:#401b21;
+    --violet:#caa8ff;
+    --paper:#d8e5e8;
+    --radius:12px;
+  }
+
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0;
+    color:var(--text);
+    background:
+      linear-gradient(rgba(56,214,199,.025) 1px,transparent 1px),
+      linear-gradient(90deg,rgba(56,214,199,.025) 1px,transparent 1px),
+      var(--ink);
+    background-size:28px 28px;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    line-height:1.65;
+  }
+
+  button,input,summary{font:inherit}
+  a{color:var(--cyan)}
+  a:focus-visible,button:focus-visible,input:focus-visible,summary:focus-visible{
+    outline:3px solid var(--amber);
+    outline-offset:3px;
+  }
+
+  .shell{width:min(1080px,calc(100% - 32px));margin:0 auto;padding:22px 0 64px}
+  .topbar{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:34px}
+  .back{
+    color:var(--muted);text-decoration:none;text-transform:uppercase;letter-spacing:.14em;
+    font:700 .72rem ui-monospace,SFMono-Regular,Menlo,monospace;
+  }
+  .chapter-tag{
+    border:1px solid var(--line);padding:6px 10px;color:var(--cyan);
+    font:700 .72rem ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.12em;
+  }
+
+  .hero{
+    display:grid;grid-template-columns:minmax(0,1.25fr) minmax(290px,.75fr);
+    gap:28px;align-items:end;border-bottom:1px solid var(--line);padding:26px 0 34px;
+  }
+  .eyebrow{color:var(--amber);font:700 .76rem ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.16em;text-transform:uppercase}
+  h1,h2,h3{font-family:"Avenir Next Condensed","Arial Narrow",-apple-system,sans-serif;line-height:1.05;margin:0}
+  h1{font-size:clamp(3.4rem,9vw,7.2rem);font-weight:800;letter-spacing:-.055em;max-width:780px}
+  h1 span{color:var(--cyan)}
+  .hero-copy{margin:18px 0 0;color:var(--paper);font-size:clamp(1rem,2vw,1.18rem);max-width:700px}
+  .thesis{
+    background:var(--panel);border:1px solid var(--line);border-left:5px solid var(--cyan);
+    padding:20px;
+  }
+  .thesis strong{display:block;color:var(--cyan);margin-bottom:8px;text-transform:uppercase;letter-spacing:.08em;font-size:.78rem}
+  .thesis p{margin:0;color:var(--paper)}
+
+  .step-nav{
+    position:sticky;top:0;z-index:20;background:rgba(7,17,26,.96);backdrop-filter:blur(10px);
+    display:flex;gap:6px;overflow-x:auto;padding:12px 0;border-bottom:1px solid var(--line);
+  }
+  .step-nav button{
+    flex:0 0 auto;border:1px solid var(--line);background:transparent;color:var(--muted);
+    padding:7px 10px;cursor:pointer;font:700 .72rem ui-monospace,SFMono-Regular,Menlo,monospace;
+  }
+  .step-nav button:hover{color:var(--text);border-color:var(--muted)}
+  .step-nav button.active{background:var(--cyan);border-color:var(--cyan);color:var(--ink)}
+  .step-nav button.done{border-color:var(--cyan-dim);color:var(--cyan)}
+
+  main{padding-top:30px}
+  .step{display:none;animation:enter .26s ease-out}
+  .step.active{display:block}
+  @keyframes enter{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:none}}
+  .step-head{display:grid;grid-template-columns:82px minmax(0,1fr);gap:18px;margin:10px 0 24px;align-items:start}
+  .step-index{color:var(--cyan);font:800 2.5rem/1 ui-monospace,SFMono-Regular,Menlo,monospace;border-top:4px solid var(--cyan);padding-top:7px}
+  .step h2{font-size:clamp(2rem,5vw,3.6rem);letter-spacing:-.035em}
+  .lede{color:var(--muted);font-size:1.08rem;max-width:760px;margin:10px 0 0}
+
+  .grid-2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+  .grid-3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+  .card{background:var(--panel);border:1px solid var(--line);padding:20px;margin-bottom:16px;border-radius:var(--radius)}
+  .card h3{font-size:1.35rem;color:var(--amber);margin-bottom:10px;letter-spacing:-.015em}
+  .card p{margin:8px 0;color:var(--paper)}
+  .card.cyan{border-color:var(--cyan);background:var(--cyan-dim)}
+  .card.amber{border-color:var(--amber);background:var(--amber-dim)}
+  .card.coral{border-color:var(--coral);background:var(--coral-dim)}
+  .card.violet{border-color:var(--violet)}
+  .label{font:700 .7rem ui-monospace,SFMono-Regular,Menlo,monospace;text-transform:uppercase;letter-spacing:.13em;color:var(--muted)}
+  .big{font-family:"Avenir Next Condensed","Arial Narrow",sans-serif;font-size:2rem;font-weight:800;line-height:1.05;margin:6px 0}
+  .good{color:var(--cyan)}
+  .bad{color:var(--coral)}
+  .warn{color:var(--amber)}
+  .muted{color:var(--muted)}
+
+  pre{
+    margin:12px 0 0;padding:17px;background:#071018;border:1px solid var(--line);border-radius:9px;
+    overflow:auto;line-height:1.55;font-size:.86rem;tab-size:4;
+  }
+  code,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  .cm{color:#719680}.kw{color:#e7a7ff}.nm{color:#a9d7a2}.vr{color:#85caff}.fn{color:#f2ca78}.op{color:#d7e1e5}
+  .code-focus{display:block;background:#173746;border-left:3px solid var(--cyan);margin:3px -8px;padding:2px 8px}
+  .formula{
+    text-align:center;padding:20px;border:1px dashed var(--cyan);background:#091a23;
+    font:700 clamp(1rem,3vw,1.35rem) ui-monospace,SFMono-Regular,Menlo,monospace;margin:14px 0;
+  }
+
+  .flow{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;margin:18px 0}
+  .flow-item{position:relative;background:var(--panel);border:1px solid var(--line);padding:14px;text-align:center;min-height:94px}
+  .flow-item:not(:last-child)::after{content:"→";position:absolute;right:-14px;top:31px;color:var(--amber);z-index:2;font-weight:900}
+  .flow-item b{display:block;color:var(--cyan);font-size:.78rem;margin-bottom:6px}
+  .flow-item span{font-size:.84rem;color:var(--muted)}
+
+  .lab{
+    background:#071018;border:1px solid var(--cyan);border-radius:var(--radius);padding:22px;margin:18px 0 20px;
+    box-shadow:0 0 0 5px rgba(56,214,199,.05);
+  }
+  .lab-top{display:flex;justify-content:space-between;gap:20px;align-items:start;margin-bottom:18px}
+  .lab h3{font-size:1.6rem;color:var(--text)}
+  .toggle{display:flex;border:1px solid var(--line);padding:3px;background:var(--panel)}
+  .toggle button{border:0;background:transparent;color:var(--muted);padding:7px 12px;cursor:pointer}
+  .toggle button.on[data-sign="positive"]{background:var(--cyan);color:var(--ink)}
+  .toggle button.on[data-sign="negative"]{background:var(--coral);color:#18070a}
+  .rail-wrap{padding:20px 8px 10px}
+  .rail{
+    position:relative;height:18px;border:1px solid var(--line);background:#111e27;
+    margin:42px 0 22px;border-radius:999px;
+  }
+  .safe-zone{position:absolute;top:0;bottom:0;background:rgba(56,214,199,.22);border-left:1px solid var(--cyan);border-right:1px solid var(--cyan)}
+  .marker{position:absolute;top:-26px;transform:translateX(-50%);font:.68rem ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--muted);white-space:nowrap}
+  .marker::after{content:"";position:absolute;left:50%;top:19px;width:1px;height:28px;background:currentColor}
+  .marker.old{color:var(--amber)}
+  .needle{position:absolute;top:50%;transform:translate(-50%,-50%);height:31px;width:5px;background:var(--text);border-radius:3px;box-shadow:0 0 0 3px var(--ink)}
+  .needle::after{content:"current";position:absolute;left:50%;top:27px;transform:translateX(-50%);font:.68rem ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--text)}
+  input[type="range"]{width:100%;accent-color:var(--cyan);margin:12px 0}
+  .readouts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:12px}
+  .readout{background:var(--panel);border:1px solid var(--line);padding:12px}
+  .readout b{display:block;font:800 1.25rem ui-monospace,SFMono-Regular,Menlo,monospace;margin-top:4px}
+  .status{margin-top:14px;padding:12px 14px;border-left:4px solid var(--cyan);background:var(--cyan-dim)}
+  .status.clipped{border-color:var(--coral);background:var(--coral-dim)}
+
+  table{width:100%;border-collapse:collapse;margin:14px 0;font-size:.9rem}
+  th,td{border-bottom:1px solid var(--line);padding:10px;text-align:right;vertical-align:top}
+  th{color:var(--muted);font:.7rem ui-monospace,SFMono-Regular,Menlo,monospace;text-transform:uppercase;letter-spacing:.08em}
+  th:first-child,td:first-child{text-align:left}
+  tr:last-child td{border-bottom:0}
+  .pill{display:inline-block;border:1px solid currentColor;padding:2px 7px;border-radius:999px;font:.7rem ui-monospace,SFMono-Regular,Menlo,monospace}
+
+  details{border:1px solid var(--line);background:var(--panel);margin:14px 0;border-radius:var(--radius)}
+  summary{cursor:pointer;padding:16px 18px;color:var(--amber);font-weight:750}
+  details[open] summary{border-bottom:1px solid var(--line)}
+  .details-body{padding:6px 18px 18px}
+
+  .epoch-line{display:grid;grid-template-columns:88px 1fr 100px;gap:12px;align-items:center;margin:10px 0}
+  .epoch-line .bar{height:11px;background:#14242f;position:relative}
+  .epoch-line .bar span{display:block;height:100%;background:var(--cyan)}
+  .epoch-line.clipped .bar span{background:var(--coral)}
+  .epoch-line b{font:700 .76rem ui-monospace,SFMono-Regular,Menlo,monospace}
+  .epoch-line em{text-align:right;color:var(--muted);font-style:normal;font-size:.8rem}
+
+  .next-row{display:flex;justify-content:flex-end;margin-top:24px}
+  .next{
+    border:1px solid var(--cyan);background:var(--cyan);color:var(--ink);padding:11px 18px;
+    font-weight:800;cursor:pointer;
+  }
+  .next:hover{background:transparent;color:var(--cyan)}
+  .callout{border-left:5px solid var(--amber);padding:12px 16px;background:var(--amber-dim);margin:16px 0;color:var(--paper)}
+  .fine{font-size:.83rem;color:var(--muted)}
+
+  @media(max-width:800px){
+    .hero,.grid-2,.grid-3{grid-template-columns:1fr}
+    .flow{grid-template-columns:1fr 1fr}
+    .flow-item::after{display:none}
+    .readouts{grid-template-columns:1fr 1fr}
+  }
+  @media(max-width:560px){
+    .shell{width:min(100% - 20px,1080px)}
+    .hero{padding-top:8px}.topbar{margin-bottom:14px}
+    .step-head{grid-template-columns:52px 1fr}.step-index{font-size:1.6rem}
+    .lab-top{display:block}.toggle{margin-top:12px;width:max-content}
+    .readouts{grid-template-columns:1fr}
+    .flow{grid-template-columns:1fr}
+    table{font-size:.78rem}th,td{padding:7px 5px}
+    .epoch-line{grid-template-columns:70px 1fr}.epoch-line em{grid-column:2}
+  }
+  @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="shell">
+  <div class="topbar">
+    <a class="back" href="../index.html">← Course index</a>
+    <span class="chapter-tag">RL / CHAPTER 05 / REBUILT</span>
+  </div>
+
+  <header class="hero">
+    <div>
+      <div class="eyebrow">A policy-update laboratory</div>
+      <h1>PPO, <span>without the magic trick.</span></h1>
+      <p class="hero-copy">Start with one ordinary actor update. Reuse the data. Watch it become stale. Only then earn the ratio, the one-sided brake, and the compact PPO formula.</p>
+    </div>
+    <aside class="thesis">
+      <strong>The whole thesis</strong>
+      <p>PPO lets you learn several times from one expensive batch while preventing any one stale advantage from earning unlimited policy change.</p>
+    </aside>
+  </header>
+
+  <nav class="step-nav" id="stepNav" aria-label="Lesson steps"></nav>
+
+  <main>
+    <section class="step active" data-title="Why PPO">
+      <div class="step-head">
+        <div class="step-index">00</div>
+        <div><h2>First, what problem are we solving?</h2><p class="lede">Actor–Critic already knows how to improve a policy. PPO begins when we ask to learn more than once from the same expensive experience.</p></div>
+      </div>
+
+      <div class="grid-2">
+        <article class="card">
+          <div class="label">One fresh update</div>
+          <div class="big good">Ordinary policy gradient is enough.</div>
+          <pre><code><span class="vr">loss</span> = -<span class="fn">log</span>(<span class="vr">prob_taken</span>) * <span class="vr">advantage</span>
+<span class="fn">update</span>(<span class="vr">loss</span>)
+<span class="cm"># discard batch; collect fresh data</span></code></pre>
+        </article>
+        <article class="card amber">
+          <div class="label">The expensive part</div>
+          <div class="big">Environment interaction.</div>
+          <p>A simulator, robot, game, or human-feedback pipeline may take far longer than another neural-network backward pass. Throwing the batch away after one update wastes useful evidence.</p>
+        </article>
+      </div>
+
+      <div class="flow" aria-label="PPO training loop overview">
+        <div class="flow-item"><b>COLLECT</b><span>Run the old policy</span></div>
+        <div class="flow-item"><b>FREEZE</b><span>Save old probabilities and advantages</span></div>
+        <div class="flow-item"><b>UPDATE</b><span>Read the batch once</span></div>
+        <div class="flow-item"><b>REUSE</b><span>Read it for more epochs</span></div>
+        <div class="flow-item"><b>BRAKE</b><span>Stop trusting samples that moved enough</span></div>
+      </div>
+
+      <div class="callout"><strong>The danger:</strong> the advantage is frozen, but the policy changes after every optimizer step. Reading “this action was good” repeatedly can push its probability much farther than that old evidence deserves.</div>
+
+      <div class="next-row"><button class="next" data-next="1">Build the brake without PPO notation →</button></div>
+    </section>
+
+    <section class="step" data-title="One sample">
+      <div class="step-head">
+        <div class="step-index">01</div>
+        <div><h2>The clipping idea, with one sample.</h2><p class="lede">No ratio formula yet. Just compare the current probability with a boundary computed from the frozen old probability.</p></div>
+      </div>
+
+      <div class="grid-2">
+        <article class="card cyan">
+          <h3>Positive advantage</h3>
+          <p>The action did better than expected, so increase its probability—but stop giving this sample gradient after a 20% relative increase.</p>
+          <pre><code><span class="vr">upper</span> = <span class="vr">old_prob</span> * <span class="nm">1.2</span>
+<span class="vr">active</span> = <span class="vr">current_prob</span> &lt; <span class="vr">upper</span></code></pre>
+        </article>
+        <article class="card coral">
+          <h3>Negative advantage</h3>
+          <p>The action did worse than expected, so decrease its probability—but stop giving this sample gradient after a 20% relative decrease.</p>
+          <pre><code><span class="vr">lower</span> = <span class="vr">old_prob</span> * <span class="nm">0.8</span>
+<span class="vr">active</span> = <span class="vr">current_prob</span> &gt; <span class="vr">lower</span></code></pre>
+        </article>
+      </div>
+
+      <div class="lab" id="probLab">
+        <div class="lab-top">
+          <div><div class="label">Interactive probability rail</div><h3>Move the current probability.</h3></div>
+          <div class="toggle" aria-label="Choose advantage sign">
+            <button class="on" data-sign="positive">Advantage +2</button>
+            <button data-sign="negative">Advantage −2</button>
+          </div>
+        </div>
+
+        <div class="rail-wrap">
+          <div class="rail">
+            <div class="safe-zone" id="safeZone"></div>
+            <span class="marker" id="lowerMarker">0.32 lower</span>
+            <span class="marker old" id="oldMarker">0.40 old</span>
+            <span class="marker" id="upperMarker">0.48 upper</span>
+            <span class="needle" id="needle"></span>
+          </div>
+          <input id="probSlider" type="range" min="0.08" max="0.72" step="0.01" value="0.46" aria-label="Current action probability">
+        </div>
+
+        <div class="readouts">
+          <div class="readout"><span class="label">Old probability</span><b>0.40</b></div>
+          <div class="readout"><span class="label">Current probability</span><b id="currentReadout">0.46</b></div>
+          <div class="readout"><span class="label">Relative change</span><b id="relativeReadout">+15%</b></div>
+          <div class="readout"><span class="label">Sample gradient</span><b id="gradientReadout" class="good">ACTIVE</b></div>
+        </div>
+        <div class="status" id="labStatus"></div>
+      </div>
+
+      <pre><code><span class="kw">if</span> <span class="vr">advantage</span> &gt; <span class="nm">0</span>:
+    <span class="vr">active</span> = <span class="vr">current_prob</span> &lt; <span class="vr">old_prob</span> * <span class="nm">1.2</span>
+<span class="kw">else</span>:
+    <span class="vr">active</span> = <span class="vr">current_prob</span> &gt; <span class="vr">old_prob</span> * <span class="nm">0.8</span>
+
+<span class="code-focus"><span class="vr">teaching_loss</span> = -<span class="fn">log</span>(<span class="vr">current_prob</span>) * <span class="vr">advantage</span> * <span class="vr">active</span></span></code></pre>
+      <p class="fine">This is a teaching version, not yet exact PPO. It exposes the one-sided brake using the familiar actor loss.</p>
+
+      <div class="next-row"><button class="next" data-next="2">Apply the same idea to a batch →</button></div>
+    </section>
+
+    <section class="step" data-title="Batch mask">
+      <div class="step-head">
+        <div class="step-index">02</div>
+        <div><h2>One batch, many independent brakes.</h2><p class="lede">A batch is just the one-sample rule performed element by element. Some samples remain active while others stop contributing policy gradient.</p></div>
+      </div>
+
+      <article class="card">
+        <h3>The readable teaching implementation</h3>
+        <pre><code><span class="vr">upper</span> = <span class="vr">old_probs</span> * <span class="nm">1.2</span>
+<span class="vr">lower</span> = <span class="vr">old_probs</span> * <span class="nm">0.8</span>
+
+<span class="vr">active</span> = <span class="fn">torch.where</span>(
+    <span class="vr">advantages</span> &gt; <span class="nm">0</span>,
+    <span class="vr">new_probs</span> &lt; <span class="vr">upper</span>,    <span class="cm"># good action: not increased too far</span>
+    <span class="vr">new_probs</span> &gt; <span class="vr">lower</span>,    <span class="cm"># bad action: not decreased too far</span>
+)
+
+<span class="vr">teaching_loss</span> = -(
+    <span class="fn">torch.log</span>(<span class="vr">new_probs</span>) * <span class="vr">advantages</span> * <span class="vr">active</span>
+).<span class="fn">mean</span>()</code></pre>
+      </article>
+
+      <article class="card">
+        <h3>Four samples can be in four different places</h3>
+        <div style="overflow:auto">
+          <table>
+            <thead><tr><th>Sample</th><th>Old P</th><th>Current P</th><th>Advantage</th><th>Boundary</th><th>Status</th><th>Why</th></tr></thead>
+            <tbody>
+              <tr><td>A</td><td>0.40</td><td>0.46</td><td class="good">+2.0</td><td>upper 0.48</td><td><span class="pill good">ACTIVE</span></td><td>Good action still below its upper brake</td></tr>
+              <tr><td>B</td><td>0.60</td><td>0.75</td><td class="bad">−1.0</td><td>lower 0.48</td><td><span class="pill good">ACTIVE</span></td><td>Moved the wrong way; keep correcting it</td></tr>
+              <tr><td>C</td><td>0.25</td><td>0.34</td><td class="good">+0.6</td><td>upper 0.30</td><td><span class="pill bad">CLIPPED</span></td><td>Already increased more than 20%</td></tr>
+              <tr><td>D</td><td>0.70</td><td>0.58</td><td class="bad">−2.0</td><td>lower 0.56</td><td><span class="pill good">ACTIVE</span></td><td>Bad action is approaching, but has not crossed, its floor</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </article>
+
+      <div class="callout"><strong>Why not stop the whole epoch?</strong> Sample C is finished, but A, B, and D still carry useful gradients. The brake must be per sample, not one global flag.</div>
+
+      <details>
+        <summary>Checkpoint: why the brake must be one-sided</summary>
+        <div class="details-body grid-2">
+          <div><p><strong class="good">Positive advantage + probability fell:</strong></p><p>That is the wrong direction. Even if it fell below 0.8×, do not mask it; its gradient needs to pull it back up.</p></div>
+          <div><p><strong class="bad">Negative advantage + probability rose:</strong></p><p>Also the wrong direction. Even if it rose above 1.2×, keep its gradient so it can be pushed back down.</p></div>
+        </div>
+      </details>
+
+      <div class="next-row"><button class="next" data-next="3">Now justify data reuse and the ratio →</button></div>
+    </section>
+
+    <section class="step" data-title="Why ratio">
+      <div class="step-head">
+        <div class="step-index">03</div>
+        <div><h2>Why the ratio exists at all.</h2><p class="lede">The mask explains the brake. The ratio solves a different problem: after an update, the saved batch still has the old policy’s action frequencies.</p></div>
+      </div>
+
+      <div class="grid-2">
+        <article class="card amber">
+          <div class="label">Frozen batch</div>
+          <div class="big">40 A samples, 60 B samples.</div>
+          <p>Those counts came from an old policy with <span class="mono">P(A)=0.40</span>. They do not magically change after the network says <span class="mono">P(A)=0.46</span>.</p>
+        </article>
+        <article class="card cyan">
+          <div class="label">Current policy</div>
+          <div class="big">Should behave like 46 A, 54 B.</div>
+          <p>If we could afford to recollect immediately, this is the action mixture we would expect in another 100 samples.</p>
+        </article>
+      </div>
+
+      <article class="card">
+        <h3>The ratio turns old counts into new effective counts</h3>
+        <div class="formula">ratio = new probability / old probability</div>
+        <div style="overflow:auto">
+          <table>
+            <thead><tr><th>Action</th><th>Old count</th><th>Old P</th><th>New P</th><th>Ratio</th><th>Effective count</th></tr></thead>
+            <tbody>
+              <tr><td>A</td><td>40</td><td>0.40</td><td>0.46</td><td class="good">1.15</td><td>40 × 1.15 = <strong>46</strong></td></tr>
+              <tr><td>B</td><td>60</td><td>0.60</td><td>0.54</td><td class="warn">0.90</td><td>60 × 0.90 = <strong>54</strong></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </article>
+
+      <article class="card violet">
+        <h3>A complete advantage check</h3>
+        <p>Let old-policy advantages be <span class="mono">A(A)=+3</span> and <span class="mono">A(B)=−2</span>. Under the old policy they average to zero:</p>
+        <div class="formula">0.40(3) + 0.60(−2) = 0</div>
+        <p>The candidate policy shifts weight toward A:</p>
+        <div class="formula">0.46(3) + 0.54(−2) = +0.30</div>
+        <p>Using old samples plus ratios recovers exactly the same candidate-policy score:</p>
+        <div class="formula">0.40(1.15)(3) + 0.60(0.90)(−2) = +0.30</div>
+      </article>
+
+      <p class="fine">Precisely: this reweights actions at the states saved in the old batch. It does not recreate the different states a far-away new policy might visit. That remaining approximation is another reason PPO keeps the update proximal.</p>
+
+      <div class="callout"><strong>About the logarithm:</strong> <span class="mono">−ln(0.40)=0.916</span> and <span class="mono">−ln(0.46)=0.777</span>, so the familiar chosen-action log gradient changes as probability changes. But the ratio is not an ad-hoc boost to repair the log curve. It is the bookkeeping identity that makes old samples represent the candidate policy’s new action mixture.</div>
+
+      <pre><code><span class="vr">ratio</span> = <span class="vr">new_prob</span> / <span class="vr">old_prob</span>
+
+<span class="cm"># Numerically stable code uses log probabilities:</span>
+<span class="code-focus"><span class="vr">ratio</span> = <span class="fn">torch.exp</span>(<span class="vr">new_log_prob</span> - <span class="vr">old_log_prob</span>.<span class="fn">detach</span>())</span></code></pre>
+
+      <details>
+        <summary>Why ordinary −log(P) × advantage can still work</summary>
+        <div class="details-body">
+          <p>At the first update, new and old policies are identical, so the ratio is 1. The gradient of <span class="mono">−ratio × advantage</span> is then exactly the ordinary policy-gradient direction.</p>
+          <p>One fresh update per batch is vanilla policy gradient/A2C and is completely legitimate. PPO earns its extra machinery because it deliberately performs several updates on the same increasingly stale batch.</p>
+        </div>
+      </details>
+
+      <div class="next-row"><button class="next" data-next="4">Fold the mask into exact PPO →</button></div>
+    </section>
+
+    <section class="step" data-title="Exact PPO">
+      <div class="step-head">
+        <div class="step-index">04</div>
+        <div><h2>The compact formula, finally earned.</h2><p class="lede">Exact PPO replaces the teaching log-loss contribution with the importance-weighted surrogate, then expresses the same one-sided brake using clamp and minimum.</p></div>
+      </div>
+
+      <article class="card cyan">
+        <h3>Production-shaped PyTorch</h3>
+        <pre><code><span class="vr">ratio</span> = <span class="fn">torch.exp</span>(
+    <span class="vr">new_log_probs</span> - <span class="vr">old_log_probs</span>.<span class="fn">detach</span>()
+)                                      <span class="cm"># shape [B]</span>
+
+<span class="vr">unclipped</span> = <span class="vr">ratio</span> * <span class="vr">advantages</span>        <span class="cm"># shape [B]</span>
+<span class="vr">clipped</span> = <span class="fn">torch.clamp</span>(
+    <span class="vr">ratio</span>, <span class="nm">1</span> - <span class="vr">epsilon</span>, <span class="nm">1</span> + <span class="vr">epsilon</span>
+) * <span class="vr">advantages</span>                       <span class="cm"># shape [B]</span>
+
+<span class="code-focus"><span class="vr">actor_loss</span> = -<span class="fn">torch.min</span>(<span class="vr">unclipped</span>, <span class="vr">clipped</span>).<span class="fn">mean</span>()</span>
+                                                   <span class="cm"># scalar</span></code></pre>
+      </article>
+
+      <div class="grid-3">
+        <article class="card"><div class="label">Ratio</div><div class="big">Reweight</div><p>Make old action samples represent the current candidate policy.</p></article>
+        <article class="card"><div class="label">Clamp</div><div class="big">Propose a plateau</div><p>Create a capped alternative at 0.8 or 1.2.</p></article>
+        <article class="card"><div class="label">Minimum</div><div class="big">Choose pessimistically</div><p>Stop only excessive improvement, never a wrong-direction correction.</p></article>
+      </div>
+
+      <details open>
+        <summary>Unfold the “fancy” clamp/min into the readable mask</summary>
+        <div class="details-body">
+          <pre><code><span class="vr">too_far_in_good_direction</span> = (
+    ((<span class="vr">advantages</span> &gt; <span class="nm">0</span>) &amp; (<span class="vr">ratio</span> &gt; <span class="nm">1.2</span>)) |
+    ((<span class="vr">advantages</span> &lt; <span class="nm">0</span>) &amp; (<span class="vr">ratio</span> &lt; <span class="nm">0.8</span>))
+)
+
+<span class="vr">active</span> = ~<span class="vr">too_far_in_good_direction</span>
+
+<span class="cm"># Same actor gradient as PPO almost everywhere:</span>
+<span class="vr">masked_surrogate_loss</span> = -(
+    <span class="vr">ratio</span> * <span class="vr">advantages</span> * <span class="vr">active</span>
+).<span class="fn">mean</span>()</code></pre>
+          <p class="fine">The standard clamp/min form keeps a continuous, meaningful surrogate value on the plateau. The explicit mask replaces that constant contribution with zero; its actor gradient is the same away from the boundary.</p>
+        </div>
+      </details>
+
+      <div style="overflow:auto">
+        <table>
+          <thead><tr><th>Advantage</th><th>Ratio</th><th>Movement</th><th>PPO gradient?</th></tr></thead>
+          <tbody>
+            <tr><td class="good">Positive</td><td>1.10</td><td>Correct, modest increase</td><td><span class="pill good">ACTIVE</span></td></tr>
+            <tr><td class="good">Positive</td><td>1.30</td><td>Correct, excessive increase</td><td><span class="pill bad">ZERO FROM THIS SAMPLE</span></td></tr>
+            <tr><td class="good">Positive</td><td>0.70</td><td>Wrong-direction decrease</td><td><span class="pill good">ACTIVE</span></td></tr>
+            <tr><td class="bad">Negative</td><td>0.70</td><td>Correct, excessive decrease</td><td><span class="pill bad">ZERO FROM THIS SAMPLE</span></td></tr>
+            <tr><td class="bad">Negative</td><td>1.30</td><td>Wrong-direction increase</td><td><span class="pill good">ACTIVE</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="next-row"><button class="next" data-next="5">Watch repeated epochs and overshoot →</button></div>
+    </section>
+
+    <section class="step" data-title="Epochs">
+      <div class="step-head">
+        <div class="step-index">05</div>
+        <div><h2>One flashcard, several epochs.</h2><p class="lede">The saved advantage does not get recomputed inside the PPO update. The policy changes; the evidence stays frozen.</p></div>
+      </div>
+
+      <article class="card">
+        <h3>Illustrative positive-advantage trajectory</h3>
+        <p>Old probability is 0.40, so the teaching boundary is 0.48. The probability values below illustrate finite optimizer steps; they are not exact outputs of a universal learning rate.</p>
+        <div class="epoch-line"><b>Start</b><div class="bar"><span style="width:40%"></span></div><em>P = 0.40</em></div>
+        <div class="epoch-line"><b>Epoch 1</b><div class="bar"><span style="width:46%"></span></div><em>P = 0.46 · active</em></div>
+        <div class="epoch-line clipped"><b>Epoch 2</b><div class="bar"><span style="width:51%"></span></div><em>P = 0.51 · overshot</em></div>
+        <div class="epoch-line clipped"><b>Epoch 3</b><div class="bar"><span style="width:51%"></span></div><em>own gradient = 0</em></div>
+        <pre><code><span class="cm"># At P=0.46 the sample is still active.</span>
+<span class="cm"># The optimizer takes a finite parameter step.</span>
+<span class="cm"># Recomputing gives P=0.51, already beyond 0.48.</span>
+<span class="cm"># On the next forward pass, this sample lands on the plateau.</span></code></pre>
+      </article>
+
+      <div class="grid-2">
+        <article class="card coral">
+          <h3>Not a hard probability constraint</h3>
+          <p>PPO does not project the probability back to 0.48. It removes this sample’s incentive after the boundary. A finite step can overshoot.</p>
+        </article>
+        <article class="card amber">
+          <h3>Not necessarily frozen afterward</h3>
+          <p>Other samples, entropy loss, value loss, and shared parameters may still move this probability. Only this sample’s clipped actor contribution is flat.</p>
+        </article>
+      </div>
+
+      <article class="card cyan">
+        <h3>Why several epochs still help</h3>
+        <p>Different samples reach their plateaus at different times. An early-clipped sample contributes no further actor gradient while other samples continue learning. After the chosen number of epochs—or an early KL stop—the batch is discarded and fresh experience is collected.</p>
+      </article>
+
+      <div class="next-row"><button class="next" data-next="6">Answer “why not force exactly 0.48?” →</button></div>
+    </section>
+
+    <section class="step" data-title="Why not force it?">
+      <div class="step-head">
+        <div class="step-index">06</div>
+        <div><h2>Why not directly force 0.40 → 0.48?</h2><p class="lede">Because a desired output change is not a loss derivative, and backpropagation is not an inverse solver.</p></div>
+      </div>
+
+      <article class="card violet">
+        <h3>Your clean counterexample</h3>
+        <div class="formula">L = 2y &nbsp;&nbsp;&nbsp; y = (x−1)² &nbsp;&nbsp;&nbsp; x = 5</div>
+        <p>Currently, <span class="mono">y=16</span>, <span class="mono">L=32</span>, <span class="mono">dL/dy=2</span>, <span class="mono">dy/dx=8</span>, and therefore <span class="mono">dL/dx=16</span>.</p>
+        <div class="grid-2">
+          <div class="card amber">
+            <div class="label">Fantasy: optimize y directly</div>
+            <p>Choose learning rate 8:</p>
+            <div class="formula">y′ = 16 − 8(2) = 0</div>
+          </div>
+          <div class="card coral">
+            <div class="label">Reality: optimizer changes x</div>
+            <p>Reuse learning rate 8:</p>
+            <div class="formula">x′ = 5 − 8(16) = −123</div>
+            <p>Then <span class="mono">y′=(−123−1)²=15376</span>. The output explodes instead of reaching zero.</p>
+          </div>
+        </div>
+        <p>To make <span class="mono">y=0</span>, we need <span class="mono">x=1</span>. For this isolated quadratic and starting point, a specially solved parameter-space step would use learning rate <span class="mono">0.25</span>: <span class="mono">5−0.25(16)=1</span>. That is solving for this target—not ordinary backpropagation.</p>
+      </article>
+
+      <div class="formula">desired Δprobability ≠ dLoss / dProbability</div>
+
+      <div class="grid-2">
+        <article class="card">
+          <h3>The network shares parameters</h3>
+          <p>One weight update changes probabilities for many states and all competing actions. A step that lands one sample exactly at 0.48 generally makes other samples miss their targets.</p>
+        </article>
+        <article class="card">
+          <h3>Even supervised learning moves gradually</h3>
+          <p>A one-hot label does not directly set a class probability to 1.0. It defines a loss; gradient steps adjust shared weights over time. SFT does not bypass this geometry.</p>
+        </article>
+      </div>
+
+      <div class="callout"><strong>Could we design a target-based algorithm?</strong> Yes: construct a full target distribution, decide how to redistribute probability among other actions, and fit it with KL divergence or cross-entropy. That is a different constrained/projection-style algorithm, not PPO’s clipped surrogate.</div>
+
+      <div class="next-row"><button class="next" data-next="7">Put the complete algorithm together →</button></div>
+    </section>
+
+    <section class="step" data-title="Full loop">
+      <div class="step-head">
+        <div class="step-index">07</div>
+        <div><h2>The complete PPO loop.</h2><p class="lede">Every line now has one job: collect under the old policy, freeze evidence, reuse it with importance ratios, and remove excessive incentives.</p></div>
+      </div>
+
+      <article class="card cyan">
+        <pre><code><span class="kw">for</span> <span class="vr">iteration</span> <span class="kw">in</span> <span class="fn">range</span>(<span class="vr">num_iterations</span>):
+    <span class="cm"># 1. Expensive: interact with the environment once.</span>
+    <span class="vr">states</span>, <span class="vr">actions</span>, <span class="vr">returns</span>, <span class="vr">old_log_probs</span> = <span class="fn">collect</span>(<span class="vr">policy</span>)
+
+    <span class="cm"># 2. Freeze what this old-policy batch taught us.</span>
+    <span class="kw">with</span> <span class="vr">torch</span>.<span class="fn">no_grad</span>():
+        <span class="vr">old_values</span> = <span class="fn">critic</span>(<span class="vr">states</span>)
+        <span class="vr">advantages</span> = <span class="vr">returns</span> - <span class="vr">old_values</span>
+        <span class="vr">advantages</span> = (<span class="vr">advantages</span> - <span class="vr">advantages</span>.<span class="fn">mean</span>()) / (
+            <span class="vr">advantages</span>.<span class="fn">std</span>() + <span class="nm">1e-8</span>
+        )
+
+    <span class="cm"># 3. Cheap: reuse the saved batch for a few epochs.</span>
+    <span class="kw">for</span> <span class="vr">epoch</span> <span class="kw">in</span> <span class="fn">range</span>(<span class="nm">4</span>):
+        <span class="vr">new_log_probs</span> = <span class="fn">policy_log_prob</span>(<span class="vr">states</span>, <span class="vr">actions</span>)
+        <span class="vr">ratio</span> = <span class="fn">torch.exp</span>(<span class="vr">new_log_probs</span> - <span class="vr">old_log_probs</span>.<span class="fn">detach</span>())
+
+        <span class="vr">unclipped</span> = <span class="vr">ratio</span> * <span class="vr">advantages</span>
+        <span class="vr">clipped</span> = <span class="fn">torch.clamp</span>(<span class="vr">ratio</span>, <span class="nm">0.8</span>, <span class="nm">1.2</span>) * <span class="vr">advantages</span>
+        <span class="vr">actor_loss</span> = -<span class="fn">torch.min</span>(<span class="vr">unclipped</span>, <span class="vr">clipped</span>).<span class="fn">mean</span>()
+
+        <span class="vr">values</span> = <span class="fn">critic</span>(<span class="vr">states</span>)
+        <span class="vr">critic_loss</span> = <span class="fn">mse_loss</span>(<span class="vr">values</span>, <span class="vr">returns</span>)
+
+        <span class="vr">loss</span> = <span class="vr">actor_loss</span> + <span class="nm">0.5</span> * <span class="vr">critic_loss</span>
+        <span class="vr">optimizer</span>.<span class="fn">zero_grad</span>()
+        <span class="vr">loss</span>.<span class="fn">backward</span>()
+        <span class="vr">optimizer</span>.<span class="fn">step</span>()</code></pre>
+      </article>
+
+      <div class="grid-3">
+        <article class="card"><div class="label">Actor–Critic</div><div class="big">A says direction.</div><p>Positive: increase the selected action. Negative: decrease it.</p></article>
+        <article class="card"><div class="label">Importance ratio</div><div class="big">r fixes reuse.</div><p>Old samples are reweighted to represent the candidate action mixture.</p></article>
+        <article class="card"><div class="label">PPO clip</div><div class="big">min limits trust.</div><p>One frozen advantage stops earning beneficial change after its ratio moves enough.</p></article>
+      </div>
+
+      <article class="card amber">
+        <h3>Bridge to language models</h3>
+        <p>For an LLM policy, the state is the prompt plus generated tokens, the action is the next token, and the policy probability is the probability assigned to the sampled token. The same old/new log-probability ratio and clipped advantage objective can be computed token by token. PPO’s conceptual job does not change.</p>
+      </article>
+
+      <div class="callout"><strong>Final mental model:</strong> Actor–Critic tells the policy which sampled choices were better or worse than expected. PPO lets the optimizer reread that evidence, but withdraws each sample’s permission to keep pushing once the policy has changed enough in the requested direction.</div>
+
+      <p class="fine">Primary reference: <a href="https://arxiv.org/abs/1707.06347">Schulman et al., “Proximal Policy Optimization Algorithms”</a>.</p>
+    </section>
+  </main>
+</div>
+
+<script>
+  const steps = [...document.querySelectorAll('.step')];
+  const nav = document.getElementById('stepNav');
+  let currentStep = 0;
+
+  steps.forEach((step, index) => {
+    const button = document.createElement('button');
+    button.textContent = `${String(index).padStart(2,'0')} ${step.dataset.title}`;
+    button.addEventListener('click', () => showStep(index));
+    nav.appendChild(button);
+  });
+
+  function showStep(index){
+    currentStep = Math.max(0, Math.min(index, steps.length - 1));
+    steps.forEach((step, i) => step.classList.toggle('active', i === currentStep));
+    [...nav.children].forEach((button, i) => {
+      button.classList.toggle('active', i === currentStep);
+      button.classList.toggle('done', i < currentStep);
+      if(i === currentStep) button.scrollIntoView({behavior:'smooth',block:'nearest',inline:'center'});
+    });
+    window.scrollTo({top:document.querySelector('.step-nav').offsetTop,behavior:'smooth'});
+  }
+
+  document.querySelectorAll('[data-next]').forEach(button => {
+    button.addEventListener('click', () => showStep(Number(button.dataset.next)));
+  });
+
+  showStep(0);
+
+  const oldProb = 0.40;
+  const lower = oldProb * 0.8;
+  const upper = oldProb * 1.2;
+  const railMax = 0.80;
+  const slider = document.getElementById('probSlider');
+  const needle = document.getElementById('needle');
+  const safeZone = document.getElementById('safeZone');
+  const lowerMarker = document.getElementById('lowerMarker');
+  const oldMarker = document.getElementById('oldMarker');
+  const upperMarker = document.getElementById('upperMarker');
+  const currentReadout = document.getElementById('currentReadout');
+  const relativeReadout = document.getElementById('relativeReadout');
+  const gradientReadout = document.getElementById('gradientReadout');
+  const labStatus = document.getElementById('labStatus');
+  let advantageSign = 1;
+
+  const pct = value => `${(value / railMax) * 100}%`;
+  safeZone.style.left = pct(lower);
+  safeZone.style.width = `${((upper - lower) / railMax) * 100}%`;
+  lowerMarker.style.left = pct(lower);
+  oldMarker.style.left = pct(oldProb);
+  upperMarker.style.left = pct(upper);
+
+  function updateLab(){
+    const current = Number(slider.value);
+    const relative = (current / oldProb - 1) * 100;
+    const active = advantageSign > 0 ? current < upper : current > lower;
+    needle.style.left = pct(current);
+    currentReadout.textContent = current.toFixed(2);
+    relativeReadout.textContent = `${relative >= 0 ? '+' : ''}${relative.toFixed(0)}%`;
+    gradientReadout.textContent = active ? 'ACTIVE' : 'CLIPPED';
+    gradientReadout.className = active ? 'good' : 'bad';
+    labStatus.classList.toggle('clipped', !active);
+
+    if(advantageSign > 0){
+      labStatus.innerHTML = active
+        ? `<strong>Gradient flows.</strong> Advantage is positive and ${current.toFixed(2)} is below the upper boundary 0.48. The sample still asks to increase this action.`
+        : `<strong>This sample is on its plateau.</strong> Advantage is positive, but ${current.toFixed(2)} is at or above 0.48. It earns no further increase from its own actor term.`;
+    } else {
+      labStatus.innerHTML = active
+        ? `<strong>Gradient flows.</strong> Advantage is negative and ${current.toFixed(2)} is above the lower boundary 0.32. The sample still asks to decrease this action.`
+        : `<strong>This sample is on its plateau.</strong> Advantage is negative, but ${current.toFixed(2)} is at or below 0.32. It earns no further decrease from its own actor term.`;
+    }
+  }
+
+  slider.addEventListener('input', updateLab);
+  document.querySelectorAll('.toggle button').forEach(button => {
+    button.addEventListener('click', () => {
+      advantageSign = button.dataset.sign === 'positive' ? 1 : -1;
+      document.querySelectorAll('.toggle button').forEach(b => b.classList.toggle('on', b === button));
+      updateLab();
+    });
+  });
+  updateLab();
+</script>
+</body>
+</html>

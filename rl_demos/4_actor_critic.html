@@ -62,27 +62,57 @@
   <h2>Why REINFORCE Is Noisy</h2>
 
   <div class="card red">
-    <h3>A concrete example of the problem</h3>
-<pre><code><span class="cmt"># Three episodes of the gridworld, all reaching treasure:</span>
-
-<span class="cmt"># Episode A: stumbles around, 15 steps → return = -5 + 10 = +5</span>
-<span class="cmt"># Episode B: lucky direct path, 6 steps → return = -5 + 10 = +5</span>
-<span class="cmt"># Episode C: terrible luck, 40 steps  → return = -39 + 10 = -29</span>
+    <h3>The scenario that kills REINFORCE</h3>
+    <p>Agent is at <strong>(1,2)</strong>. Gold is at (2,2) — one step away. Policy is untrained: P = 0.25 for all directions.</p>
+    <table style="width:auto;margin:10px auto;border-collapse:collapse">
+      <tr>
+        <td style="background:#1a1a3a;width:80px;height:60px;text-align:center;color:#888">(0,0)</td>
+        <td style="background:#1a1a3a;width:80px;height:60px;text-align:center;color:#888">(0,1)</td>
+        <td style="background:#1a1a3a;width:80px;height:60px;text-align:center;color:#888">(0,2)<br><span style="font-size:.7em">&#x2191; wander</span></td>
+      </tr>
+      <tr>
+        <td style="background:#1a1a3a;width:80px;height:60px;text-align:center;color:#888">(1,0)</td>
+        <td style="background:#3a0a0a;width:80px;height:60px;text-align:center;color:#ef5350;font-weight:700">(1,1)<br>PIT<br><span style="font-size:.7em">&#x2190; death</span></td>
+        <td style="background:#0d2137;width:80px;height:60px;text-align:center;color:#4fc3f7;font-weight:700;border:2px solid #4fc3f7">(1,2)<br>&#x1F916;<br><span style="font-size:.7em">AGENT</span></td>
+      </tr>
+      <tr>
+        <td style="background:#1a1a3a;width:80px;height:60px;text-align:center;color:#888">(2,0)</td>
+        <td style="background:#1a1a3a;width:80px;height:60px;text-align:center;color:#888">(2,1)</td>
+        <td style="background:#3a3a0a;width:80px;height:60px;text-align:center;color:#ffd54f;font-weight:700">(2,2)<br>&#x1F3C6;<br><span style="font-size:.7em">&#x2193; gold!</span></td>
+      </tr>
+    </table>
+    <p>Over 20 visits to this state, you sample actions randomly:</p>
+<pre><code><span class="cmt"># DOWN  5 times → reach gold immediately → G = +10 each time</span>
+<span class="cmt"># RIGHT 6 times → wall bounce, wander, find gold → G = +8 each</span>
+<span class="cmt"># UP    5 times → wander north, eventually find gold → G = +7 each</span>
+<span class="cmt"># LEFT  4 times → fall into pit at (1,1) → G = -10 each</span>
 </code></pre>
-    <p>REINFORCE treats episode A and B equally (same return!) even though B's actions were much better. And C's actions get punished even though some of them were perfectly fine.</p>
+    <p><strong>REINFORCE pushes:</strong></p>
+<pre><code><span class="cmt"># DOWN  pushed up: 5 × 10 = +50</span>
+<span class="cmt"># RIGHT pushed up: 6 × 8  = +48  ← almost the same as DOWN!</span>
+<span class="cmt"># UP    pushed up: 5 × 7  = +35</span>
+<span class="cmt"># LEFT  pushed dn: 4 × 10 = -40</span>
+<span class="cmt">#</span>
+<span class="cmt"># Problem: RIGHT got pushed almost as much as DOWN.</span>
+<span class="cmt"># Partly because G=8 is close to G=10,</span>
+<span class="cmt"># partly because sampling luck gave RIGHT 6 tries vs DOWN's 5.</span>
+<span class="cmt"># After this batch, policy might even PREFER right over down.</span>
+<span class="cmt"># The signal "down is best" is a tiny gap (+50 vs +48)</span>
+<span class="cmt"># buried in huge positive numbers.</span>
+</code></pre>
   </div>
 
   <div class="card warn">
-    <h3>The root cause: "good" vs "bad" depends on context</h3>
+    <h3>The root cause: same number means different things at different states</h3>
     <div class="cmp">
       <div class="card">
-        <p><strong>At state (3,2)</strong> — one step from treasure</p>
-        <p>Expected return from here: about <strong>+9</strong></p>
-        <p>If you get +9: totally normal</p>
-        <p>If you get +5: that's <em>bad</em> (below expectation)</p>
+        <p><strong>At state (1,2)</strong> — one step from gold</p>
+        <p>Expected return from here: about <strong>+8</strong></p>
+        <p>If you get +8: totally normal</p>
+        <p>If you get +4: that's <em>bad</em> (below expectation)</p>
       </div>
       <div class="card">
-        <p><strong>At state (0,0)</strong> — far from treasure</p>
+        <p><strong>At state (0,0)</strong> — far from gold</p>
         <p>Expected return from here: about <strong>+3</strong></p>
         <p>If you get +5: that's <em>great</em> (above expectation)</p>
         <p>If you get +3: totally normal</p>
@@ -92,12 +122,21 @@
   </div>
 
   <div class="card ok">
-    <h3>The fix is obvious once you see the problem</h3>
-    <p>Don't ask "was the return high?"</p>
-    <p>Ask <strong>"was the return higher than I EXPECTED?"</strong></p>
+    <h3>The fix: subtract what you expected → the differences pop out</h3>
+    <p>Same 20 visits to (1,2), but now we know V(1,2) = +6 (the average return from here):</p>
+<pre><code><span class="cmt"># DOWN:  5 × (10 - 6) = 5 × (+4) = +20   ← clearly best</span>
+<span class="cmt"># RIGHT: 6 × (8 - 6)  = 6 × (+2) = +12   ← weakly positive</span>
+<span class="cmt"># UP:    5 × (7 - 6)  = 5 × (+1) = +5    ← barely positive</span>
+<span class="cmt"># LEFT:  4 × (-10 - 6)= 4 × (-16)= -64   ← nuke it</span>
+<span class="cmt">#</span>
+<span class="cmt"># Now DOWN is 2× RIGHT per sample (+4 vs +2).</span>
+<span class="cmt"># Sampling luck (6 vs 5) can't overcome that ratio.</span>
+<span class="cmt"># After one batch, policy clearly prefers DOWN.</span>
+</code></pre>
     <div style="font-size:1.2em;text-align:center;margin:14px 0;font-weight:700;">
       <span style="color:#ce93d8;">Advantage = Actual Return &minus; Expected Return</span>
     </div>
+    <p>It's like weighing two objects that are 502g and 500g — you notice the 2g difference much faster if you subtract the 500g platform first.</p>
   </div>
   <button class="nx" onclick="go(1)">Next: What is "expected return"? &#x2192;</button>
 </div>
@@ -375,9 +414,9 @@
   <h2>REINFORCE vs Actor-Critic — Side by Side</h2>
 
   <div class="card hi">
-    <p>Both train on the same 4x4 gridworld (each step costs &minus;1, treasure gives +10, pit gives &minus;10). Higher reward = better.</p>
+    <p>Both train on a 3x3 grid (start top-left, pit center, gold bottom-right; step costs &minus;1, gold +10, pit &minus;10). Best possible = +6. Higher = better.</p>
     <div class="controls">
-      <button class="run" onclick="runBoth()">Train Both (300 episodes each)</button>
+      <button class="run" onclick="runBoth()">Train Both (500 episodes each)</button>
     </div>
     <div style="display:flex;flex-wrap:wrap;gap:16px;justify-content:center;margin-top:10px;">
       <div>
@@ -460,11 +499,12 @@ function drawAdv(){
 vsS.addEventListener('input',drawAdv);gaS.addEventListener('input',drawAdv);
 setTimeout(drawAdv,100);
 
-// Gridworld env
-const GS=4,ACTS=[[-1,0],[1,0],[0,-1],[0,1]];
-function envStep(s,a){let nr=s[0]+ACTS[a][0],nc=s[1]+ACTS[a][1];nr=Math.max(0,Math.min(3,nr));nc=Math.max(0,Math.min(3,nc));if(nr===3&&nc===3) return [[nr,nc],10,true];if(nr===1&&nc===1) return [[nr,nc],-10,true];return [[nr,nc],-1,false];}
+// Gridworld env — 3x3 grid
+const GS=3,ACTS=[[-1,0],[1,0],[0,-1],[0,1]];
+function envStep(s,a){let nr=s[0]+ACTS[a][0],nc=s[1]+ACTS[a][1];nr=Math.max(0,Math.min(GS-1,nr));nc=Math.max(0,Math.min(GS-1,nc));if(nr===2&&nc===2) return [[nr,nc],10,true];if(nr===1&&nc===1) return [[nr,nc],-10,true];return [[nr,nc],-1,false];}
 
 // Tiny net helper
+const INP=9,HID=12;
 function makeNet(inD,hD,outD){
   const W1=[],b1=[],W2=[],b2=[];
   for(let i=0;i<inD;i++){W1[i]=[];for(let j=0;j<hD;j++) W1[i][j]=(Math.random()-0.5)*0.3;}
@@ -486,17 +526,17 @@ function softmax(logits){const mx=Math.max(...logits);const e=logits.map(l=>Math
 function sample(p){let r=Math.random(),c=0;for(let i=0;i<p.length;i++){c+=p[i];if(r<c) return i;}return p.length-1;}
 
 function trainAgent(useBaseline){
-  const pNet=makeNet(16,16,4); // policy network (both methods)
-  const vTable=useBaseline?new Array(16).fill(0):null; // V-table: one value per state
-  const gamma=0.99,lr=0.01,vlr=0.1;
-  const rewards=[],eps=300;
+  const pNet=makeNet(INP,HID,4);
+  const vTable=useBaseline?new Array(INP).fill(0):null;
+  const gamma=0.99,lr=0.02,vlr=0.1;
+  const rewards=[],eps=500;
 
   for(let ep=0;ep<eps;ep++){
     const traj=[];
     let s=[0,0],done=false;
-    for(let t=0;t<50&&!done;t++){
-      const si=s[0]*4+s[1];
-      const inp=new Array(16).fill(0);inp[si]=1;
+    for(let t=0;t<30&&!done;t++){
+      const si=s[0]*GS+s[1];
+      const inp=new Array(INP).fill(0);inp[si]=1;
       const pf=fwd(pNet,inp);
       const probs=softmax(pf.out);
       const a=sample(probs);
@@ -510,9 +550,6 @@ function trainAgent(useBaseline){
     let G=0;
     for(let t=traj.length-1;t>=0;t--){G=traj[t].r+gamma*G;rets[t]=G;}
 
-    // Normalize for policy gradient (both methods)
-    // REINFORCE: normalize returns directly
-    // Actor-Critic: compute raw advantages, then normalize them for the actor
     let advs;
     if(useBaseline){
       advs=rets.map((g,t)=>g-traj[t].v);
@@ -527,19 +564,17 @@ function trainAgent(useBaseline){
       const Gt=rets[t];
       const adv=advs[t];
 
-      // Policy gradient
       const dlogits=probs.slice();
       dlogits[a]-=1;
       for(let i=0;i<4;i++) dlogits[i]*=adv;
 
-      for(let j=0;j<16;j++) for(let i=0;i<4;i++) pNet.W2[j][i]-=lr*pf.h[j]*dlogits[i];
+      for(let j=0;j<HID;j++) for(let i=0;i<4;i++) pNet.W2[j][i]-=lr*pf.h[j]*dlogits[i];
       for(let i=0;i<4;i++) pNet.b2[i]-=lr*dlogits[i];
-      const dh=new Array(16).fill(0);
-      for(let j=0;j<16;j++){for(let i=0;i<4;i++) dh[j]+=pNet.W2[j][i]*dlogits[i];dh[j]*=pf.h[j]>0?1:0;}
-      for(let j=0;j<16;j++) for(let i=0;i<16;i++) pNet.W1[j][i]-=lr*inp[j]*dh[i];
-      for(let i=0;i<16;i++) pNet.b1[i]-=lr*dh[i];
+      const dh=new Array(HID).fill(0);
+      for(let j=0;j<HID;j++){for(let i=0;i<4;i++) dh[j]+=pNet.W2[j][i]*dlogits[i];dh[j]*=pf.h[j]>0?1:0;}
+      for(let j=0;j<INP;j++) for(let i=0;i<HID;i++) pNet.W1[j][i]-=lr*inp[j]*dh[i];
+      for(let i=0;i<HID;i++) pNet.b1[i]-=lr*dh[i];
 
-      // V-table update: V(s) += lr * (G - V(s))
       if(useBaseline) vTable[si]+=vlr*(Gt-v);
     }
     rewards.push(traj.reduce((a,b)=>a+b.r,0));
@@ -579,7 +614,7 @@ function drawCurve(cvId,rewards,color,title,yMin,yMax){
 
   // X-axis tick marks
   ctx.fillStyle='#888';ctx.font='10px monospace';ctx.textAlign='center';
-  for(let ep=0;ep<=300;ep+=100){
+  for(let ep=0;ep<=500;ep+=100){
     const x=p.l+(ep/rewards.length)*w;
     ctx.fillText(ep,x,p.t+h+16);
   }
